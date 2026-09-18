@@ -193,6 +193,9 @@ export class DetectionEngine {
   // State
   private smoothedChroma = new Float32Array(12);
   private prevFrameBandEnergy = 0;
+  // Running ambient noise floor (dB), learned from quiet frames so the signal
+  // gate adapts to any microphone level instead of using a fixed threshold.
+  private runningNoiseFloorDb = -95;
   
   // Anti-fluctuation hysteresis & continuous detection state
   private candidateVoteHistory: string[] = [];
@@ -302,12 +305,21 @@ export class DetectionEngine {
     const binWidth = sampleRate / this.config.fftSize;
     const minBin = Math.floor(this.config.minFreq / binWidth);
     const maxBin = Math.min(cleanAmps.length - 2, Math.ceil(this.config.maxFreq / binWidth));
-    
+
+    // Threshold relative to the frame's strongest bin, so peak detection is
+    // independent of absolute mic level (with a tiny absolute floor to reject
+    // near-silence). Fixes quiet built-in mics detecting nothing.
+    let maxAmp = 0;
+    for (let b = minBin; b <= maxBin; b++) {
+      if (cleanAmps[b] > maxAmp) maxAmp = cleanAmps[b];
+    }
+    const peakThreshold = Math.max(3e-5, maxAmp * 0.08);
+
     const peaks: DetectedPeak[] = [];
-    
+
     for (let b = minBin; b <= maxBin; b++) {
       const val = cleanAmps[b];
-      if (val > 0.0022 && val > cleanAmps[b - 1] && val > cleanAmps[b + 1]) {
+      if (val > peakThreshold && val > cleanAmps[b - 1] && val > cleanAmps[b + 1]) {
         // Sub-bin parabolic peak interpolation
         const alpha = cleanAmps[b - 1];
         const beta = cleanAmps[b];
@@ -608,6 +620,23 @@ export class DetectionEngine {
     const voteCount = this.candidateVoteHistory.filter(c => c === best.short).length;
     const isConsensusWinner = (voteCount >= 2) || (this.lastLockedChord === best.short);
 
+    // Reject non-tonal input (noise, room hum, string transitions): the best
+    // template must actually correlate. Without this, any spectrum returns the
+    // closest chord and the UI shows a hallucinated chord for pure noise.
+    const MIN_CHORD_CORR = 0.42;
+    if (best.corr < MIN_CHORD_CORR || !isConsensusWinner) {
+      return {
+        mode: 'idle',
+        timestamp: Date.now(),
+        chroma: new Float32Array(smoothedChroma),
+        peaks,
+        ringingNotes: this.extractRingingNotes(peaks),
+        spectrum: new Float32Array(0),
+        signalLevelDb: 0,
+        statusMessage: 'Detecting guitar chord...',
+      };
+    }
+
     let confidencePct = '0%';
     let activeNotes: NoteName[] = [];
     let intervalsStr = best.formula;
@@ -727,16 +756,26 @@ export class DetectionEngine {
       this.noteSustainHoldUntil = 0;
     }
 
-    const minEnergyThreshold = this.noiseProfile?.calibrated ? 0.008 : 0.012;
-    const minDbThreshold = this.noiseProfile?.calibrated 
-      ? (this.noiseProfile.measuredNoiseFloorDb + 2.0) 
-      : -74;
-    const gatePercent = Math.max(3, (this.config.noiseGateDb / 50) * 18);
-    const meterVal = Math.max(0, Math.min(100, (maxDb + 75) * 1.66));
-    
-    const isRawSignalPresent = (totalGuitarBandEnergy > minEnergyThreshold) && 
-                               (maxDb > minDbThreshold) && 
-                               (meterVal >= gatePercent);
+    // Adaptive gate: the signal must rise a margin above the learned ambient
+    // floor. This works for quiet laptop mics and loud interfaces alike,
+    // instead of a fixed absolute dB/energy threshold that only fit one setup.
+    // The noise-gate slider (0-50) widens the margin for noisy rooms.
+    const signalMarginDb = 5 + Math.max(0, this.config.noiseGateDb) * 0.25;
+    const floorBaseline = this.noiseProfile?.calibrated
+      ? Math.max(this.runningNoiseFloorDb, this.noiseProfile.measuredNoiseFloorDb)
+      : this.runningNoiseFloorDb;
+
+    const isRawSignalPresent = (maxDb > floorBaseline + signalMarginDb) &&
+                               (totalGuitarBandEnergy > 3e-4);
+
+    // Learn the ambient floor from frames without a clear signal so sustained
+    // playing doesn't inflate it. Clamp to a sane range.
+    if (!isRawSignalPresent) {
+      this.runningNoiseFloorDb = Math.max(
+        -120,
+        Math.min(-20, this.runningNoiseFloorDb * 0.9 + maxDb * 0.1),
+      );
+    }
 
     // Sustain hold check during inter-strum finger transition
     let isSignalPresent = isRawSignalPresent;
@@ -947,6 +986,7 @@ export class DetectionEngine {
   reset(): void {
     this.smoothedChroma.fill(0);
     this.prevFrameBandEnergy = 0;
+    this.runningNoiseFloorDb = -95;
     this.candidateVoteHistory = [];
     this.lastLockedChord = null;
     this.lastLockedTime = 0;

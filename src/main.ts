@@ -594,13 +594,15 @@ export function setTuningPreset(presetId: string): void {
   renderFretboard();
   updateTuningUI();
   
-  // Update detection engine
+  // Update detection engine (preserve the live FFT size so bin->frequency math
+  // stays consistent with the analyser; otherwise detected pitches jump an octave)
   appState.detectionEngine = new DetectionEngine({
     ...DEFAULT_DETECTION_CONFIG,
     noiseGateDb: appState.settings.noiseGateDb,
     seventhStrictness: appState.settings.seventhStrictness,
     triggerMode: appState.settings.triggerMode,
     micGainMultiplier: appState.settings.micGain,
+    fftSize: appState.analyser ? appState.analyser.fftSize : DEFAULT_DETECTION_CONFIG.fftSize,
   });
   if (appState.analyser) {
     appState.detectionEngine.setAnalyser(appState.analyser);
