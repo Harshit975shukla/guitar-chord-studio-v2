@@ -5,7 +5,7 @@
  */
 
 import { strumChord, playInTuneChime, AcousticBus } from '../audio/engine';
-import { StringTuning, STANDARD_TUNING, NoteName } from '../types';
+import { StringTuning, STANDARD_TUNING, parseChordSymbol } from '../types';
 import { buildChordDefinition } from '../chords/definitions';
 
 interface KeyConfig {
@@ -448,11 +448,9 @@ export class TrainerStudio {
   }
 
   private getVoicingFrets(chordSymbol: string): (number | null)[] | null {
-    const root = chordSymbol.replace(/[m7#b].*/, '') as NoteName;
-    const quality = chordSymbol.replace(/^[A-G][#b]?/, '') || 'Major';
-
-    const normalizedQuality = quality === 'm' ? 'Minor' : quality === '' ? 'Major' : quality;
-    const def = buildChordDefinition(root, normalizedQuality as any, this.tuning);
+    const parsed = parseChordSymbol(chordSymbol);
+    if (!parsed) return null;
+    const def = buildChordDefinition(parsed.root, parsed.quality, this.tuning);
     if (def.voicings.length > 0) {
       return def.voicings[0].frets;
     }

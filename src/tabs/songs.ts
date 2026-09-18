@@ -918,9 +918,16 @@ export class SongStudio {
   }
 
   private initControls(): void {
-    // Song dropdown
+    // Song dropdown — populate from the catalog so option values match song ids
     const select = document.getElementById('song-selector-select') as HTMLSelectElement;
     if (select) {
+      select.innerHTML = SONG_CATALOG
+        .map(s => {
+          const by = s.singer || s.movie || s.music;
+          return `<option value="${s.id}">${s.title}${by ? ` — ${by}` : ''}</option>`;
+        })
+        .join('');
+      select.value = this.activeSong.id;
       select.onchange = () => this.loadSong(select.value);
     }
 

@@ -43,10 +43,12 @@ import {
 import { createProfileModal } from './ui/components/ProfileModal';
 import { createRecorderTab, initRecorderTab } from './tabs/recorder';
 
-import { 
-  getAllChordDefinitions, 
+import {
+  getAllChordDefinitions,
   buildChordDefinition,
   identifyChordFromFrets,
+  parseChordSymbol,
+  CHORD_QUALITY_DISPLAY,
   CapoState,
 } from './chords/definitions';
 
@@ -634,14 +636,17 @@ export function getChordVoicings(root: string, quality: string): ChordVoicing[] 
 }
 
 export function loadChordPreset(chordSymbol: string): void {
-  const voicings = getChordVoicings(
-    chordSymbol.replace(/[m7#b].*/, ''),
-    chordSymbol.replace(/^[A-G][#b]?/, '')
-  );
-  
-  if (voicings.length > 0) {
-    setFretboardState(voicings[0].frets);
-  }
+  const parsed = parseChordSymbol(chordSymbol);
+  if (!parsed) return;
+
+  const voicings = getChordVoicings(parsed.root, parsed.quality);
+  if (voicings.length === 0) return;
+
+  // Prefer a voicing that fits on the rendered 0-12 fretboard
+  const playable =
+    voicings.find(v => v.frets.every(f => f === null || (f >= 0 && f <= 12))) ??
+    voicings[0];
+  setFretboardState(playable.frets);
 }
 
 // ============================================================================
@@ -1059,7 +1064,16 @@ function updateSpectrumVisualizer(freqData: Float32Array): void {
   
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  
+
+  // Match the backing store to the displayed size (× DPR) so the spectrum isn't blurry/stretched
+  const dpr = window.devicePixelRatio || 1;
+  const targetW = Math.round(canvas.clientWidth * dpr);
+  const targetH = Math.round(canvas.clientHeight * dpr);
+  if (targetW > 0 && targetH > 0 && (canvas.width !== targetW || canvas.height !== targetH)) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
+
   const w = canvas.width;
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
@@ -1467,9 +1481,10 @@ function renderChordLibraryGrid(): void {
     const card = document.createElement('div');
     card.className = 'library-chord-card';
     const fretsStr = chord.voicings[0]?.frets.map(f => f === null ? 'x' : f.toString()).reverse().join('  ') || '-';
+    const symbol = `${chord.symbol.root}${CHORD_QUALITY_DISPLAY[chord.symbol.quality]}`;
     card.innerHTML = `
       <div class="lib-chord-title">
-        <span>${chord.symbol.root}${chord.symbol.quality === 'Major' ? '' : chord.symbol.quality}</span>
+        <span>${symbol}</span>
         <span style="font-size:0.75rem; color:var(--text-muted);">${chord.symbol.quality}</span>
       </div>
       <div class="lib-chord-notes">${chord.notes.join(' - ')}</div>
@@ -1477,8 +1492,8 @@ function renderChordLibraryGrid(): void {
         Frets: ${fretsStr}
       </div>
       <div style="display:flex; gap:8px; margin-top:4px;">
-        <button class="lib-chord-strum-btn" onclick="strumCurrentChord('down')">🔊 Strum</button>
-        <button class="btn btn-secondary" style="padding:6px 10px; font-size:0.75rem;" onclick="loadChordPreset('${chord.symbol.root}${chord.symbol.quality === 'Major' ? '' : chord.symbol.quality}')">🔍 Inspect</button>
+        <button class="lib-chord-strum-btn" onclick="strumChordPreset('${symbol}')">🔊 Strum</button>
+        <button class="btn btn-secondary" style="padding:6px 10px; font-size:0.75rem;" onclick="inspectChordPreset('${symbol}')">🔍 Inspect</button>
       </div>
     `;
     grid.appendChild(card);
@@ -1839,6 +1854,8 @@ declare global {
     switchTab: (tabId: string) => void;
     strumCurrentChord: (style?: StrumStyle) => Promise<void>;
     loadChordPreset: (chord: string) => void;
+    inspectChordPreset: (chord: string) => void;
+    strumChordPreset: (chord: string) => void;
     selectSongFromSearch: (songId: string) => void;
     toggleTrackRecord: (i: number) => void;
     setTrackVolume: (i: number, v: number) => void;
@@ -1853,6 +1870,16 @@ if (typeof window !== 'undefined') {
   window.switchTab = switchTab;
   window.strumCurrentChord = strumCurrentChord;
   window.loadChordPreset = loadChordPreset;
+  // Inspect loads the chord onto the detector fretboard and switches to it so it's visible
+  window.inspectChordPreset = (chord: string) => {
+    loadChordPreset(chord);
+    switchTab('detector');
+  };
+  // Strum loads the chord's voicing, then strums it
+  window.strumChordPreset = (chord: string) => {
+    loadChordPreset(chord);
+    strumCurrentChord('down');
+  };
   window.selectSongFromSearch = (songId: string) => {
     switchTab('songs');
     appState.songStudio.loadSong(songId);

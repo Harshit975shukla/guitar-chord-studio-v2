@@ -487,12 +487,17 @@ export function chordSymbolToString(symbol: ChordSymbol): string {
 }
 
 export function parseChordSymbol(str: string): ChordSymbol | null {
-  // Simple parser: Root + Quality + optional /Bass
-  const match = str.match(/^([A-G][#b]?)(.+?)(?:\/([A-G][#b]?))?$/);
+  // Root + optional Quality suffix + optional /Bass
+  const match = str.match(/^([A-G][#b]?)(.*?)(?:\/([A-G][#b]?))?$/);
   if (!match) return null;
+  // Map display suffix ('' = major, 'm' = minor) to internal ChordQuality keys.
+  // Every other suffix already equals its internal key.
+  const suffix = match[2];
+  const quality: ChordQuality =
+    suffix === '' ? 'Major' : suffix === 'm' ? 'Minor' : (suffix as ChordQuality);
   return {
     root: match[1] as NoteName,
-    quality: match[2] as ChordQuality,
+    quality,
     bass: match[3] as NoteName | undefined,
   };
 }

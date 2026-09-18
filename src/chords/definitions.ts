@@ -395,8 +395,8 @@ export function buildChordDefinition(
     // Find barre fret to match root on rootString
     const rootStringMidi = tuning[tmpl.rootString].midi;
     const rootNoteIndex = NOTE_NAMES.indexOf(root);
-    const targetMidi = 60 + rootNoteIndex; // Middle C = 60
-    let barreFret = targetMidi - rootStringMidi;
+    // Lowest fret on the root string whose pitch class matches the chord root (0-11)
+    let barreFret = (((rootNoteIndex - (rootStringMidi % 12)) % 12) + 12) % 12;
     
     // For open shapes, barreFret should be 0
     if (!tmpl.barre && barreFret === 0) {
