@@ -172,37 +172,51 @@ export async function initializeApp(): Promise<void> {
   document.addEventListener('keydown', ensureAudioContext, { once: true });
   document.addEventListener('touchstart', ensureAudioContext, { once: true });
   
-  // 4. Initialize MIDI
-  const midiConfig = loadMidiConfig();
-  appState.midiManager = await createMidiManager(midiConfig, appState.audioContext || undefined);
+  // 4. Initialize MIDI (graceful fallback if unsupported/denied)
+  try {
+    const midiConfig = loadMidiConfig();
+    appState.midiManager = await createMidiManager(midiConfig, appState.audioContext || undefined);
+  } catch (err) {
+    console.warn('Web MIDI non-fatal init error:', err);
+  }
   
-  // 5. Create Profile Modal and append to body
-  const profileModal = createProfileModal();
-  document.body.appendChild(profileModal);
+  // 5. Create Profile Modal and append to body if not already in DOM
+  if (!document.getElementById('user-profile-modal')) {
+    const profileModal = createProfileModal();
+    document.body.appendChild(profileModal);
+  }
   
-  // 6. Create Recorder Tab and append to studio panes container
-  const recorderTab = createRecorderTab();
-  const panesContainer = document.querySelector('.studio-panes') || document.getElementById('studio-panes');
-  if (panesContainer) {
-    panesContainer.appendChild(recorderTab);
+  // 6. Populate Recorder Tab inside #pane-recorder
+  const existingRecorderPane = document.getElementById('pane-recorder');
+  if (existingRecorderPane) {
+    const recorderTab = createRecorderTab();
+    existingRecorderPane.innerHTML = recorderTab.innerHTML;
   }
   
   // 7. Restore session if exists
-  const savedSession = loadCurrentSession();
-  if (savedSession && Date.now() - savedSession.timestamp < 24 * 60 * 60 * 1000) {
-    restoreSession(savedSession);
+  try {
+    const savedSession = loadCurrentSession();
+    if (savedSession && Date.now() - savedSession.timestamp < 24 * 60 * 60 * 1000) {
+      restoreSession(savedSession);
+    }
+  } catch (err) {
+    console.warn('Session restore non-fatal error:', err);
   }
   
   // 8. Initialize UI
   initializeUI();
   
   // 9. Initialize Recorder Tab (after UI is ready)
-  initRecorderTab();
+  try {
+    initRecorderTab();
+  } catch (err) {
+    console.warn('Recorder tab init non-fatal error:', err);
+  }
   
   // 10. Start session tracking
   startNewSession();
   
-  console.log('Guitar Chord Studio v2 initialized');
+  console.log('Guitar Chord Studio v2 initialized successfully');
 }
 
 function applySettingsToState(): void {
@@ -1095,16 +1109,18 @@ function updateChromaVisualizer(chroma: Float32Array): void {
   }
 }
 
-// Placeholder UI functions
+// UI initialization functions
 function initializeUI(): void {
-  initChromaBars();
-  initFretboard();
-  initTabButtons();
-  renderFretboard();
-  updateTuningUI();
-  renderPresetChips();
-  renderRhythmPresets();
-  renderLooperTracks();
+  try { initChromaBars(); } catch (e) { console.warn('initChromaBars:', e); }
+  try { initFretboard(); } catch (e) { console.warn('initFretboard:', e); }
+  try { initTabButtons(); } catch (e) { console.warn('initTabButtons:', e); }
+  try { renderFretboard(); } catch (e) { console.warn('renderFretboard:', e); }
+  try { updateTuningUI(); } catch (e) { console.warn('updateTuningUI:', e); }
+  try { renderPresetChips(); } catch (e) { console.warn('renderPresetChips:', e); }
+  try { renderRhythmPresets(); } catch (e) { console.warn('renderRhythmPresets:', e); }
+  try { renderLooperTracks(); } catch (e) { console.warn('renderLooperTracks:', e); }
+  try { initSearchTab(); } catch (e) { console.warn('initSearchTab:', e); }
+  try { initVideoTab(); } catch (e) { console.warn('initVideoTab:', e); }
 }
 
 function initChromaBars(): void {
@@ -1743,6 +1759,114 @@ function saveCustomSongHandler(): void {
   
   document.getElementById('custom-song-modal')!.style.display = 'none';
   alert('Song "' + title + '" saved to your personal library!');
+}
+
+function initSearchTab(): void {
+  const input = document.getElementById('search-song-input') as HTMLInputElement;
+  const btn = document.getElementById('btn-search-song');
+  const resultsDiv = document.getElementById('search-results');
+  if (!input || !btn || !resultsDiv) return;
+
+  const performSearch = () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) return;
+
+    const matches = BUILTIN_SONGS.filter(s => 
+      s.title.toLowerCase().includes(q) || 
+      (s.movie && s.movie.toLowerCase().includes(q)) ||
+      (s.singer && s.singer.toLowerCase().includes(q)) ||
+      (s.chordsUsed && s.chordsUsed.some(c => c.toLowerCase() === q))
+    );
+
+    resultsDiv.style.display = 'block';
+    if (matches.length === 0) {
+      resultsDiv.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:0.9rem;">No songs found matching "<strong>${input.value}</strong>". Try searching "Hotel California", "Kesariya", or "C".</div>`;
+      return;
+    }
+
+    resultsDiv.innerHTML = `
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:16px;">
+        ${matches.map(song => `
+          <div class="card" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-light); padding:16px; border-radius:14px; cursor:pointer;" onclick="selectSongFromSearch('${song.id}')">
+            <h4 style="font-size:1.1rem; color:var(--accent-gold); font-weight:800; margin-bottom:4px;">🎸 ${song.title}</h4>
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">${song.movie || song.singer || 'Acoustic'} • Key: ${song.key} • ${song.bpm} BPM</div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+              ${song.chordsUsed.map(c => `<span class="badge" style="background:rgba(255,179,0,0.15); border:1px solid rgba(255,179,0,0.3); color:#ffd54f; font-size:0.75rem; padding:2px 8px;">${c}</span>`).join('')}
+            </div>
+            <button class="btn btn-primary" style="padding:6px 14px; font-size:0.8rem; width:100%; justify-content:center;">Play This Song ➔</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  };
+
+  btn.onclick = performSearch;
+  input.onkeydown = (e) => { if (e.key === 'Enter') performSearch(); };
+}
+
+function initVideoTab(): void {
+  const toggleBtn = document.getElementById('btn-toggle-webcam');
+  const videoEl = document.getElementById('camera-video-element') as HTMLVideoElement;
+  let stream: MediaStream | null = null;
+
+  if (toggleBtn && videoEl) {
+    toggleBtn.onclick = async () => {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+        videoEl.srcObject = null;
+        toggleBtn.innerHTML = '<span>📷</span> Enable Camera';
+      } else {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          videoEl.srcObject = stream;
+          toggleBtn.innerHTML = '<span>⏹️</span> Stop Camera';
+        } catch (e) {
+          alert('Could not access camera: ' + e);
+        }
+      }
+    };
+  }
+}
+
+// ============================================================================
+// Global Window API and Auto-Initialization
+// ============================================================================
+
+declare global {
+  interface Window {
+    initializeApp: () => Promise<void>;
+    switchTab: (tabId: string) => void;
+    strumCurrentChord: (style?: StrumStyle) => Promise<void>;
+    loadChordPreset: (chord: string) => void;
+    selectSongFromSearch: (songId: string) => void;
+    toggleTrackRecord: (i: number) => void;
+    setTrackVolume: (i: number, v: number) => void;
+    toggleTrackMute: (i: number) => void;
+    clearTrack: (i: number) => void;
+    appState: AppState;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.initializeApp = initializeApp;
+  window.switchTab = switchTab;
+  window.strumCurrentChord = strumCurrentChord;
+  window.loadChordPreset = loadChordPreset;
+  window.selectSongFromSearch = (songId: string) => {
+    switchTab('songs');
+    appState.songStudio.loadSong(songId);
+  };
+  window.appState = appState;
+
+  // Auto-run when document is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeApp().catch(err => console.error('App initialization error:', err));
+    });
+  } else {
+    initializeApp().catch(err => console.error('App initialization error:', err));
+  }
 }
 
 // Export app state for debugging

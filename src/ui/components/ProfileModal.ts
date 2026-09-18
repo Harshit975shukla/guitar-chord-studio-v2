@@ -330,6 +330,9 @@ function renderBackupPane(): void {
 
 declare global {
   interface Window {
+    openUserProfileModal: () => void;
+    closeUserProfileModal: () => void;
+    switchUserProfileTab: (id: string) => void;
     saveActiveProfileEdits: () => void;
     createNewUserProfile: () => void;
     switchActiveProfile: (id: string) => void;
@@ -339,6 +342,10 @@ declare global {
     importUserProfileData: (event: Event) => void;
   }
 }
+
+window.openUserProfileModal = openUserProfileModal;
+window.closeUserProfileModal = closeUserProfileModal;
+window.switchUserProfileTab = switchUserProfileTab;
 
 window.saveActiveProfileEdits = () => {
   const name = (document.getElementById('edit-profile-name') as HTMLInputElement)?.value?.trim();
