@@ -588,31 +588,6 @@ export class DetectionEngine {
     matches.sort((a, b) => b.corr - a.corr);
     let best = matches[0];
 
-    // 7th Note Disambiguation
-    const rootIdxBest = NOTE_NAMES.indexOf(best.root as NoteName);
-    const isMinor = best.quality.includes('Minor') || best.quality.includes('m7');
-    const triadQuality = isMinor ? 'Minor' : 'Major';
-    const triadMatch = matches.find(m => m.root === best.root && m.quality === triadQuality);
-
-    const seventhInterval = (best.quality === 'Major 7th') ? 11 : 10;
-    const thirdInterval = isMinor ? 3 : 4;
-    const seventhNoteName = NOTE_NAMES[(rootIdxBest + seventhInterval) % 12];
-
-    const rootEnergy = smoothedChroma[rootIdxBest];
-    const thirdEnergy = smoothedChroma[(rootIdxBest + thirdInterval) % 12];
-    const fifthEnergy = smoothedChroma[(rootIdxBest + 7) % 12];
-    const seventhEnergy = smoothedChroma[(rootIdxBest + seventhInterval) % 12];
-
-    const triadAvg = (rootEnergy + thirdEnergy + fifthEnergy) / 3;
-    const seventhRatio = seventhEnergy / (triadAvg + 0.001);
-
-    // Gate 7th chords
-    if (best.quality.includes('7') || best.quality.includes('7th')) {
-      if (triadMatch && seventhRatio < this.config.seventhStrictness) {
-        best = triadMatch;
-      }
-    }
-
     // Consensus voting buffer (3 frames)
     this.candidateVoteHistory.push(best.short);
     if (this.candidateVoteHistory.length > 3) this.candidateVoteHistory.shift();
@@ -684,12 +659,6 @@ export class DetectionEngine {
         intervals: intervalsStr || best.formula,
         formula: best.formula,
         sargam: intervalsStr || best.formula,
-        seventhAnalysis: {
-          seventhNote: seventhNoteName,
-          seventhRatio,
-          threshold: this.config.seventhStrictness,
-          verdict: seventhRatio >= this.config.seventhStrictness ? 'seventh' : 'triad',
-        },
         candidates: topCandidates,
       },
       chroma: new Float32Array(smoothedChroma),

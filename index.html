@@ -847,39 +847,6 @@
             </div>
           </div>
 
-          <!-- 7th NOTE DISAMBIGUATION INSPECTOR -->
-          <div class="seventh-inspector-box" id="seventh-inspector" aria-label="7th chord disambiguation analysis">
-            <div id="inspector-chord-view">
-              <div class="inspector-header">
-                <span id="inspector-chord-title">🔍 7th Note Disambiguation (Am vs Am7):</span>
-                <span class="verdict-pill verdict-triad" id="seventh-verdict-badge">Clean Triad (Am)</span>
-              </div>
-              <div class="inspector-meter-row">
-                <span>7th Note (<span id="seventh-note-label">G</span>):</span>
-                <div class="seventh-meter-track">
-                  <div class="seventh-meter-fill" id="seventh-meter-fill" style="width: 25%;"></div>
-                  <div class="seventh-meter-marker" id="seventh-marker" style="left: 55%;" title="Cutoff Threshold"></div>
-                </div>
-                <strong id="seventh-ratio-text" style="width: 85px; text-align:right;">25% / 55%</strong>
-              </div>
-              <div class="inspector-desc" id="seventh-desc">Harmonic energy analysis properly separates clean triads from 7th chords.</div>
-            </div>
-            <div id="inspector-note-view" style="display: none;">
-              <div class="inspector-header">
-                <span>🎯 Single Note Pitch & Cent Precision Guide:</span>
-                <span class="verdict-pill verdict-triad" id="note-tuning-badge">In Tune</span>
-              </div>
-              <div class="inspector-meter-row">
-                <span>Pitch Deviation (<span id="note-cents-label">±0¢</span>):</span>
-                <div class="seventh-meter-track" style="position:relative;">
-                  <div style="position:absolute; left:50%; top:0; bottom:0; width:2px; background:#10b981; z-index:2;"></div>
-                  <div class="seventh-meter-marker" id="note-pitch-marker" style="left: 50%; background:#38bdf8; border-color:#fff;" title="Cent Offset"></div>
-                </div>
-                <strong id="note-freq-text" style="width: 85px; text-align:right;">0.0 Hz</strong>
-              </div>
-              <div class="inspector-desc" id="note-tuning-desc">Pluck note clearly. Center marker indicates accurate concert pitch.</div>
-            </div>
-          </div>
 
           <!-- Audio Volume / Peak Level Meter -->
           <div class="meter-box">
@@ -962,16 +929,6 @@
                 <input type="range" id="noise-gate-slider" min="5" max="50" step="1" value="14" aria-label="Noise gate threshold in dB">
               </div>
               <span style="font-size:0.7rem;">Only guitar strums above this level are processed.</span>
-            </div>
-            <div class="slider-item">
-              <div style="display:flex; justify-content:space-between;">
-                <span>7th Note Strictness:</span>
-                <strong id="strict-val" style="color:var(--accent-cyan);">55%</strong>
-              </div>
-              <div class="slider-row">
-                <input type="range" id="seventh-strict-slider" min="30" max="85" step="5" value="55" aria-label="7th note detection strictness">
-              </div>
-              <span style="font-size:0.7rem;">Higher = Requires louder 7th for 7th chords.</span>
             </div>
             <div class="slider-item">
               <div style="display:flex; justify-content:space-between;">

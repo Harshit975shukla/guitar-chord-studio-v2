@@ -979,10 +979,6 @@ function updateChordDisplay(result: DetectionResult): void {
     if (intervalsEl) intervalsEl.textContent = result.chord.intervals || '-';
     if (sargamEl) sargamEl.textContent = result.chord.sargam || '-';
     confidenceEl!.textContent = `${result.chord.confidence}%`;
-    
-    if (result.chord.seventhAnalysis) {
-      updateSeventhInspector(result.chord.seventhAnalysis);
-    }
 
     if (result.chord.candidates && result.chord.candidates.length > 0) {
       const c = result.chord.candidates;
@@ -1025,27 +1021,6 @@ function updateChordDisplay(result: DetectionResult): void {
   }
 }
 
-function updateSeventhInspector(analysis: any): void {
-  const fill = document.getElementById('seventh-meter-fill');
-  const ratioText = document.getElementById('seventh-ratio-text');
-  const badge = document.getElementById('seventh-verdict-badge');
-  const desc = document.getElementById('seventh-desc');
-  const noteLabel = document.getElementById('seventh-note-label');
-  
-  if (fill) fill.style.width = `${Math.min(100, Math.round(analysis.seventhRatio * 100))}%`;
-  if (ratioText) ratioText.textContent = `${Math.round(analysis.seventhRatio * 100)}% / ${Math.round(analysis.threshold * 100)}% req`;
-  if (noteLabel) noteLabel.textContent = analysis.seventhNote;
-  
-  if (analysis.verdict === 'seventh') {
-    badge!.className = 'verdict-pill verdict-seventh';
-    badge!.textContent = `7th Chord Confirmed`;
-    desc!.innerHTML = `<strong>${analysis.seventhNote}</strong> energy is ${Math.round(analysis.seventhRatio * 100)}% (≥ ${Math.round(analysis.threshold * 100)}%). Confirmed <strong>7th</strong>.`;
-  } else {
-    badge!.className = 'verdict-pill verdict-triad';
-    badge!.textContent = `Clean Triad`;
-    desc!.innerHTML = `<strong>${analysis.seventhNote}</strong> energy is only ${Math.round(analysis.seventhRatio * 100)}% (below ${Math.round(analysis.threshold * 100)}% threshold). Resolved to <strong>Triad</strong>.`;
-  }
-}
 
 function updateLevelMeter(freqData: Float32Array): void {
   let maxDb = -120;
@@ -1333,13 +1308,17 @@ function initTabButtons(): void {
     document.getElementById('gate-val')!.textContent = `${Math.round(val)} dB`;
   });
   
-  const strictSlider = document.getElementById('seventh-strict-slider') as HTMLInputElement;
-  if (strictSlider) strictSlider.addEventListener('input', (e) => {
-    const val = parseFloat((e.target as HTMLInputElement).value);
-    updateSeventhStrictness(val / 100);
-    document.getElementById('strict-val')!.textContent = `${val}%`;
-    document.getElementById('seventh-marker')!.style.left = `${val}%`;
-  });
+  const strictSlider = document.getElementById('seventh-strict-slider') as HTMLInputElement | null;
+  if (strictSlider) {
+    strictSlider.addEventListener('input', (e) => {
+      const val = parseFloat((e.target as HTMLInputElement).value);
+      updateSeventhStrictness(val / 100);
+      const strictVal = document.getElementById('strict-val');
+      if (strictVal) strictVal.textContent = `${val}%`;
+      const marker = document.getElementById('seventh-marker');
+      if (marker) marker.style.left = `${val}%`;
+    });
+  }
   
   // Trigger mode buttons
   const guitartunaBtn = document.getElementById('btn-trigger-guitartuna');
