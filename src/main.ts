@@ -414,10 +414,11 @@ function handleDetectionResult(result: DetectionResult, spectrum: Float32Array):
     appState.midiManager.sendNoteOn(result.note.pitch.midi, appState.settings.midiConfig.noteVelocity);
   }
   
-  // Log chord for session
+  // Log chord for session and update interactive fretboard
   if (result.chord && result.chord.symbol !== appState.currentChord) {
     logChordDetection(result.chord);
     appState.currentChord = result.chord.symbol;
+    loadChordPreset(result.chord.symbol);
   }
   
   // Drill mode evaluation
@@ -990,16 +991,19 @@ function updateChordDisplay(result: DetectionResult): void {
       if (c3 && c[2]) c3.innerHTML = `#3 <strong>${c[2].symbol}</strong> (${c[2].confidence}%)`;
     }
   } else {
-    nameEl!.textContent = 'Ready';
-    rootEl!.textContent = '-';
-    qualityEl!.textContent = '-';
-    notesEl!.textContent = '-';
-    if (intervalsEl) intervalsEl.textContent = '-';
-    if (sargamEl) sargamEl.textContent = '-';
-    confidenceEl!.textContent = '-';
-    if (c1) c1.innerHTML = `#1 <strong>-</strong>`;
-    if (c2) c2.innerHTML = `#2 <strong>-</strong>`;
-    if (c3) c3.innerHTML = `#3 <strong>-</strong>`;
+    // Only reset to 'Ready' if no chord or note has ever been detected yet
+    if (!appState.currentChord && (!nameEl?.textContent || nameEl.textContent === 'Ready' || nameEl.textContent === '-')) {
+      nameEl!.textContent = 'Ready';
+      rootEl!.textContent = '-';
+      qualityEl!.textContent = '-';
+      notesEl!.textContent = '-';
+      if (intervalsEl) intervalsEl.textContent = '-';
+      if (sargamEl) sargamEl.textContent = '-';
+      confidenceEl!.textContent = '-';
+      if (c1) c1.innerHTML = `#1 <strong>-</strong>`;
+      if (c2) c2.innerHTML = `#2 <strong>-</strong>`;
+      if (c3) c3.innerHTML = `#3 <strong>-</strong>`;
+    }
   }
   
   // Update ringing notes chips with frequencies and octaves
@@ -1008,7 +1012,11 @@ function updateChordDisplay(result: DetectionResult): void {
       `<span class="badge" style="background:rgba(56,189,248,0.18); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; font-size:0.82rem; padding:3px 8px; border-radius:6px; font-weight:700;">${n.note}${n.octave} <span style="font-size:0.7rem; color:var(--text-muted);">(${Math.round(n.freq)}Hz)</span></span>`
     ).join('');
   } else if (ringingChipsEl) {
-    ringingChipsEl.innerHTML = '<span class="badge" style="background:rgba(255,255,255,0.04); color:var(--text-muted); font-size:0.75rem;">Silence • Ready for sound</span>';
+    if (appState.currentChord) {
+      ringingChipsEl.innerHTML = `<span class="badge" style="background:rgba(255,255,255,0.05); color:var(--accent-gold); font-size:0.78rem; border:1px solid rgba(255,179,0,0.25);">🎸 ${appState.currentChord} confirmed • Listening continuously</span>`;
+    } else {
+      ringingChipsEl.innerHTML = '<span class="badge" style="background:rgba(255,255,255,0.04); color:var(--text-muted); font-size:0.75rem;">Listening • Strike any chord or note</span>';
+    }
   }
   
   // Update continuous status message

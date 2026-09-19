@@ -499,7 +499,7 @@ export class DetectionEngine {
       Math.abs(cents) <= 4 ? 'in-tune' : (cents < 0 ? 'flat' : 'sharp');
     
     // Update smoothed chroma for UI
-    for (let i = 0; i < 12; i++) this.smoothedChroma[i] = 0;
+    for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.25;
     this.smoothedChroma[dominantPc] = 1;
 
     const ringingNotes = this.extractRingingNotes(peaks);
@@ -575,12 +575,12 @@ export class DetectionEngine {
       });
     }
 
-    // Incumbent hysteresis bonus (expires after 1200ms so new chord transitions are not blocked)
-    const isIncumbentValid = this.lastLockedChord && (Date.now() - this.lastLockedTime < 1200);
+    // Incumbent hysteresis bonus (expires after 700ms so new chord transitions are not blocked)
+    const isIncumbentValid = this.lastLockedChord && (Date.now() - this.lastLockedTime < 700);
     if (isIncumbentValid) {
       matches.forEach(m => {
         if (this.lastLockedChord === m.short) {
-          m.corr += 0.06;
+          m.corr += 0.035;
         }
       });
     }
@@ -613,27 +613,30 @@ export class DetectionEngine {
       }
     }
 
-    // Consensus voting buffer (4 frames)
+    // Consensus voting buffer (3 frames)
     this.candidateVoteHistory.push(best.short);
-    if (this.candidateVoteHistory.length > 4) this.candidateVoteHistory.shift();
+    if (this.candidateVoteHistory.length > 3) this.candidateVoteHistory.shift();
     
     const voteCount = this.candidateVoteHistory.filter(c => c === best.short).length;
-    const isConsensusWinner = (voteCount >= 2) || (this.lastLockedChord === best.short);
+    const isConsensusWinner = (voteCount >= 2) || (this.lastLockedChord === best.short) || (best.corr >= 0.32);
 
     // Reject non-tonal input (noise, room hum, string transitions): the best
-    // template must actually correlate. Without this, any spectrum returns the
-    // closest chord and the UI shows a hallucinated chord for pure noise.
-    const MIN_CHORD_CORR = 0.42;
+    // template must actually correlate. Empirical acoustic guitar correlation
+    // threshold is 0.28 to account for physical string inharmonicity and wood resonance.
+    const MIN_CHORD_CORR = 0.28;
     if (best.corr < MIN_CHORD_CORR || !isConsensusWinner) {
       return {
         mode: 'idle',
         timestamp: Date.now(),
+        chord: this.lastDetectedChordSnapshot?.chord,
         chroma: new Float32Array(smoothedChroma),
         peaks,
         ringingNotes: this.extractRingingNotes(peaks),
         spectrum: new Float32Array(0),
         signalLevelDb: 0,
-        statusMessage: 'Detecting guitar chord...',
+        statusMessage: this.lastDetectedChordSnapshot?.chord
+          ? `Confirmed: ${this.lastDetectedChordSnapshot.chord.symbol} • Listening for next change...`
+          : 'Detecting guitar chord...',
       };
     }
 
@@ -694,12 +697,12 @@ export class DetectionEngine {
       ringingNotes,
       spectrum: new Float32Array(0),
       signalLevelDb: 0,
-      statusMessage: parseInt(confidencePct) > 40 
+      statusMessage: parseInt(confidencePct) >= 28 
         ? `Confirmed Chord: ${best.short} (${confidencePct}) • Listening for next change...` 
         : 'Detecting guitar chord...',
     };
 
-    if (parseInt(confidencePct) >= 50) {
+    if (parseInt(confidencePct) >= 28) {
       this.lastDetectedChordSnapshot = result;
     }
 
@@ -743,11 +746,13 @@ export class DetectionEngine {
       totalGuitarBandEnergy += cleanAmps[i];
     }
 
-    // 5. Responsive Attack Detection (0.015 flux threshold)
-    const energyFlux = totalGuitarBandEnergy - this.prevFrameBandEnergy;
+    // 5. Responsive Attack Detection (sensitive to quiet mics and distinct strums)
+    const energyDiff = totalGuitarBandEnergy - this.prevFrameBandEnergy;
+    const energyRatio = totalGuitarBandEnergy / (this.prevFrameBandEnergy + 1e-6);
     this.prevFrameBandEnergy = totalGuitarBandEnergy;
 
-    const isNewAttack = energyFlux > 0.015;
+    const isNewAttack = (energyRatio > 1.30 && totalGuitarBandEnergy > 0.0003) ||
+                        (energyDiff > 0.0035);
     if (isNewAttack) {
       // Release previous chord lock instantly on new strum attack!
       this.lastLockedChord = null;
@@ -760,13 +765,13 @@ export class DetectionEngine {
     // floor. This works for quiet laptop mics and loud interfaces alike,
     // instead of a fixed absolute dB/energy threshold that only fit one setup.
     // The noise-gate slider (0-50) widens the margin for noisy rooms.
-    const signalMarginDb = 5 + Math.max(0, this.config.noiseGateDb) * 0.25;
+    const signalMarginDb = 4 + Math.max(0, this.config.noiseGateDb) * 0.22;
     const floorBaseline = this.noiseProfile?.calibrated
       ? Math.max(this.runningNoiseFloorDb, this.noiseProfile.measuredNoiseFloorDb)
       : this.runningNoiseFloorDb;
 
     const isRawSignalPresent = (maxDb > floorBaseline + signalMarginDb) &&
-                               (totalGuitarBandEnergy > 3e-4);
+                               (totalGuitarBandEnergy > 2.5e-4);
 
     // Learn the ambient floor from frames without a clear signal so sustained
     // playing doesn't inflate it. Clamp to a sane range.
@@ -808,18 +813,21 @@ export class DetectionEngine {
       this.currentDisplayMode = 'idle';
       this.lastLockedChord = null;
       this.candidateVoteHistory = [];
-      this.lastDetectedChordSnapshot = null;
-      this.lastDetectedNoteSnapshot = null;
+      // Keep snapshots intact so the UI retains the confirmed chord
       
       return {
         mode: 'idle',
         timestamp: now,
+        chord: this.lastDetectedChordSnapshot?.chord,
+        note: this.lastDetectedNoteSnapshot?.note,
         chroma: new Float32Array(this.smoothedChroma),
         peaks: [],
         ringingNotes: [],
         spectrum: freqData,
         signalLevelDb: maxDb,
-        statusMessage: 'Ready • Continuous listening active... strum any chord or note',
+        statusMessage: this.lastDetectedChordSnapshot?.chord
+          ? `Confirmed: ${this.lastDetectedChordSnapshot.chord.symbol} • Continuous listening active... strum next chord or pluck note`
+          : 'Ready • Continuous listening active... strum any chord or note',
       };
     }
 
@@ -830,12 +838,16 @@ export class DetectionEngine {
       return {
         mode: 'idle',
         timestamp: now,
+        chord: this.lastDetectedChordSnapshot?.chord,
+        note: this.lastDetectedNoteSnapshot?.note,
         chroma: new Float32Array(this.smoothedChroma),
         peaks: [],
         ringingNotes: [],
         spectrum: freqData,
         signalLevelDb: maxDb,
-        statusMessage: 'Listening...',
+        statusMessage: this.lastDetectedChordSnapshot?.chord
+          ? `Confirmed: ${this.lastDetectedChordSnapshot.chord.symbol} • Listening for next chord or note...`
+          : 'Listening...',
       };
     }
 
@@ -846,7 +858,7 @@ export class DetectionEngine {
     if (isNewAttack) {
       for (let i = 0; i < 12; i++) this.smoothedChroma[i] = rawChroma[i];
     } else {
-      const alpha = 0.45;
+      const alpha = 0.40;
       for (let i = 0; i < 12; i++) {
         this.smoothedChroma[i] = (1 - alpha) * this.smoothedChroma[i] + alpha * rawChroma[i];
       }
@@ -861,13 +873,14 @@ export class DetectionEngine {
     lowCandidates.sort((a, b) => a.freq - b.freq);
     const f0 = (lowCandidates.length > 0) ? lowCandidates[0].freq : (strongestPeak ? strongestPeak.freq : 0);
 
-    const { isSingleNote, dominantPc } = this.discriminateMode(
+    const { isSingleNote, dominantPc, activePitchClasses } = this.discriminateMode(
       this.smoothedChroma, 
       peaks
     );
 
     // 10. Hysteresis mode switching (anti-fluctuation)
-    if (isSingleNote && f0 >= 75) {
+    const definitelyChord = activePitchClasses >= 3;
+    if (isSingleNote && !definitelyChord && f0 >= 75) {
       this.consecutiveNoteFrames++;
       this.consecutiveChordFrames = 0;
     } else {
@@ -875,10 +888,10 @@ export class DetectionEngine {
       this.consecutiveNoteFrames = 0;
     }
 
-    const allowModeSwitchToNote = this.consecutiveNoteFrames >= 3;
-    const allowModeSwitchToChord = this.consecutiveChordFrames >= 2;
+    const allowModeSwitchToNote = this.consecutiveNoteFrames >= 2;
+    const allowModeSwitchToChord = this.consecutiveChordFrames >= 1;
 
-    if ((this.currentDisplayMode === 'note' && !allowModeSwitchToChord) || allowModeSwitchToNote) {
+    if ((this.currentDisplayMode === 'note' && !allowModeSwitchToChord) || (allowModeSwitchToNote && !definitelyChord)) {
       this.currentDisplayMode = 'note';
       return this.processSingleNote(f0, peaks, dominantPc, tuning);
     } else {

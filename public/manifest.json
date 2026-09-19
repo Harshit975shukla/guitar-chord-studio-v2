@@ -1,5 +1,5 @@
 {
-  "name": "AI Guitar Chord Detective Studio",
+  "name": "Guitar Chord Detective Studio",
   "short_name": "GuitarStudio",
   "description": "Real-time guitar chord detection, practice tools, and acoustic synthesis",
   "start_url": "/",
