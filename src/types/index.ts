@@ -167,6 +167,8 @@ export interface NoiseProfile {
   measuredNoiseFloorDb: number;
   calibrated: boolean;
   timestamp: number;
+  peakAmps?: Float32Array;
+  avgNoiseFloorDb?: number;
 }
 
 // ============================================================================
@@ -188,13 +190,13 @@ export interface DetectionConfig {
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
   fftSize: 4096,
   smoothingTimeConstant: 0.12,
-  minFreq: 75,
+  minFreq: 65,
   maxFreq: 1250,
-  noiseGateDb: 14,
+  noiseGateDb: 18,
   micGainMultiplier: 4.0,
   seventhStrictness: 0.55,
   triggerMode: 'guitartuna',
-  oversubtraction: 1.35,
+  oversubtraction: 1.80,
 };
 
 // ============================================================================
@@ -420,7 +422,7 @@ export interface UserSettings {
 
 export const DEFAULT_SETTINGS: UserSettings = {
   micGain: 4.0,
-  noiseGateDb: 14,
+  noiseGateDb: 18,
   seventhStrictness: 0.55,
   triggerMode: 'guitartuna',
   acousticModel: 'dreadnought',

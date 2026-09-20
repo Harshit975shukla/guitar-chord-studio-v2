@@ -594,14 +594,15 @@ export function setTriggerMode(mode: 'guitartuna' | 'continuous'): void {
   saveSettings(appState.settings);
   appState.detectionEngine.setConfig({ triggerMode: mode });
   
-  // Recreate analyser with different FFT size
-  if (appState.analyser && appState.micGainNode) {
-    appState.analyser.disconnect();
-    appState.analyser = appState.audioContext!.createAnalyser();
-    appState.analyser.fftSize = 4096;
-    appState.analyser.smoothingTimeConstant = 0.10;
-    appState.micGainNode.connect(appState.analyser);
-    appState.detectionEngine.setAnalyser(appState.analyser);
+  const guitartunaBtn = document.getElementById('btn-trigger-guitartuna');
+  const continuousBtn = document.getElementById('btn-trigger-continuous');
+  if (guitartunaBtn) {
+    guitartunaBtn.classList.toggle('active', mode === 'guitartuna');
+    guitartunaBtn.setAttribute('aria-pressed', mode === 'guitartuna' ? 'true' : 'false');
+  }
+  if (continuousBtn) {
+    continuousBtn.classList.toggle('active', mode === 'continuous');
+    continuousBtn.setAttribute('aria-pressed', mode === 'continuous' ? 'true' : 'false');
   }
 }
 
@@ -1145,11 +1146,31 @@ function updateLevelMeter(freqData: Float32Array): void {
   if (meter) meter.style.width = `${meterVal}%`;
   if (dbReadout) dbReadout.textContent = `${Math.round(maxDb)} dB`;
   
-  if (appState.detectionEngine.getNoiseProfile()?.calibrated) {
-    const noiseFloor = appState.detectionEngine.getNoiseProfile()!.measuredNoiseFloorDb;
+  const noiseProfile = appState.detectionEngine.getNoiseProfile();
+  if (noiseProfile?.calibrated) {
+    const noiseFloor = noiseProfile.measuredNoiseFloorDb;
     const noisePct = Math.max(0, Math.min(100, (noiseFloor + 75) * 1.66));
     const marker = document.getElementById('noise-floor-marker');
     if (marker) marker.style.left = `${noisePct}%`;
+  }
+
+  const gateDb = appState.detectionEngine.getGateThresholdDb();
+  const gatePct = Math.max(0, Math.min(100, (gateDb + 75) * 1.66));
+  const gateMarker = document.getElementById('gate-marker');
+  if (gateMarker) gateMarker.style.left = `${gatePct}%`;
+
+  const qualityLabel = document.getElementById('signal-quality-label');
+  if (qualityLabel) {
+    if (maxDb > gateDb) {
+      qualityLabel.textContent = 'Active (Guitar)';
+      qualityLabel.style.color = '#10b981';
+    } else if (noiseProfile?.calibrated && maxDb > noiseProfile.measuredNoiseFloorDb) {
+      qualityLabel.textContent = 'Room Noise Filtered';
+      qualityLabel.style.color = '#94a3b8';
+    } else {
+      qualityLabel.textContent = 'Silence';
+      qualityLabel.style.color = '#64748b';
+    }
   }
 }
 
@@ -1405,27 +1426,40 @@ function initTabButtons(): void {
   
   // Sliders
   const gainSlider = document.getElementById('mic-gain-slider') as HTMLInputElement;
-  if (gainSlider) gainSlider.addEventListener('input', (e) => {
-    const val = parseFloat((e.target as HTMLInputElement).value);
-    updateMicGain(val);
-    document.getElementById('gain-val')!.textContent = `${val.toFixed(1)}x`;
-  });
+  if (gainSlider) {
+    gainSlider.value = String(appState.settings.micGain);
+    const gainVal = document.getElementById('gain-val');
+    if (gainVal) gainVal.textContent = `${appState.settings.micGain.toFixed(1)}x`;
+    gainSlider.addEventListener('input', (e) => {
+      const val = parseFloat((e.target as HTMLInputElement).value);
+      updateMicGain(val);
+      if (gainVal) gainVal.textContent = `${val.toFixed(1)}x`;
+    });
+  }
   
   const gateSlider = document.getElementById('noise-gate-slider') as HTMLInputElement;
-  if (gateSlider) gateSlider.addEventListener('input', (e) => {
-    const val = parseFloat((e.target as HTMLInputElement).value);
-    updateNoiseGate(val);
-    document.getElementById('gate-val')!.textContent = `${Math.round(val)} dB`;
-  });
+  if (gateSlider) {
+    gateSlider.value = String(appState.settings.noiseGateDb);
+    const gateVal = document.getElementById('gate-val');
+    if (gateVal) gateVal.textContent = `${Math.round(appState.settings.noiseGateDb)} dB`;
+    gateSlider.addEventListener('input', (e) => {
+      const val = parseFloat((e.target as HTMLInputElement).value);
+      updateNoiseGate(val);
+      if (gateVal) gateVal.textContent = `${Math.round(val)} dB`;
+    });
+  }
   
   const strictSlider = document.getElementById('seventh-strict-slider') as HTMLInputElement | null;
   if (strictSlider) {
+    strictSlider.value = String(Math.round(appState.settings.seventhStrictness * 100));
+    const strictVal = document.getElementById('strict-val');
+    if (strictVal) strictVal.textContent = `${Math.round(appState.settings.seventhStrictness * 100)}%`;
+    const marker = document.getElementById('seventh-marker');
+    if (marker) marker.style.left = `${Math.round(appState.settings.seventhStrictness * 100)}%`;
     strictSlider.addEventListener('input', (e) => {
       const val = parseFloat((e.target as HTMLInputElement).value);
       updateSeventhStrictness(val / 100);
-      const strictVal = document.getElementById('strict-val');
       if (strictVal) strictVal.textContent = `${val}%`;
-      const marker = document.getElementById('seventh-marker');
       if (marker) marker.style.left = `${val}%`;
     });
   }
@@ -1433,8 +1467,16 @@ function initTabButtons(): void {
   // Trigger mode buttons
   const guitartunaBtn = document.getElementById('btn-trigger-guitartuna');
   const continuousBtn = document.getElementById('btn-trigger-continuous');
-  if (guitartunaBtn) guitartunaBtn.addEventListener('click', () => setTriggerMode('guitartuna'));
-  if (continuousBtn) continuousBtn.addEventListener('click', () => setTriggerMode('continuous'));
+  if (guitartunaBtn) {
+    guitartunaBtn.classList.toggle('active', appState.settings.triggerMode === 'guitartuna');
+    guitartunaBtn.setAttribute('aria-pressed', appState.settings.triggerMode === 'guitartuna' ? 'true' : 'false');
+    guitartunaBtn.addEventListener('click', () => setTriggerMode('guitartuna'));
+  }
+  if (continuousBtn) {
+    continuousBtn.classList.toggle('active', appState.settings.triggerMode === 'continuous');
+    continuousBtn.setAttribute('aria-pressed', appState.settings.triggerMode === 'continuous' ? 'true' : 'false');
+    continuousBtn.addEventListener('click', () => setTriggerMode('continuous'));
+  }
   
   // Tuning preset select
   const tuningSelect = document.getElementById('tuner-preset-select') as HTMLSelectElement;
