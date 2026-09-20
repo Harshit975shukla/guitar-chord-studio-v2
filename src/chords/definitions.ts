@@ -612,3 +612,83 @@ export function transposeChordToTuning(
 
 export { parseChordSymbol } from '../types';
 export type { CapoState } from './tunings';
+
+// Standard Authentic Guitar Chord Shapes: frets on strings [high E, B, G, D, A, low E]
+// -1 = muted/unplayed, 0 = open
+export const CHORD_PRESETS: Record<string, { frets: (number | null)[]; name: string; root: string; quality: string }> = {
+  // Natural & Sharp Majors
+  "C":     { frets: [0, 1, 0, 2, 3, -1], name: "C Major", root: "C", quality: "Major" },
+  "C#":    { frets: [4, 6, 6, 6, 4, -1], name: "C# Major", root: "C#", quality: "Major" },
+  "Db":    { frets: [4, 6, 6, 6, 4, -1], name: "Db Major", root: "Db", quality: "Major" },
+  "D":     { frets: [2, 3, 2, 0, -1, -1], name: "D Major", root: "D", quality: "Major" },
+  "D#":    { frets: [3, 4, 3, 1, -1, -1], name: "D# Major", root: "D#", quality: "Major" },
+  "Eb":    { frets: [3, 4, 3, 1, -1, -1], name: "Eb Major", root: "Eb", quality: "Major" },
+  "E":     { frets: [0, 0, 1, 2, 2, 0], name: "E Major", root: "E", quality: "Major" },
+  "F":     { frets: [1, 1, 2, 3, 3, 1], name: "F Major", root: "F", quality: "Major" },
+  "F#":    { frets: [2, 2, 3, 4, 4, 2], name: "F# Major", root: "F#", quality: "Major" },
+  "Gb":    { frets: [2, 2, 3, 4, 4, 2], name: "Gb Major", root: "Gb", quality: "Major" },
+  "G":     { frets: [3, 0, 0, 0, 2, 3], name: "G Major", root: "G", quality: "Major" },
+  "G#":    { frets: [4, 4, 5, 6, 6, 4], name: "G# Major", root: "G#", quality: "Major" },
+  "Ab":    { frets: [4, 4, 5, 6, 6, 4], name: "Ab Major", root: "Ab", quality: "Major" },
+  "A":     { frets: [0, 2, 2, 2, 0, -1], name: "A Major", root: "A", quality: "Major" },
+  "A#":    { frets: [1, 3, 3, 3, 1, -1], name: "A# Major", root: "A#", quality: "Major" },
+  "Bb":    { frets: [1, 3, 3, 3, 1, -1], name: "Bb Major", root: "Bb", quality: "Major" },
+  "B":     { frets: [2, 4, 4, 4, 2, -1], name: "B Major", root: "B", quality: "Major" },
+
+  // Minors
+  "Cm":    { frets: [3, 4, 5, 5, 3, -1], name: "C Minor", root: "C", quality: "Minor" },
+  "C#m":   { frets: [4, 5, 6, 6, 4, -1], name: "C# Minor", root: "C#", quality: "Minor" },
+  "Dbm":   { frets: [4, 5, 6, 6, 4, -1], name: "Db Minor", root: "Db", quality: "Minor" },
+  "Dm":    { frets: [1, 3, 2, 0, -1, -1], name: "D Minor", root: "D", quality: "Minor" },
+  "D#m":   { frets: [2, 4, 3, 1, -1, -1], name: "D# Minor", root: "D#", quality: "Minor" },
+  "Ebm":   { frets: [2, 4, 3, 1, -1, -1], name: "Eb Minor", root: "Eb", quality: "Minor" },
+  "Em":    { frets: [0, 0, 0, 2, 2, 0], name: "E Minor", root: "E", quality: "Minor" },
+  "Fm":    { frets: [1, 1, 1, 3, 3, 1], name: "F Minor", root: "F", quality: "Minor" },
+  "F#m":   { frets: [2, 2, 2, 4, 4, 2], name: "F# Minor", root: "F#", quality: "Minor" },
+  "Gbm":   { frets: [2, 2, 2, 4, 4, 2], name: "Gb Minor", root: "Gb", quality: "Minor" },
+  "Gm":    { frets: [3, 3, 3, 5, 5, 3], name: "G Minor", root: "G", quality: "Minor" },
+  "G#m":   { frets: [4, 4, 4, 6, 6, 4], name: "G# Minor", root: "G#", quality: "Minor" },
+  "Abm":   { frets: [4, 4, 4, 6, 6, 4], name: "Ab Minor", root: "Ab", quality: "Minor" },
+  "Am":    { frets: [0, 1, 2, 2, 0, -1], name: "A Minor", root: "A", quality: "Minor" },
+  "A#m":   { frets: [1, 2, 3, 3, 1, -1], name: "A# Minor", root: "A#", quality: "Minor" },
+  "Bbm":   { frets: [1, 2, 3, 3, 1, -1], name: "Bb Minor", root: "Bb", quality: "Minor" },
+  "Bm":    { frets: [2, 3, 4, 4, 2, -1], name: "B Minor", root: "B", quality: "Minor" },
+
+  // Dominant 7ths
+  "C7":    { frets: [0, 1, 3, 2, 3, -1], name: "C Dominant 7", root: "C", quality: "7" },
+  "D7":    { frets: [2, 1, 2, 0, -1, -1], name: "D Dominant 7", root: "D", quality: "7" },
+  "E7":    { frets: [0, 0, 1, 0, 2, 0], name: "E Dominant 7", root: "E", quality: "7" },
+  "F7":    { frets: [1, 1, 2, 1, 3, 1], name: "F Dominant 7", root: "F", quality: "7" },
+  "G7":    { frets: [1, 0, 0, 0, 2, 3], name: "G Dominant 7", root: "G", quality: "7" },
+  "A7":    { frets: [0, 2, 0, 2, 0, -1], name: "A Dominant 7", root: "A", quality: "7" },
+  "B7":    { frets: [2, 0, 2, 1, 2, -1], name: "B Dominant 7", root: "B", quality: "7" },
+
+  // Major 7ths
+  "Cmaj7": { frets: [0, 0, 0, 2, 3, -1], name: "C Major 7", root: "C", quality: "maj7" },
+  "Dmaj7": { frets: [2, 2, 2, 0, -1, -1], name: "D Major 7", root: "D", quality: "maj7" },
+  "Emaj7": { frets: [0, 0, 1, 1, 2, 0], name: "E Major 7", root: "E", quality: "maj7" },
+  "Fmaj7": { frets: [0, 1, 2, 3, -1, -1], name: "F Major 7", root: "F", quality: "maj7" },
+  "Gmaj7": { frets: [2, 0, 0, 0, 2, 3], name: "G Major 7", root: "G", quality: "maj7" },
+  "Amaj7": { frets: [0, 2, 1, 2, 0, -1], name: "A Major 7", root: "A", quality: "maj7" },
+
+  // Minor 7ths
+  "Am7":   { frets: [0, 1, 0, 2, 0, -1], name: "A Minor 7", root: "A", quality: "m7" },
+  "Dm7":   { frets: [1, 1, 2, 0, -1, -1], name: "D Minor 7", root: "D", quality: "m7" },
+  "Em7":   { frets: [0, 3, 0, 0, 2, 0], name: "E Minor 7", root: "E", quality: "m7" },
+  "Bm7":   { frets: [2, 0, 2, 0, 2, -1], name: "B Minor 7", root: "B", quality: "m7" },
+  "F#m7":  { frets: [2, 2, 2, 2, 4, 2], name: "F# Minor 7", root: "F#", quality: "m7" },
+
+  // Suspended
+  "Csus4": { frets: [1, 1, 0, 3, 3, -1], name: "C Suspended 4", root: "C", quality: "sus4" },
+  "Dsus4": { frets: [3, 3, 2, 0, -1, -1], name: "D Suspended 4", root: "D", quality: "sus4" },
+  "Esus4": { frets: [0, 0, 2, 2, 2, 0], name: "E Suspended 4", root: "E", quality: "sus4" },
+  "Gsus4": { frets: [3, 1, 0, 0, 3, 3], name: "G Suspended 4", root: "G", quality: "sus4" },
+  "Asus4": { frets: [0, 3, 2, 2, 0, -1], name: "A Suspended 4", root: "A", quality: "sus4" },
+
+  "Dsus2": { frets: [0, 3, 2, 0, -1, -1], name: "D Suspended 2", root: "D", quality: "sus2" },
+  "Asus2": { frets: [0, 0, 2, 2, 0, -1], name: "A Suspended 2", root: "A", quality: "sus2" },
+
+  // Add9
+  "Cadd9": { frets: [0, 3, 0, 2, 3, -1], name: "C Add 9", root: "C", quality: "add9" },
+  "Gadd9": { frets: [3, 0, 2, 0, 0, 3], name: "G Add 9", root: "G", quality: "add9" },
+};

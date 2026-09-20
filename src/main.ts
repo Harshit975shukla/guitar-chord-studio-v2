@@ -208,6 +208,18 @@ export async function initializeApp(): Promise<void> {
   // 8. Initialize UI
   initializeUI();
   
+  // Wire Song Studio practice mic auto-start & pre-build fretboard
+  appState.songStudio.onMicStartRequested = () => {
+    if (!appState.isListening) {
+      startMicrophone();
+    }
+  };
+  try {
+    appState.songStudio.buildSongFretboardUI();
+  } catch (e) {
+    console.warn('Fretboard pre-build error:', e);
+  }
+  
   // 9. Initialize Recorder Tab (after UI is ready)
   try {
     initRecorderTab();
@@ -312,23 +324,23 @@ export async function startMicrophone(): Promise<boolean> {
     appState.micStream = stream;
     const source = appState.audioContext.createMediaStreamSource(stream);
     
-    // Hardware filters (GuitarTuna-style)
+    // Hardware filters (matches v1 proven audio pipeline)
     appState.highpassFilter = appState.audioContext.createBiquadFilter();
     appState.highpassFilter.type = 'highpass';
-    appState.highpassFilter.frequency.value = 75;
+    appState.highpassFilter.frequency.value = 65; // Kills sub-bass rumble < 65 Hz, Drop D & Low E pass cleanly
     appState.highpassFilter.Q.value = 0.707;
     
     appState.lowpassFilter = appState.audioContext.createBiquadFilter();
     appState.lowpassFilter.type = 'lowpass';
-    appState.lowpassFilter.frequency.value = 1300;
+    appState.lowpassFilter.frequency.value = 2200; // Preserves high string harmonics up to 2200 Hz
     appState.lowpassFilter.Q.value = 0.707;
     
     appState.micGainNode = appState.audioContext.createGain();
-    appState.micGainNode.gain.value = appState.settings.micGain;
+    appState.micGainNode.gain.value = appState.settings.micGain || 4.0;
     
     appState.analyser = appState.audioContext.createAnalyser();
     appState.analyser.fftSize = 4096;
-    appState.analyser.smoothingTimeConstant = 0.12;
+    appState.analyser.smoothingTimeConstant = 0.10;
     
     appState.detectionEngine.setAnalyser(appState.analyser);
     appState.detectionEngine.setConfig({

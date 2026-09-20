@@ -678,6 +678,37 @@
     .chord-word-pair { display: inline-flex; flex-direction: column; align-items: flex-start; margin-right: 12px; }
     .chord-label-over { font-size: 0.8rem; font-weight: 800; color: var(--accent-gold); min-height: 18px; }
     .lyric-word-under { font-size: 0.95rem; color: #fff; }
+    .chord-tag-badge {
+      font-size: 0.85rem;
+      font-weight: 800;
+      font-family: monospace;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(255, 179, 0, 0.15);
+      color: var(--accent-gold);
+      border: 1px solid rgba(255, 179, 0, 0.3);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chord-tag-badge:hover {
+      background: rgba(255, 179, 0, 0.3);
+      border-color: var(--accent-gold);
+    }
+    .chord-tag-badge.playing-now {
+      background: var(--accent-gold);
+      color: #000;
+      box-shadow: 0 0 14px rgba(255, 179, 0, 0.8);
+      transform: scale(1.08);
+    }
+    .chord-tag-badge.user-matched {
+      background: var(--accent-emerald) !important;
+      color: #000 !important;
+      border-color: #fff !important;
+      box-shadow: 0 0 18px var(--accent-emerald) !important;
+    }
 
     /* ==========================================================================
        Ear Training Quiz Styles
@@ -1865,7 +1896,8 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
       });
     }
   </script>
-  
+  <script src="./all_chord_shapes.js"></script>
+  <script src="./song_catalog_data.js"></script>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

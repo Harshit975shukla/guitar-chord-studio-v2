@@ -235,9 +235,6 @@ export class DetectionEngine {
   private smoothedChroma = new Float32Array(12);
   private prevFrameBandEnergy = 0;
   private timeBuffer = new Float32Array(4096);
-  // Running ambient noise floor (dB), learned from quiet frames so the signal
-  // gate adapts to any microphone level instead of using a fixed threshold.
-  private runningNoiseFloorDb = -95;
   
   // Anti-fluctuation hysteresis & continuous detection state
   private candidateVoteHistory: string[] = [];
@@ -345,23 +342,14 @@ export class DetectionEngine {
 
   extractPeaks(cleanAmps: Float32Array, sampleRate: number): DetectedPeak[] {
     const binWidth = sampleRate / this.config.fftSize;
-    const minBin = Math.floor(this.config.minFreq / binWidth);
-    const maxBin = Math.min(cleanAmps.length - 2, Math.ceil(this.config.maxFreq / binWidth));
-
-    // Threshold relative to the frame's strongest bin, so peak detection is
-    // independent of absolute mic level (with a tiny absolute floor to reject
-    // near-silence). Fixes quiet built-in mics detecting nothing.
-    let maxAmp = 0;
-    for (let b = minBin; b <= maxBin; b++) {
-      if (cleanAmps[b] > maxAmp) maxAmp = cleanAmps[b];
-    }
-    const peakThreshold = Math.max(0.0016, maxAmp * 0.08);
+    const minBin = Math.floor(65 / binWidth);
+    const maxBin = Math.min(cleanAmps.length - 2, Math.ceil(1400 / binWidth));
 
     const peaks: DetectedPeak[] = [];
 
     for (let b = minBin; b <= maxBin; b++) {
       const val = cleanAmps[b];
-      if (val > peakThreshold && val > cleanAmps[b - 1] && val > cleanAmps[b + 1]) {
+      if (val > 0.0016 && val > cleanAmps[b - 1] && val > cleanAmps[b + 1]) {
         // Sub-bin parabolic peak interpolation
         const alpha = cleanAmps[b - 1];
         const beta = cleanAmps[b];
@@ -375,18 +363,19 @@ export class DetectionEngine {
         const nearestPitch = Math.round(midi);
         const pitchClass = ((nearestPitch % 12) + 12) % 12;
         
-        // Frequency weighting (lower frequencies get more weight for fundamentals)
-        const freqWeight = Math.min(2.5, Math.max(0.65, peakFreq / 240));
-        
         peaks.push({
           freq: peakFreq,
           midi,
           note: NOTE_NAMES[pitchClass],
-          amp: val * freqWeight, // Apply weighting directly to amplitude
+          amp: val, // Pure linear amplitude, unsquared
           pitchClass,
           bin: interpBin,
         });
       }
+    }
+    
+    if (peaks.length > 0) {
+      peaks.sort((a, b) => b.amp - a.amp);
     }
     
     return peaks;
@@ -637,7 +626,7 @@ export class DetectionEngine {
     const isConsensusWinner = (voteCount >= 2) || (this.lastLockedChord === best.short) || (best.corr >= 0.32);
 
     // Reject non-tonal input (noise, room hum, string transitions)
-    const MIN_CHORD_CORR = 0.20;
+    const MIN_CHORD_CORR = 0.18;
     if (best.corr < MIN_CHORD_CORR || !isConsensusWinner) {
       return {
         mode: 'idle',
@@ -677,7 +666,7 @@ export class DetectionEngine {
       
       this.lastLockedChord = best.short;
       this.lastLockedTime = Date.now();
-      this.chordSustainHoldUntil = Date.now() + 1800; // sustain for 1.8s while continuing listening
+      this.chordSustainHoldUntil = Date.now() + 650;
       this.confirmedChordCount++;
     }
 
@@ -757,13 +746,10 @@ export class DetectionEngine {
       totalGuitarBandEnergy += cleanAmps[i];
     }
 
-    // 5. Responsive Attack Detection (sensitive to quiet mics and distinct strums)
-    const energyDiff = totalGuitarBandEnergy - this.prevFrameBandEnergy;
-    const energyRatio = totalGuitarBandEnergy / (this.prevFrameBandEnergy + 1e-6);
+    // 5. Responsive Attack Detection
+    const energyFlux = totalGuitarBandEnergy - this.prevFrameBandEnergy;
     this.prevFrameBandEnergy = totalGuitarBandEnergy;
-
-    const isNewAttack = (energyRatio > 1.30 && totalGuitarBandEnergy > 0.0003) ||
-                        (energyDiff > 0.0035);
+    const isNewAttack = energyFlux > 0.015;
     if (isNewAttack) {
       // Release previous chord lock instantly on new strum attack!
       this.lastLockedChord = null;
@@ -772,26 +758,11 @@ export class DetectionEngine {
       this.noteSustainHoldUntil = 0;
     }
 
-    // Adaptive gate: the signal must rise a margin above the learned ambient
-    // floor. This works for quiet laptop mics and loud interfaces alike,
-    // instead of a fixed absolute dB/energy threshold that only fit one setup.
-    // The noise-gate slider (0-50) widens the margin for noisy rooms.
-    const signalMarginDb = 4 + Math.max(0, this.config.noiseGateDb) * 0.22;
-    const floorBaseline = this.noiseProfile?.calibrated
-      ? Math.max(this.runningNoiseFloorDb, this.noiseProfile.measuredNoiseFloorDb)
-      : this.runningNoiseFloorDb;
-
-    const isRawSignalPresent = (maxDb > floorBaseline + signalMarginDb) &&
-                               (totalGuitarBandEnergy > 2.5e-4);
-
-    // Learn the ambient floor from frames without a clear signal so sustained
-    // playing doesn't inflate it. Clamp to a sane range.
-    if (!isRawSignalPresent) {
-      this.runningNoiseFloorDb = Math.max(
-        -120,
-        Math.min(-20, this.runningNoiseFloorDb * 0.9 + maxDb * 0.1),
-      );
-    }
+    const minEnergyThreshold = this.noiseProfile?.calibrated ? 0.008 : 0.012;
+    const minDbThreshold = this.noiseProfile?.calibrated ? (this.noiseProfile.measuredNoiseFloorDb + 2.0) : -74;
+    const meterVal = Math.max(0, Math.min(100, (maxDb + 75) * 1.66));
+    const gatePercent = Math.max(3, (this.config.noiseGateDb / 50) * 18);
+    const isRawSignalPresent = (totalGuitarBandEnergy > minEnergyThreshold) && (maxDb > minDbThreshold) && (meterVal >= gatePercent);
 
     // Sustain hold check during inter-strum finger transition
     let isSignalPresent = isRawSignalPresent;
@@ -1020,7 +991,6 @@ export class DetectionEngine {
   reset(): void {
     this.smoothedChroma.fill(0);
     this.prevFrameBandEnergy = 0;
-    this.runningNoiseFloorDb = -95;
     this.candidateVoteHistory = [];
     this.lastLockedChord = null;
     this.lastLockedTime = 0;

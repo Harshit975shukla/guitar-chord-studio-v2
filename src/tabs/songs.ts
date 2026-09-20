@@ -1,9 +1,9 @@
 // Song Catalog Data - 50+ verified songs
 // This would normally be loaded from a JSON file
 
-import { Song, StringTuning, STANDARD_TUNING, NoteName } from '../types';
+import { Song, StringTuning, STANDARD_TUNING, NoteName, NOTE_NAMES } from '../types';
 import { playAcousticString, strumChord, AcousticBus } from '../audio/engine';
-import { buildChordDefinition } from '../chords/definitions';
+import { buildChordDefinition, CHORD_PRESETS } from '../chords/definitions';
 
 export const SONG_CATALOG: Song[] = [
   {
@@ -884,12 +884,40 @@ export const SONG_CATALOG: Song[] = [
 ];
 
 // Export for use in main.ts
+// Export for use in main.ts
 export { SONG_CATALOG as BUILTIN_SONGS };
 
+function getCatalogSong(id: string): any {
+  if (typeof window !== 'undefined' && (window as any).SONG_CATALOG && (window as any).SONG_CATALOG[id]) {
+    return (window as any).SONG_CATALOG[id];
+  }
+  try {
+    const saved = localStorage.getItem('guitar_custom_songs');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        const found = parsed.find((s: any) => s.id === id);
+        if (found) return found;
+      }
+    }
+  } catch (e) {}
+
+  const found = (SONG_CATALOG as any[]).find(s => s.id === id);
+  if (found) return found;
+
+  if (typeof window !== 'undefined' && (window as any).SONG_CATALOG) {
+    const firstKey = Object.keys((window as any).SONG_CATALOG)[0];
+    if (firstKey) return (window as any).SONG_CATALOG[firstKey];
+  }
+  return SONG_CATALOG[0];
+}
+
 export class SongStudio {
-  private activeSong: Song = SONG_CATALOG[0];
+  private activeSongId: string = 'hotel_california';
+  private activeSong: any = SONG_CATALOG[0];
   private isPlaying = false;
   private playTimer: number | null = null;
+  private evalTimeout: number | null = null;
   private currentLineIdx = 0;
   private currentNoteIdx = 0;
   private playMode: 'notes' | 'chords' = 'notes'; // 'notes' (Lead Tabs) vs 'chords' (Rhythm Strum)
@@ -899,6 +927,8 @@ export class SongStudio {
   private tuning: StringTuning[] = STANDARD_TUNING;
   private audioContext: AudioContext | null = null;
   private acousticBus: AcousticBus | null = null;
+  private isControlsInitialized = false;
+  public onMicStartRequested?: () => void;
 
   constructor() {}
 
@@ -913,21 +943,97 @@ export class SongStudio {
   }
 
   init(): void {
-    this.initControls();
-    this.loadSong(this.activeSong.id);
+    this.buildSongFretboardUI();
+    if (!this.isControlsInitialized) {
+      this.initControls();
+      this.isControlsInitialized = true;
+    }
+    this.loadSong(this.activeSongId);
+  }
+
+  buildSongFretboardUI(): void {
+    const rowsContainer = document.getElementById('song-fretboard-strings-rows');
+    if (!rowsContainer || rowsContainer.children.length > 0) return;
+    rowsContainer.innerHTML = '';
+
+    for (let s = 0; s < 6; s++) {
+      const strInfo = this.tuning[s] || STANDARD_TUNING[s];
+      const row = document.createElement('div');
+      row.className = 'guitar-string-row';
+      row.id = `song-string-row-${s}`;
+
+      const header = document.createElement('div');
+      header.className = 'string-header';
+      header.innerHTML = `<span id="song-str-status-${s}" style="width:18px; font-weight:800; color:var(--accent-gold);">-</span><span>${strInfo.note}</span>`;
+      row.appendChild(header);
+
+      const cellsContainer = document.createElement('div');
+      cellsContainer.className = 'fret-cells-container';
+
+      const wire = document.createElement('div');
+      wire.className = `string-wire ${strInfo.gaugeClass || ('str-' + (s + 1))}`;
+      wire.id = `song-string-wire-${s}`;
+      cellsContainer.appendChild(wire);
+
+      for (let f = 0; f <= 12; f++) {
+        const cell = document.createElement('div');
+        cell.className = 'fret-cell';
+        cell.id = `song-fret-cell-${s}-${f}`;
+        cell.title = `String ${s + 1} (${strInfo.note}), Fret ${f}`;
+        cell.onclick = () => this.onFretCellClick(s, f);
+        cellsContainer.appendChild(cell);
+      }
+
+      row.appendChild(cellsContainer);
+      rowsContainer.appendChild(row);
+    }
+  }
+
+  private onFretCellClick(s: number, f: number): void {
+    if (!this.audioContext || !this.acousticBus) return;
+    const strTuning = this.tuning[s] || STANDARD_TUNING[s];
+    const midi = strTuning.midi + f;
+    const freq = 440 * Math.pow(2, (midi - 69) / 12);
+    playAcousticString(this.audioContext, this.acousticBus, {
+      freq,
+      startTime: this.audioContext.currentTime + 0.005,
+      stringIndex: s,
+      velocity: 0.90,
+    });
+    const wire = document.getElementById(`song-string-wire-${s}`);
+    if (wire) {
+      wire.classList.add('vibrating');
+      setTimeout(() => wire?.classList.remove('vibrating'), 300);
+    }
   }
 
   private initControls(): void {
-    // Song dropdown — populate from the catalog so option values match song ids
     const select = document.getElementById('song-selector-select') as HTMLSelectElement;
     if (select) {
-      select.innerHTML = SONG_CATALOG
-        .map(s => {
-          const by = s.singer || s.movie || s.music;
-          return `<option value="${s.id}">${s.title}${by ? ` — ${by}` : ''}</option>`;
-        })
-        .join('');
-      select.value = this.activeSong.id;
+      // Append any custom songs from localStorage if not present
+      try {
+        const saved = localStorage.getItem('guitar_custom_songs');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            let customGroup = select.querySelector('optgroup[label="⭐ My Custom Songs"]');
+            if (!customGroup) {
+              customGroup = document.createElement('optgroup');
+              (customGroup as HTMLOptGroupElement).label = '⭐ My Custom Songs';
+              select.appendChild(customGroup);
+            }
+            customGroup.innerHTML = '';
+            parsed.forEach((cs: any) => {
+              const opt = document.createElement('option');
+              opt.value = cs.id;
+              opt.textContent = `${cs.title} (Custom)`;
+              customGroup!.appendChild(opt);
+            });
+          }
+        }
+      } catch (e) {}
+
+      select.value = this.activeSongId;
       select.onchange = () => this.loadSong(select.value);
     }
 
@@ -975,22 +1081,25 @@ export class SongStudio {
   }
 
   loadSong(songId: string): void {
-    const found = SONG_CATALOG.find(s => s.id === songId);
-    if (found) {
-      this.activeSong = found;
-      this.bpm = found.bpm;
-      this.currentLineIdx = 0;
-      this.currentNoteIdx = 0;
+    this.activeSongId = songId;
+    this.activeSong = getCatalogSong(songId);
+    this.bpm = this.activeSong.bpm || 75;
+    this.currentLineIdx = 0;
+    this.currentNoteIdx = 0;
 
-      if (this.isPlaying) {
-        this.stopPlayback();
-      }
-
-      this.updateSongMetadataUI();
-      this.renderChordsPalette();
-      this.renderLyricsScrollView();
-      this.renderSongFretboard();
+    if (this.isPlaying) {
+      this.stopPlayback();
     }
+
+    const select = document.getElementById('song-selector-select') as HTMLSelectElement;
+    if (select && select.value !== songId) {
+      select.value = songId;
+    }
+
+    this.updateSongMetadataUI();
+    this.renderChordsPalette();
+    this.renderLyricsScrollView();
+    this.updateActiveStepUI();
   }
 
   setPlayMode(mode: 'notes' | 'chords'): void {
@@ -1006,7 +1115,7 @@ export class SongStudio {
     if (chordsBtn) chordsBtn.classList.toggle('active', mode === 'chords');
 
     if (mode === 'notes') {
-      if (modeDesc) modeDesc.textContent = 'Visualizing lead melody note-by-note on 3D guitar neck (Only plucking tabs / lead notes — No chords)';
+      if (modeDesc) modeDesc.textContent = 'Visualizing lead melody note-by-note on 3D guitar neck with exact frets & tabs';
       if (hudNotes) hudNotes.style.display = 'flex';
       if (hudChords) hudChords.style.display = 'none';
       if (strumActions) strumActions.style.display = 'none';
@@ -1036,9 +1145,11 @@ export class SongStudio {
 
   startPlayback(): void {
     this.isPlaying = true;
+    const playBtn = document.getElementById('btn-song-play');
     const icon = document.getElementById('song-play-icon');
     const text = document.getElementById('song-play-text');
-    if (icon) icon.textContent = '⏸️';
+    if (playBtn) playBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+    if (icon) icon.textContent = '⏸';
     if (text) text.textContent = 'Pause Song';
 
     this.stepPlaybackLoop();
@@ -1050,8 +1161,10 @@ export class SongStudio {
       clearTimeout(this.playTimer);
       this.playTimer = null;
     }
+    const playBtn = document.getElementById('btn-song-play');
     const icon = document.getElementById('song-play-icon');
     const text = document.getElementById('song-play-text');
+    if (playBtn) playBtn.style.background = 'linear-gradient(135deg, #ffb300, #ff8f00)';
     if (icon) icon.textContent = '▶';
     if (text) text.textContent = 'Play Song';
   }
@@ -1061,27 +1174,32 @@ export class SongStudio {
     this.currentLineIdx = 0;
     this.currentNoteIdx = 0;
     this.updateActiveStepUI();
-    this.startPlayback();
   }
 
   stepPrev(): void {
+    const song = this.activeSong;
+    if (!song || !song.lines) return;
     if (this.currentNoteIdx > 0) {
       this.currentNoteIdx--;
     } else if (this.currentLineIdx > 0) {
       this.currentLineIdx--;
-      const line = this.activeSong.lines[this.currentLineIdx];
-      this.currentNoteIdx = Math.max(0, (line.notes?.length || 1) - 1);
+      const line = song.lines[this.currentLineIdx];
+      const notes = line?.notes || song.leadNotes || [];
+      this.currentNoteIdx = Math.max(0, notes.length - 1);
     }
     this.updateActiveStepUI();
   }
 
   stepNext(): void {
-    const line = this.activeSong.lines[this.currentLineIdx];
-    if (line && line.notes && this.currentNoteIdx < line.notes.length - 1) {
+    const song = this.activeSong;
+    if (!song || !song.lines) return;
+    const line = song.lines[this.currentLineIdx];
+    const notes = line?.notes || song.leadNotes || [];
+    if (this.currentNoteIdx < notes.length - 1) {
       this.currentNoteIdx++;
     } else {
       this.currentNoteIdx = 0;
-      this.currentLineIdx = (this.currentLineIdx + 1) % this.activeSong.lines.length;
+      this.currentLineIdx = (this.currentLineIdx + 1) % song.lines.length;
     }
     this.updateActiveStepUI();
   }
@@ -1089,25 +1207,28 @@ export class SongStudio {
   private stepPlaybackLoop = (): void => {
     if (!this.isPlaying) return;
 
-    const line = this.activeSong.lines[this.currentLineIdx];
-    if (!line) {
+    const song = this.activeSong;
+    if (!song || !song.lines || song.lines.length === 0) {
       this.stopPlayback();
       return;
     }
 
-    const notes = line.notes || [];
+    const line = song.lines[this.currentLineIdx];
+    if (!line) {
+      this.currentLineIdx = 0;
+      this.currentNoteIdx = 0;
+      return;
+    }
+
+    const notes = line.notes || song.leadNotes || [];
     const noteItem = notes[this.currentNoteIdx];
 
-    // =========================================================================
-    // EXCLUSIVE MODE PLAYBACK LOGIC:
-    // When in 'notes' mode: ONLY pluck the single note tab (NEVER play chords)
-    // When in 'chords' mode: ONLY play chord strums (NEVER play single notes)
-    // =========================================================================
     if (this.playMode === 'notes') {
-      // NOTES / TABS MODE:
+      // NOTES / TABS MODE: Only pluck the single melody note
       if (noteItem && this.audioContext && this.acousticBus) {
-        const s = Math.max(0, Math.min(5, noteItem.string - 1));
-        const f = noteItem.fret;
+        const strVal = noteItem.str || noteItem.string || 1;
+        const s = Math.max(0, Math.min(5, strVal - 1));
+        const f = noteItem.fret ?? 0;
         const midi = this.tuning[s].midi + f;
         const freq = noteItem.freq || (440 * Math.pow(2, (midi - 69) / 12));
 
@@ -1122,55 +1243,76 @@ export class SongStudio {
         const wire = document.getElementById(`song-string-wire-${s}`);
         if (wire) {
           wire.classList.add('vibrating');
-          setTimeout(() => wire.classList.remove('vibrating'), 300);
+          setTimeout(() => wire?.classList.remove('vibrating'), 300);
         }
       }
+
+      // Update chord text label in HUD without strumming audio
+      if (line.chords && line.chords.length > 0) {
+        const chordIdx = Math.floor((this.currentNoteIdx / Math.max(1, notes.length)) * line.chords.length);
+        const currentCh = line.chords[chordIdx]?.chord || line.chords[0].chord;
+        const hudCh = document.getElementById('hud-chord-name');
+        if (hudCh) hudCh.textContent = currentCh;
+      }
     } else {
-      // CHORDS MODE:
+      // CHORDS MODE: Strum full chord on downbeats/rhythm
       if (line.chords && line.chords.length > 0 && this.audioContext && this.acousticBus) {
         const chordIdx = Math.floor((this.currentNoteIdx / Math.max(1, notes.length)) * line.chords.length);
-        const currentChord = line.chords[chordIdx]?.chord || line.chords[0].chord;
+        const currentCh = line.chords[chordIdx]?.chord || line.chords[0].chord;
+        const hudCh = document.getElementById('hud-chord-name');
+        if (hudCh) hudCh.textContent = currentCh;
 
-        // Strum down on even beats, up on odd beats
-        if (this.currentNoteIdx % 2 === 0) {
+        const frets = this.getChordFrets(currentCh);
+        if (frets && (this.currentNoteIdx === 0 || this.currentNoteIdx % 2 === 0)) {
           const dir = (this.currentNoteIdx % 4 === 0) ? 'down' : 'up';
-          const frets = this.getChordFrets(currentChord);
-          if (frets) {
-            strumChord(this.audioContext, this.acousticBus, {
-              frets,
-              style: dir,
-              velocity: 0.85,
-              tuning: this.tuning,
-              model: 'dreadnought',
-            });
-          }
+          strumChord(this.audioContext, this.acousticBus, {
+            frets,
+            style: dir,
+            velocity: 0.82,
+            tuning: this.tuning,
+            model: 'dreadnought',
+          });
         }
       }
     }
 
     this.updateActiveStepUI();
 
-    // Advance to next note / line
-    const beatSec = 60 / this.bpm;
-    const noteDurationMs = (noteItem ? (noteItem.beats || 1) : 1) * beatSec * 1000;
+    // Advance note & line timing based on BPM
+    const tempoSlider = document.getElementById('song-tempo-slider') as HTMLInputElement;
+    const bpm = (tempoSlider ? parseInt(tempoSlider.value) : 0) || this.bpm || 75;
+    const beatSec = 60 / bpm;
+    const noteDurationMs = (noteItem ? (noteItem.beats || 0.6) : 0.6) * beatSec * 1000;
 
     this.currentNoteIdx++;
     if (this.currentNoteIdx >= Math.max(1, notes.length)) {
       this.currentNoteIdx = 0;
-      this.currentLineIdx = (this.currentLineIdx + 1) % this.activeSong.lines.length;
+      this.currentLineIdx = (this.currentLineIdx + 1) % song.lines.length;
     }
 
     this.playTimer = window.setTimeout(this.stepPlaybackLoop, Math.max(250, noteDurationMs));
   };
 
   private updateActiveStepUI(): void {
-    const line = this.activeSong.lines[this.currentLineIdx];
+    const song = this.activeSong;
+    if (!song || !song.lines || song.lines.length === 0) return;
+
+    const line = song.lines[this.currentLineIdx];
     if (!line) return;
-    const notes = line.notes || [];
-    const noteItem = notes[this.currentNoteIdx];
+
+    const notes = line.notes || song.leadNotes || [];
+    const noteItem = notes[this.currentNoteIdx] || notes[0];
 
     // Update Notes HUD
     if (noteItem) {
+      const strVal = noteItem.str || noteItem.string || 1;
+      const sIdx = Math.max(0, Math.min(5, strVal - 1));
+      const fretVal = noteItem.fret ?? 0;
+      const freqVal = noteItem.freq || (440 * Math.pow(2, ((this.tuning[sIdx]?.midi || STANDARD_TUNING[sIdx].midi) + fretVal - 69) / 12));
+
+      const stringNames = ['1st (High E)', '2nd (B)', '3rd (G)', '4th (D)', '5th (A)', '6th (Low E)'];
+      const tabStringLabels = ['e', 'B', 'G', 'D', 'A', 'E'];
+
       const westernEl = document.getElementById('lead-active-western');
       const strEl = document.getElementById('lead-active-string');
       const fretEl = document.getElementById('lead-active-fret');
@@ -1178,14 +1320,11 @@ export class SongStudio {
       const tabEl = document.getElementById('lead-active-tab');
       const counterEl = document.getElementById('song-note-counter');
 
-      const stringNames = ['1st (High E)', '2nd (B)', '3rd (G)', '4th (D)', '5th (A)', '6th (Low E)'];
-      const tabStringLabels = ['e', 'B', 'G', 'D', 'A', 'E'];
-
       if (westernEl) westernEl.textContent = noteItem.note;
-      if (strEl) strEl.textContent = stringNames[noteItem.string - 1] || `${noteItem.string}th`;
-      if (fretEl) fretEl.textContent = `${noteItem.fret}th Fret`;
-      if (hzEl) hzEl.textContent = `${(noteItem.freq || 0).toFixed(1)} Hz`;
-      if (tabEl) tabEl.textContent = `${tabStringLabels[noteItem.string - 1] || 'e'}|--${noteItem.fret}--`;
+      if (strEl) strEl.textContent = stringNames[sIdx];
+      if (fretEl) fretEl.textContent = fretVal === 0 ? 'Open String' : `${fretVal}th Fret`;
+      if (hzEl) hzEl.textContent = `${freqVal.toFixed(1)} Hz`;
+      if (tabEl) tabEl.textContent = `${tabStringLabels[sIdx]}|--${fretVal}--`;
       if (counterEl) counterEl.textContent = `${this.currentNoteIdx + 1} / ${notes.length || 1}`;
     }
 
@@ -1204,81 +1343,116 @@ export class SongStudio {
     }
 
     this.renderSongFretboard();
-    this.highlightActiveLyricsLine();
+
+    // Update active line highlighting and scroll
+    document.querySelectorAll('.lyric-line-item').forEach((el, idx) => {
+      el.classList.toggle('active-line', idx === this.currentLineIdx);
+    });
+    const activeEl = document.getElementById(`lyric-line-${this.currentLineIdx}`);
+    if (activeEl) {
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   private renderSongFretboard(): void {
-    const container = document.getElementById('song-fretboard-strings-rows');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const line = this.activeSong.lines[this.currentLineIdx];
-    const notes = line?.notes || [];
-    const noteItem = notes[this.currentNoteIdx];
-
-    // If chords mode, get active chord frets
-    let activeChordFrets: (number | null)[] | null = null;
-    if (this.playMode === 'chords' && line && line.chords && line.chords.length > 0) {
-      const chordIdx = Math.floor((this.currentNoteIdx / Math.max(1, notes.length)) * line.chords.length);
-      const currentCh = line.chords[chordIdx]?.chord || line.chords[0].chord;
-      activeChordFrets = this.getChordFrets(currentCh);
+    // Clear all status labels and fret cells
+    for (let s = 0; s < 6; s++) {
+      const statusEl = document.getElementById('song-str-status-' + s);
+      if (statusEl) {
+        statusEl.textContent = '-';
+        statusEl.style.color = 'var(--text-muted)';
+      }
+      for (let f = 0; f <= 12; f++) {
+        const cell = document.getElementById(`song-fret-cell-${s}-${f}`);
+        if (cell) cell.innerHTML = '';
+      }
     }
 
-    for (let s = 0; s < 6; s++) {
-      const strInfo = this.tuning[s];
-      const row = document.createElement('div');
-      row.className = 'guitar-string-row';
+    const song = this.activeSong;
+    if (!song || !song.lines || song.lines.length === 0) return;
+    const line = song.lines[this.currentLineIdx];
+    const notes = line?.notes || song.leadNotes || [];
+    const noteItem = notes[this.currentNoteIdx] || notes[0];
 
-      const header = document.createElement('div');
-      header.className = 'string-header';
-      header.innerHTML = `<span style="font-weight:800; color:var(--accent-gold);">${s + 1}</span><span>${strInfo.note}</span>`;
-      row.appendChild(header);
+    if (this.playMode === 'notes') {
+      if (!noteItem) return;
+      const strVal = noteItem.str || noteItem.string || 1;
+      const sIdx = Math.max(0, Math.min(5, strVal - 1));
+      const fIdx = noteItem.fret ?? 0;
 
-      const cellsContainer = document.createElement('div');
-      cellsContainer.className = 'fret-cells-container';
-
-      const wire = document.createElement('div');
-      wire.className = `string-wire ${strInfo.gaugeClass}`;
-      wire.id = `song-string-wire-${s}`;
-      cellsContainer.appendChild(wire);
-
-      for (let f = 0; f <= 12; f++) {
-        const cell = document.createElement('div');
-        cell.className = 'fret-cell';
-
-        if (this.playMode === 'notes') {
-          // NOTES MODE: Place single lead tab dot
-          if (noteItem && noteItem.string - 1 === s && noteItem.fret === f) {
-            const dot = document.createElement('div');
-            dot.className = 'scale-dot root active-pluck';
-            dot.textContent = noteItem.note.replace(/[0-9]/g, '');
-            cell.appendChild(dot);
-          }
-        } else {
-          // CHORDS MODE: Place all finger dots for chord
-          if (activeChordFrets && activeChordFrets[s] === f) {
-            const dot = document.createElement('div');
-            dot.className = 'scale-dot tone';
-            dot.textContent = String(f);
-            cell.appendChild(dot);
+      for (let s = 0; s < 6; s++) {
+        const statusEl = document.getElementById('song-str-status-' + s);
+        if (statusEl) {
+          if (s === sIdx) {
+            statusEl.textContent = fIdx === 0 ? 'O' : String(fIdx);
+            statusEl.style.color = 'var(--accent-gold)';
+          } else {
+            statusEl.textContent = '-';
+            statusEl.style.color = 'var(--text-muted)';
           }
         }
-
-        cellsContainer.appendChild(cell);
       }
 
-      row.appendChild(cellsContainer);
-      container.appendChild(row);
-    }
-  }
+      const activeCell = document.getElementById(`song-fret-cell-${sIdx}-${fIdx}`);
+      if (activeCell) {
+        const dot = document.createElement('div');
+        dot.className = 'finger-dot';
+        dot.style.background = 'linear-gradient(135deg, #00e5ff, #0284c7)';
+        dot.style.boxShadow = '0 0 16px rgba(0, 229, 255, 0.9)';
+        dot.style.color = '#000';
+        dot.textContent = noteItem.note ? noteItem.note.replace(/[0-9]/g, '') : '';
+        activeCell.appendChild(dot);
+      }
+    } else {
+      // CHORDS MODE: Show 6-string chord fingering shape
+      const curCh = (line?.chords && line.chords.length > 0)
+        ? line.chords[0].chord
+        : (song.chordsUsed?.[0] || 'Am');
+      const frets = this.getChordFrets(curCh);
 
-  private highlightActiveLyricsLine(): void {
-    document.querySelectorAll('.song-lyrics-line').forEach((el, idx) => {
-      el.classList.toggle('active-line', idx === this.currentLineIdx);
-    });
+      const chFretsEl = document.getElementById('hud-chord-frets');
+      if (chFretsEl && frets) {
+        chFretsEl.textContent = frets.map(f => (f === null || f === -1 ? 'x' : String(f))).reverse().join(' ');
+      }
+
+      if (frets) {
+        for (let s = 0; s < 6; s++) {
+          const fret = frets[s];
+          const statusEl = document.getElementById('song-str-status-' + s);
+          if (statusEl) {
+            if (fret === -1 || fret === null) {
+              statusEl.textContent = 'X';
+              statusEl.style.color = '#ef4444';
+            } else if (fret === 0) {
+              statusEl.textContent = 'O';
+              statusEl.style.color = '#34d399';
+            } else {
+              statusEl.textContent = String(fret);
+              statusEl.style.color = 'var(--accent-gold)';
+            }
+          }
+
+          if (fret !== null && fret > 0 && fret <= 12) {
+            const cell = document.getElementById(`song-fret-cell-${s}-${fret}`);
+            if (cell) {
+              const dot = document.createElement('div');
+              dot.className = 'finger-dot';
+              dot.style.background = 'linear-gradient(135deg, #ffb300, #f59e0b)';
+              dot.style.boxShadow = '0 0 12px rgba(255, 179, 0, 0.7)';
+              const midi = this.tuning[s].midi + fret;
+              dot.textContent = NOTE_NAMES[midi % 12];
+              cell.appendChild(dot);
+            }
+          }
+        }
+      }
+    }
   }
 
   private updateSongMetadataUI(): void {
+    const song = this.activeSong;
+    if (!song) return;
+
     const titleEl = document.getElementById('song-display-title');
     const metaEl = document.getElementById('song-display-meta');
     const keyEl = document.getElementById('song-pill-key');
@@ -1287,18 +1461,20 @@ export class SongStudio {
     const bpmEl = document.getElementById('song-pill-bpm');
     const strumVisual = document.getElementById('song-strum-pattern-visual');
 
-    if (titleEl) titleEl.innerHTML = `🎸 ${this.activeSong.title}`;
-    if (metaEl) metaEl.textContent = `Artist/Movie: ${this.activeSong.movie || this.activeSong.singer || 'Acoustic'}`;
-    if (keyEl) keyEl.textContent = this.activeSong.key;
-    if (chordsEl) chordsEl.textContent = this.activeSong.chordsUsed.join(', ');
-    if (strumEl) strumEl.textContent = this.activeSong.strum;
-    if (bpmEl) bpmEl.textContent = `${this.activeSong.bpm} BPM`;
-    if (strumVisual) strumVisual.textContent = this.activeSong.strumPatternVisual || this.activeSong.strum;
+    if (titleEl) titleEl.innerHTML = `🎸 ${song.title}`;
+    const artist = song.artist || song.singer || 'Acoustic';
+    const album = song.album || song.movie || '';
+    if (metaEl) metaEl.textContent = `Artist: ${artist}${album ? ' • Album: ' + album : ''} • Key: ${song.key}`;
+    if (keyEl) keyEl.textContent = song.key;
+    if (chordsEl) chordsEl.textContent = (song.chordsUsed || []).join(', ');
+    if (strumEl) strumEl.textContent = song.strum;
+    if (bpmEl) bpmEl.textContent = `${song.bpm} BPM`;
+    if (strumVisual) strumVisual.textContent = song.strumPatternVisual || song.strum;
 
     const tempoSlider = document.getElementById('song-tempo-slider') as HTMLInputElement;
-    if (tempoSlider) tempoSlider.value = String(this.activeSong.bpm);
+    if (tempoSlider) tempoSlider.value = String(song.bpm);
     const tempoReadout = document.getElementById('song-tempo-readout');
-    if (tempoReadout) tempoReadout.textContent = `${this.activeSong.bpm} BPM`;
+    if (tempoReadout) tempoReadout.textContent = `${song.bpm} BPM`;
   }
 
   private renderChordsPalette(): void {
@@ -1306,15 +1482,63 @@ export class SongStudio {
     if (!palette) return;
 
     palette.innerHTML = '';
-    this.activeSong.chordsUsed.forEach(chord => {
+    const chords = this.activeSong?.chordsUsed || [];
+    chords.forEach((chord: string) => {
       const chip = document.createElement('button');
-      chip.className = 'preset-chip';
-      chip.textContent = chord;
+      chip.className = 'chord-tag-badge';
+      chip.style.cursor = 'pointer';
+      chip.innerHTML = `<span>▶️</span> ${chord}`;
       chip.onclick = () => {
+        this.renderChordOnFretboard(chord);
         this.strumActiveChordByName(chord);
       };
       palette.appendChild(chip);
     });
+  }
+
+  renderChordOnFretboard(chord: string): void {
+    const frets = this.getChordFrets(chord);
+    const chNameEl = document.getElementById('hud-chord-name');
+    const chFretsEl = document.getElementById('hud-chord-frets');
+    if (chNameEl) chNameEl.textContent = chord;
+    if (chFretsEl && frets) {
+      chFretsEl.textContent = frets.map(f => (f === null || f === -1 ? 'x' : String(f))).reverse().join(' ');
+    }
+    if (!frets) return;
+
+    for (let s = 0; s < 6; s++) {
+      const fret = frets[s];
+      const statusEl = document.getElementById('song-str-status-' + s);
+      if (statusEl) {
+        if (fret === -1 || fret === null) {
+          statusEl.textContent = 'X';
+          statusEl.style.color = '#ef4444';
+        } else if (fret === 0) {
+          statusEl.textContent = 'O';
+          statusEl.style.color = '#34d399';
+        } else {
+          statusEl.textContent = String(fret);
+          statusEl.style.color = 'var(--accent-gold)';
+        }
+      }
+      for (let f = 0; f <= 12; f++) {
+        const cell = document.getElementById(`song-fret-cell-${s}-${f}`);
+        if (cell) cell.innerHTML = '';
+      }
+      if (fret !== null && fret > 0 && fret <= 12) {
+        const cell = document.getElementById(`song-fret-cell-${s}-${fret}`);
+        if (cell) {
+          const dot = document.createElement('div');
+          dot.className = 'finger-dot';
+          dot.style.background = 'linear-gradient(135deg, #ffb300, #f59e0b)';
+          dot.style.boxShadow = '0 0 12px rgba(255, 179, 0, 0.7)';
+          const strTuning = this.tuning[s] || STANDARD_TUNING[s];
+          const midi = strTuning.midi + fret;
+          dot.textContent = NOTE_NAMES[midi % 12];
+          cell.appendChild(dot);
+        }
+      }
+    }
   }
 
   private renderLyricsScrollView(): void {
@@ -1322,21 +1546,24 @@ export class SongStudio {
     if (!box) return;
 
     box.innerHTML = '';
-    this.activeSong.lines.forEach((line, idx) => {
+    const lines = this.activeSong?.lines || [];
+    lines.forEach((line: any, idx: number) => {
       const lineDiv = document.createElement('div');
-      lineDiv.className = `song-lyrics-line ${idx === this.currentLineIdx ? 'active-line' : ''}`;
-      lineDiv.style.padding = '10px 14px';
-      lineDiv.style.marginBottom = '6px';
-      lineDiv.style.borderRadius = '10px';
-      lineDiv.style.background = 'rgba(0,0,0,0.3)';
-      lineDiv.style.cursor = 'pointer';
+      lineDiv.className = `lyric-line-item ${idx === this.currentLineIdx ? 'active-line' : ''}`;
+      lineDiv.id = `lyric-line-${idx}`;
 
-      const chordsRow = line.chords?.map(c => `<span style="color:var(--accent-gold); font-weight:800; margin-right:16px;">[${c.chord}] ${c.word}</span>`).join(' ') || '';
+      let chordsRow = '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px;">';
+      if (line.chords) {
+        line.chords.forEach((c: any) => {
+          chordsRow += `<span class="chord-tag-badge" id="chord-badge-${idx}-${c.chord}">${c.chord} <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">(${c.word})</span></span>`;
+        });
+      }
+      chordsRow += '</div>';
 
       lineDiv.innerHTML = `
-        <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700;">${line.section || `Line ${idx + 1}`}</div>
-        <div style="font-size:0.95rem; color:#fff; margin-top:2px;">${line.text}</div>
-        <div style="font-size:0.85rem; margin-top:4px;">${chordsRow}</div>
+        <div style="font-size:0.75rem; color:var(--accent-gold); font-weight:700; margin-bottom:2px;">${line.sec || line.section || `Verse ${idx + 1}`}</div>
+        ${chordsRow}
+        <div style="font-size:0.95rem; color:#fff; font-weight:500;">${line.text}</div>
       `;
 
       lineDiv.onclick = () => {
@@ -1350,7 +1577,7 @@ export class SongStudio {
   }
 
   private strumActiveChord(style: 'down' | 'up' | 'arpeggio'): void {
-    const line = this.activeSong.lines[this.currentLineIdx];
+    const line = this.activeSong?.lines?.[this.currentLineIdx];
     if (!line || !line.chords || line.chords.length === 0) return;
     const ch = line.chords[0].chord;
     this.strumActiveChordByName(ch, style);
@@ -1371,12 +1598,25 @@ export class SongStudio {
   }
 
   private getChordFrets(chordSymbol: string): (number | null)[] | null {
-    const root = chordSymbol.replace(/[m7#b].*/, '') as NoteName;
-    const quality = chordSymbol.replace(/^[A-G][#b]?/, '') || 'Major';
-    const normalized = quality === 'm' ? 'Minor' : quality === '' ? 'Major' : quality;
+    if (CHORD_PRESETS[chordSymbol]) {
+      return CHORD_PRESETS[chordSymbol].frets;
+    }
+    if (typeof window !== 'undefined' && (window as any).ALL_CHORD_VOICINGS && (window as any).ALL_CHORD_VOICINGS[chordSymbol]) {
+      const v = (window as any).ALL_CHORD_VOICINGS[chordSymbol][0];
+      if (v && v.frets) {
+        return [...v.frets].reverse();
+      }
+    }
+    try {
+      const root = chordSymbol.replace(/[m7#b].*/, '') as NoteName;
+      const quality = chordSymbol.replace(/^[A-G][#b]?/, '') || 'Major';
+      const normalized = quality === 'm' ? 'Minor' : quality === '' ? 'Major' : quality;
 
-    const def = buildChordDefinition(root, normalized as any, this.tuning);
-    return def.voicings[0]?.frets || null;
+      const def = buildChordDefinition(root, normalized as any, this.tuning);
+      return def.voicings[0]?.frets || null;
+    } catch (e) {
+      return null;
+    }
   }
 
   togglePracticeMic(): void {
@@ -1385,38 +1625,65 @@ export class SongStudio {
     const toggle = document.getElementById('btn-toggle-song-mic');
     if (label) label.textContent = this.isPracticeMicActive ? 'ON' : 'OFF';
     if (toggle) toggle.classList.toggle('active', this.isPracticeMicActive);
+
+    // Auto start microphone if user activates practice mode
+    if (this.isPracticeMicActive && this.onMicStartRequested) {
+      this.onMicStartRequested();
+    }
   }
 
   evaluatePractice(detectedSymbol: string): void {
     if (!this.isPracticeMicActive) return;
 
-    const line = this.activeSong.lines[this.currentLineIdx];
+    const line = this.activeSong?.lines?.[this.currentLineIdx];
     if (!line) return;
-
-    let isMatch = false;
-    if (this.playMode === 'notes') {
-      const noteItem = line.notes?.[this.currentNoteIdx];
-      if (noteItem && detectedSymbol.startsWith(noteItem.note.replace(/[0-9]/g, ''))) {
-        isMatch = true;
-      }
-    } else {
-      const chordIdx = Math.floor((this.currentNoteIdx / Math.max(1, line.notes?.length || 1)) * (line.chords?.length || 1));
-      const targetCh = line.chords?.[chordIdx]?.chord || line.chords?.[0]?.chord;
-      if (targetCh && detectedSymbol === targetCh) {
-        isMatch = true;
-      }
-    }
 
     const badge = document.getElementById('eval-feedback-badge');
     const scoreEl = document.getElementById('song-practice-score');
 
-    if (isMatch) {
-      this.practiceScore += 50;
-      if (scoreEl) scoreEl.textContent = String(this.practiceScore);
-      if (badge) {
-        badge.textContent = `🎯 Spot on! Matched ${detectedSymbol}`;
-        badge.style.borderColor = '#10b981';
-        badge.style.color = '#34d399';
+    if (this.playMode === 'notes') {
+      const notes = line.notes || this.activeSong.leadNotes || [];
+      const curNote = notes[this.currentNoteIdx];
+      if (!curNote) return;
+
+      const targetRoot = curNote.note.replace(/[0-9]/g, '');
+      const detRoot = detectedSymbol.replace(/[0-9]/g, '');
+
+      if (targetRoot === detRoot || detectedSymbol.startsWith(targetRoot)) {
+        this.practiceScore += 10;
+        if (scoreEl) scoreEl.textContent = String(this.practiceScore);
+        if (badge) {
+          badge.className = 'eval-match-indicator match-success';
+          badge.textContent = `🎯 Plucked Note ${curNote.note}! (+10 pts)`;
+          clearTimeout(this.evalTimeout || 0);
+          this.evalTimeout = window.setTimeout(() => {
+            if (badge) {
+              badge.className = 'eval-match-indicator';
+              badge.textContent = 'Keep playing along!';
+            }
+          }, 1200);
+        }
+      }
+    } else {
+      const targetChord = (line.chords && line.chords.length > 0)
+        ? line.chords[0].chord
+        : (this.activeSong.chordsUsed?.[0] || 'Am');
+      const isMatch = (detectedSymbol === targetChord) ||
+                      (detectedSymbol && detectedSymbol.startsWith(targetChord));
+      if (isMatch) {
+        this.practiceScore += 10;
+        if (scoreEl) scoreEl.textContent = String(this.practiceScore);
+        if (badge) {
+          badge.className = 'eval-match-indicator match-success';
+          badge.textContent = `✓ Strummed ${detectedSymbol}! (+10 pts)`;
+          clearTimeout(this.evalTimeout || 0);
+          this.evalTimeout = window.setTimeout(() => {
+            if (badge) {
+              badge.className = 'eval-match-indicator';
+              badge.textContent = 'Keep strumming along!';
+            }
+          }, 1200);
+        }
       }
     }
   }
