@@ -1,7 +1,7 @@
 // Service Worker for Guitar Chord Studio v2
 // Provides offline support and fast loading
 
-const CACHE_NAME = 'guitar-studio-v2-20260919d';
+const CACHE_NAME = 'guitar-studio-v2-20260920a';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
