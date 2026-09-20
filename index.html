@@ -1892,7 +1892,20 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW:', err));
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // A new version has been installed; activate and refresh
+                  console.log('New version available, refreshing...');
+                  window.location.reload();
+                }
+              });
+            }
+          });
+        }).catch(err => console.log('SW:', err));
       });
     }
   </script>
