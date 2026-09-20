@@ -327,7 +327,7 @@ export async function startMicrophone(): Promise<boolean> {
     appState.micGainNode.gain.value = appState.settings.micGain;
     
     appState.analyser = appState.audioContext.createAnalyser();
-    appState.analyser.fftSize = 8192; // fixed for continuous detection
+    appState.analyser.fftSize = 4096;
     appState.analyser.smoothingTimeConstant = 0.12;
     
     appState.detectionEngine.setAnalyser(appState.analyser);
@@ -336,7 +336,7 @@ export async function startMicrophone(): Promise<boolean> {
       seventhStrictness: appState.settings.seventhStrictness,
       triggerMode: appState.settings.triggerMode,
       micGainMultiplier: appState.settings.micGain,
-      fftSize: 8192,
+      fftSize: 4096,
     });
     
     // Connect: source -> highpass -> lowpass -> gain -> analyser
@@ -375,26 +375,36 @@ export function stopMicrophone(): void {
 }
 
 function startDetectionLoop(): void {
+  let lastDspTimestamp = 0;
+  let staticFreqBuffer: Float32Array<ArrayBuffer> | null = null;
+
   const loop = () => {
     if (!appState.isListening || !appState.analyser || !appState.audioContext) return;
     
     const bufferLength = appState.analyser.frequencyBinCount;
-    const freqData = new Float32Array(bufferLength);
-    appState.analyser.getFloatFrequencyData(freqData);
-    
-    // Process frame
-    const result = appState.detectionEngine.processFrame(
-      freqData, 
-      appState.audioContext.sampleRate,
-      appState.effectiveTuning
-    );
-    
-    if (result) {
-      handleDetectionResult(result, freqData);
+    if (!staticFreqBuffer || staticFreqBuffer.length !== bufferLength) {
+      staticFreqBuffer = new Float32Array(bufferLength);
     }
+    appState.analyser.getFloatFrequencyData(staticFreqBuffer);
     
-    // Update UI meters
-    updateLevelMeter(freqData);
+    // Visual meters and spectrum update at 60 FPS
+    updateLevelMeter(staticFreqBuffer);
+    updateSpectrumVisualizer(staticFreqBuffer);
+    
+    // DSP throttle: run audio peak extraction, autocorrelation, and template matching every ~30ms
+    const now = performance.now();
+    if (now - lastDspTimestamp >= 30) {
+      lastDspTimestamp = now;
+      const result = appState.detectionEngine.processFrame(
+        staticFreqBuffer, 
+        appState.audioContext.sampleRate,
+        appState.effectiveTuning
+      );
+      
+      if (result) {
+        handleDetectionResult(result, staticFreqBuffer);
+      }
+    }
     
     appState.animationFrameId = requestAnimationFrame(loop);
   };
