@@ -503,7 +503,7 @@ export class DetectionEngine {
     this.smoothedChroma[dominantPc] = 1;
 
     const ringingNotes = this.extractRingingNotes(peaks);
-    this.noteSustainHoldUntil = Date.now() + 1600;
+    this.noteSustainHoldUntil = Date.now() + 650;
     
     const result: DetectionResult = {
       mode: 'single-note',
@@ -580,7 +580,7 @@ export class DetectionEngine {
     if (isIncumbentValid) {
       matches.forEach(m => {
         if (this.lastLockedChord === m.short) {
-          m.corr += 0.035;
+          m.corr += 0.05;
         }
       });
     }
@@ -593,25 +593,22 @@ export class DetectionEngine {
     if (this.candidateVoteHistory.length > 3) this.candidateVoteHistory.shift();
     
     const voteCount = this.candidateVoteHistory.filter(c => c === best.short).length;
-    const isConsensusWinner = (voteCount >= 2) || (this.lastLockedChord === best.short) || (best.corr >= 0.32);
+    const isConsensusWinner = (voteCount >= 2) || (best.corr >= 0.32);
 
     // Reject non-tonal input (noise, room hum, string transitions): the best
     // template must actually correlate. Empirical acoustic guitar correlation
     // threshold is 0.28 to account for physical string inharmonicity and wood resonance.
-    const MIN_CHORD_CORR = 0.28;
+    const MIN_CHORD_CORR = 0.18;
     if (best.corr < MIN_CHORD_CORR || !isConsensusWinner) {
       return {
         mode: 'idle',
         timestamp: Date.now(),
-        chord: this.lastDetectedChordSnapshot?.chord,
         chroma: new Float32Array(smoothedChroma),
         peaks,
         ringingNotes: this.extractRingingNotes(peaks),
         spectrum: new Float32Array(0),
         signalLevelDb: 0,
-        statusMessage: this.lastDetectedChordSnapshot?.chord
-          ? `Confirmed: ${this.lastDetectedChordSnapshot.chord.symbol} • Listening for next change...`
-          : 'Detecting guitar chord...',
+        statusMessage: 'Detecting guitar chord...',
       };
     }
 
@@ -619,7 +616,7 @@ export class DetectionEngine {
     let activeNotes: NoteName[] = [];
     let intervalsStr = best.formula;
 
-    if (best && best.corr > 0.20 && isConsensusWinner) {
+    if (best && best.corr > 0.18 && isConsensusWinner) {
       confidencePct = Math.min(99, Math.round(best.corr * 100)) + '%';
       
       const rootIdx2 = NOTE_NAMES.indexOf(best.root as NoteName);
@@ -636,7 +633,7 @@ export class DetectionEngine {
       
       this.lastLockedChord = best.short;
       this.lastLockedTime = Date.now();
-      this.chordSustainHoldUntil = Date.now() + 1800; // sustain for 1.8s while continuing listening
+      this.chordSustainHoldUntil = Date.now() + 650; // v1 value: short sustain, doesn't block new detection
       this.confirmedChordCount++;
     }
 
@@ -774,7 +771,7 @@ export class DetectionEngine {
     }
 
     if (!isSignalPresent) {
-      // True silence past sustain hold
+      // True silence past sustain hold — full reset like v1
       for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.82;
       
       this.consecutiveNoteFrames = 0;
@@ -782,21 +779,19 @@ export class DetectionEngine {
       this.currentDisplayMode = 'idle';
       this.lastLockedChord = null;
       this.candidateVoteHistory = [];
-      // Keep snapshots intact so the UI retains the confirmed chord
+      // Clear snapshots so engine fully resets for next strum (v1 behavior)
+      this.lastDetectedChordSnapshot = null;
+      this.lastDetectedNoteSnapshot = null;
       
       return {
         mode: 'idle',
         timestamp: now,
-        chord: this.lastDetectedChordSnapshot?.chord,
-        note: this.lastDetectedNoteSnapshot?.note,
         chroma: new Float32Array(this.smoothedChroma),
         peaks: [],
         ringingNotes: [],
         spectrum: freqData,
         signalLevelDb: maxDb,
-        statusMessage: this.lastDetectedChordSnapshot?.chord
-          ? `Confirmed: ${this.lastDetectedChordSnapshot.chord.symbol} • Continuous listening active... strum next chord or pluck note`
-          : 'Ready • Continuous listening active... strum any chord or note',
+        statusMessage: 'Ready • Continuous listening active... strum any chord or note',
       };
     }
 
@@ -807,16 +802,12 @@ export class DetectionEngine {
       return {
         mode: 'idle',
         timestamp: now,
-        chord: this.lastDetectedChordSnapshot?.chord,
-        note: this.lastDetectedNoteSnapshot?.note,
         chroma: new Float32Array(this.smoothedChroma),
         peaks: [],
         ringingNotes: [],
         spectrum: freqData,
         signalLevelDb: maxDb,
-        statusMessage: this.lastDetectedChordSnapshot?.chord
-          ? `Confirmed: ${this.lastDetectedChordSnapshot.chord.symbol} • Listening for next chord or note...`
-          : 'Listening...',
+        statusMessage: 'Listening...',
       };
     }
 
