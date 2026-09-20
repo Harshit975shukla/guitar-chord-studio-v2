@@ -147,6 +147,10 @@ export interface DetectionResult {
   ringingNotes?: Array<{ note: NoteName; freq: number; octave: number; amp: number; cents?: number }>;
   isSustained?: boolean;
   statusMessage?: string;
+  isCalibrating?: boolean;
+  calibrationProgress?: number;
+  calibrationComplete?: boolean;
+  calibratedDb?: number;
   spectrum: Float32Array;
   signalLevelDb: number;
 }

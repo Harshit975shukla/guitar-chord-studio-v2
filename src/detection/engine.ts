@@ -35,10 +35,10 @@ export interface DetectionConfig {
 
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
   fftSize: 4096,
-  smoothingTimeConstant: 0.10,
+  smoothingTimeConstant: 0.15, // balanced smoothing
   minFreq: 65,
   maxFreq: 1400,
-  noiseGateDb: 20, // reduced from 25 to allow weaker signals but still reduce noise
+  noiseGateDb: 30, // moderate to high noise gate to avoid false triggers
   micGainMultiplier: 4.0,
   seventhStrictness: 0.55,
   triggerMode: 'continuous',
@@ -185,7 +185,7 @@ export class DetectionEngine {
     this.calibrationBuffer = new Float32Array(bufferLength).fill(0);
   }
 
-  processCalibrationFrame(freqData: Float32Array): { complete: boolean; noiseFloorDb: number } | null {
+  processCalibrationFrame(freqData: Float32Array): { complete: boolean; noiseFloorDb: number; progress: number } | null {
     if (!this.isCalibrating || !this.calibrationBuffer) return null;
 
     this.calibrationFrames++;
@@ -194,7 +194,10 @@ export class DetectionEngine {
       this.calibrationBuffer[b] += linAmp;
     }
 
-    if (this.calibrationFrames >= 80) {
+    const TARGET_FRAMES = 45; // ~1.5s at 30 FPS
+    const progress = Math.min(100, Math.round((this.calibrationFrames / TARGET_FRAMES) * 100));
+
+    if (this.calibrationFrames >= TARGET_FRAMES) {
       for (let b = 0; b < this.calibrationBuffer.length; b++) {
         this.calibrationBuffer[b] /= this.calibrationFrames;
       }
@@ -213,10 +216,10 @@ export class DetectionEngine {
       
       this.isCalibrating = false;
       this.calibrationBuffer = null;
-      return { complete: true, noiseFloorDb: maxDb };
+      return { complete: true, noiseFloorDb: maxDb, progress: 100 };
     }
     
-    return { complete: false, noiseFloorDb: -120 };
+    return { complete: false, noiseFloorDb: -120, progress };
   }
 
   // ============================================================================
@@ -562,7 +565,7 @@ export class DetectionEngine {
     }).join(' - ');
     
     this.lastLockedChord = best.short;
-    this.chordSustainHoldUntil = Date.now() + 650;
+    this.chordSustainHoldUntil = Date.now() + 300; // reduced from 650ms to 300ms
 
     const ringingNotes = this.extractRingingNotes(peaks);
 
@@ -612,8 +615,36 @@ export class DetectionEngine {
 
     // 2. Handle calibration
     if (this.isCalibrating) {
-      this.processCalibrationFrame(freqData);
-      return null;
+      const calRes = this.processCalibrationFrame(freqData);
+      if (calRes && calRes.complete) {
+        return {
+          mode: 'idle',
+          timestamp: now,
+          chroma: new Float32Array(12),
+          peaks: [],
+          ringingNotes: [],
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+          isCalibrating: false,
+          calibrationComplete: true,
+          calibratedDb: calRes.noiseFloorDb,
+          statusMessage: `✅ Room Noise Calibrated (${Math.round(calRes.noiseFloorDb)} dB) • Ready! Strum any chord or pluck note`,
+        };
+      } else {
+        const pct = calRes ? calRes.progress : 0;
+        return {
+          mode: 'idle',
+          timestamp: now,
+          chroma: new Float32Array(12),
+          peaks: [],
+          ringingNotes: [],
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+          isCalibrating: true,
+          calibrationProgress: pct,
+          statusMessage: `🧹 Checking room noise... (${pct}%) Please stay silent`,
+        };
+      }
     }
 
     // 3. Spectral subtraction
@@ -632,7 +663,7 @@ export class DetectionEngine {
     // 5. Responsive Attack Detection (32ms energy flux)
     const energyFlux = totalGuitarBandEnergy - this.prevFrameBandEnergy;
     this.prevFrameBandEnergy = totalGuitarBandEnergy;
-    const isNewAttack = energyFlux > 0.02; // increased threshold to avoid false triggers
+    const isNewAttack = energyFlux > 0.008; // more sensitive attack detection to avoid sticking
     if (isNewAttack) {
       this.lastLockedChord = null;
       this.candidateVoteHistory = [];

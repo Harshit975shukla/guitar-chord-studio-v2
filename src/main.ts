@@ -373,6 +373,10 @@ export async function startMicrophone(): Promise<boolean> {
     appState.isListening = true;
     appState.detectionEngine.reset();
     
+    // Automatically perform a 1.5s room noise calibration on microphone startup
+    appState.detectionEngine.startNoiseCalibration();
+    updateCalibrationUI(true);
+    
     // Start detection loop
     startDetectionLoop();
     
@@ -448,6 +452,30 @@ function startDetectionLoop(): void {
 }
 
 function handleDetectionResult(result: DetectionResult, spectrum: Float32Array): void {
+  // Handle room noise calibration progress and completion
+  if (result.isCalibrating) {
+    const nameEl = document.getElementById('display-chord-name');
+    if (nameEl) nameEl.innerHTML = `<span style="font-size:1.4rem; color:var(--accent-cyan); font-weight:700;">🧹 Calibrating Room Noise (${result.calibrationProgress || 0}%)</span>`;
+    const statusEl = document.getElementById('status-text');
+    if (statusEl) statusEl.textContent = `Calibrating Ambient Room Noise (${result.calibrationProgress || 0}%) • Please stay silent...`;
+    const substatusEl = document.getElementById('live-detector-substatus');
+    if (substatusEl) substatusEl.textContent = result.statusMessage || 'Measuring room background noise...';
+    return;
+  }
+
+  if (result.calibrationComplete) {
+    updateCalibrationUI(false);
+    if (result.calibratedDb !== undefined) {
+      completeNoiseCalibrationUI(result.calibratedDb);
+    }
+    const nameEl = document.getElementById('display-chord-name');
+    if (nameEl && (!appState.currentChord || nameEl.textContent?.includes('Calibrating'))) {
+      nameEl.textContent = 'Ready';
+    }
+    const substatusEl = document.getElementById('live-detector-substatus');
+    if (substatusEl) substatusEl.innerHTML = `✅ Room Noise Calibrated (${Math.round(result.calibratedDb || -60)} dB) • Strum any chord or pluck any string`;
+  }
+
   // Update chord display
   updateChordDisplay(result);
   
@@ -976,12 +1004,49 @@ function updateCalibrationUI(calibrating: boolean): void {
   
   if (calibrating) {
     const textEl = btn?.querySelector('#calibrate-btn-text');
-    if (textEl) textEl.textContent = 'Scanning Silence... (2s)';
+    if (textEl) textEl.textContent = 'Measuring Silence... (1.5s)';
     if (status) status.textContent = 'Calibrating Ambient Room Noise • Stay Silent...';
     if (indicator) indicator.className = 'status-dot calibrating';
+    const badge = document.getElementById('noise-reduction-badge');
+    if (badge) badge.className = 'badge';
+    const noiseStatusText = document.getElementById('noise-status-text');
+    if (noiseStatusText) {
+      noiseStatusText.textContent = 'Calibrating (1.5s)...';
+      noiseStatusText.style.color = '#ffd54f';
+    }
   } else {
     const textEl = btn?.querySelector('#calibrate-btn-text');
-    if (textEl) textEl.textContent = 'Re-Calibrate Room Noise (2s)';
+    if (textEl) textEl.textContent = 'Re-Calibrate Room Noise (1.5s)';
+    if (indicator) indicator.className = 'status-dot listening';
+  }
+}
+
+function completeNoiseCalibrationUI(measuredDb: number): void {
+  const noiseStatusText = document.getElementById('noise-status-text');
+  if (noiseStatusText) {
+    noiseStatusText.textContent = `Active (${Math.round(measuredDb)} dB Subtracted)`;
+    noiseStatusText.style.color = '#38bdf8';
+  }
+  const noiseFloorLabel = document.getElementById('noise-floor-label');
+  if (noiseFloorLabel) {
+    noiseFloorLabel.textContent = `${Math.round(measuredDb)} dB`;
+  }
+  const noiseBadge = document.getElementById('noise-reduction-badge');
+  if (noiseBadge) {
+    noiseBadge.className = 'badge calibrated';
+  }
+  const noisePct = Math.max(0, Math.min(100, (measuredDb + 75) * 1.66));
+  const marker = document.getElementById('noise-floor-marker');
+  if (marker) {
+    marker.style.left = `${noisePct}%`;
+  }
+  const status = document.getElementById('status-text');
+  if (status) {
+    status.textContent = `Calibrated (${Math.round(measuredDb)} dB) • Strum Guitar`;
+  }
+  const indicator = document.getElementById('status-indicator');
+  if (indicator) {
+    indicator.className = 'status-dot listening';
   }
 }
 
