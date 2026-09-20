@@ -214,11 +214,24 @@ export async function initializeApp(): Promise<void> {
       startMicrophone();
     }
   };
+  appState.songStudio.onPlayRequested = async () => {
+    await ensureAudioContext();
+  };
   try {
     appState.songStudio.buildSongFretboardUI();
   } catch (e) {
     console.warn('Fretboard pre-build error:', e);
   }
+
+  // Global Web Audio user gesture unlock listener
+  const unlockAudioOnGesture = () => {
+    if (!appState.audioContext || appState.audioContext.state === 'suspended') {
+      ensureAudioContext().catch(() => {});
+    }
+  };
+  window.addEventListener('click', unlockAudioOnGesture, { passive: true });
+  window.addEventListener('keydown', unlockAudioOnGesture, { passive: true });
+  window.addEventListener('touchstart', unlockAudioOnGesture, { passive: true });
   
   // 9. Initialize Recorder Tab (after UI is ready)
   try {

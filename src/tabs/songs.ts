@@ -929,6 +929,7 @@ export class SongStudio {
   private acousticBus: AcousticBus | null = null;
   private isControlsInitialized = false;
   public onMicStartRequested?: () => void;
+  public onPlayRequested?: () => Promise<void>;
 
   constructor() {}
 
@@ -989,7 +990,11 @@ export class SongStudio {
     }
   }
 
-  private onFretCellClick(s: number, f: number): void {
+  private async onFretCellClick(s: number, f: number): Promise<void> {
+    if (this.onPlayRequested) await this.onPlayRequested();
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
     if (!this.audioContext || !this.acousticBus) return;
     const strTuning = this.tuning[s] || STANDARD_TUNING[s];
     const midi = strTuning.midi + f;
@@ -1143,7 +1148,13 @@ export class SongStudio {
     }
   }
 
-  startPlayback(): void {
+  async startPlayback(): Promise<void> {
+    if (this.onPlayRequested) {
+      await this.onPlayRequested();
+    }
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
     this.isPlaying = true;
     const playBtn = document.getElementById('btn-song-play');
     const icon = document.getElementById('song-play-icon');
@@ -1576,7 +1587,11 @@ export class SongStudio {
     });
   }
 
-  private strumActiveChord(style: 'down' | 'up' | 'arpeggio'): void {
+  private async strumActiveChord(style: 'down' | 'up' | 'arpeggio'): Promise<void> {
+    if (this.onPlayRequested) await this.onPlayRequested();
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
     const line = this.activeSong?.lines?.[this.currentLineIdx];
     if (!line || !line.chords || line.chords.length === 0) return;
     const ch = line.chords[0].chord;
