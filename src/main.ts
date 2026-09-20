@@ -352,8 +352,8 @@ export async function startMicrophone(): Promise<boolean> {
     appState.micGainNode.gain.value = appState.settings.micGain || 4.0;
     
     appState.analyser = appState.audioContext.createAnalyser();
-    appState.analyser.fftSize = 8192; // fixed for continuous detection
-    appState.analyser.smoothingTimeConstant = 0.12;
+    appState.analyser.fftSize = 4096; // 4096 matches V1 for fast 93ms response
+    appState.analyser.smoothingTimeConstant = 0.10;
     
     appState.detectionEngine.setAnalyser(appState.analyser);
     appState.detectionEngine.setConfig({
@@ -361,7 +361,7 @@ export async function startMicrophone(): Promise<boolean> {
       seventhStrictness: appState.settings.seventhStrictness,
       triggerMode: appState.settings.triggerMode,
       micGainMultiplier: appState.settings.micGain,
-      fftSize: 8192,
+      fftSize: 4096,
     });
     
     // Connect: source -> highpass -> lowpass -> gain -> analyser
@@ -405,30 +405,43 @@ export function stopMicrophone(): void {
   updateMicUI(false);
 }
 
+let lastDspTimestamp = 0;
+
 function startDetectionLoop(): void {
   const loop = () => {
     if (!appState.isListening || !appState.analyser || !appState.audioContext) return;
     
-    const bufferLength = appState.analyser.frequencyBinCount;
-    const freqData = new Float32Array(bufferLength);
-    appState.analyser.getFloatFrequencyData(freqData);
-    
-    // Process frame
-    const result = appState.detectionEngine.processFrame(
-      freqData, 
-      appState.audioContext.sampleRate,
-      appState.effectiveTuning
-    );
-    
-    if (result) {
-      handleDetectionResult(result, freqData);
+    try {
+      const bufferLength = appState.analyser.frequencyBinCount;
+      const freqData = new Float32Array(bufferLength);
+      appState.analyser.getFloatFrequencyData(freqData);
+      
+      // Update UI meters & visualizers on every frame for 60fps responsiveness
+      updateLevelMeter(freqData);
+      updateSpectrumVisualizer(freqData);
+      
+      // Heavy DSP Throttle: Spectrum and volume meter animate at 60 FPS,
+      // while FFT peak extraction, autocorrelation, and chord matching run at ~30 FPS (every 32ms)
+      const now = performance.now();
+      if (now - lastDspTimestamp >= 32) {
+        lastDspTimestamp = now;
+        const result = appState.detectionEngine.processFrame(
+          freqData, 
+          appState.audioContext.sampleRate,
+          appState.effectiveTuning
+        );
+        
+        if (result) {
+          handleDetectionResult(result, freqData);
+        }
+      }
+    } catch (err) {
+      console.error('Detection loop error (handled, loop continuing):', err);
+    } finally {
+      if (appState.isListening) {
+        appState.animationFrameId = requestAnimationFrame(loop);
+      }
     }
-    
-    // Update UI meters
-    updateLevelMeter(freqData);
-    updateSpectrumVisualizer(freqData);
-    
-    appState.animationFrameId = requestAnimationFrame(loop);
   };
   
   appState.animationFrameId = requestAnimationFrame(loop);
@@ -439,12 +452,12 @@ function handleDetectionResult(result: DetectionResult, spectrum: Float32Array):
   updateChordDisplay(result);
   
   // Send to MIDI
-  if (appState.midiManager && appState.settings.midiConfig.sendChords && result.chord) {
-    appState.midiManager.sendChord(result.chord.symbol as any, appState.settings.midiConfig.noteVelocity);
-  }
-  if (appState.midiManager && appState.settings.midiConfig.sendSingleNotes && result.note) {
-    appState.midiManager.sendNoteOn(result.note.pitch.midi, appState.settings.midiConfig.noteVelocity);
-  }
+    if (appState.midiManager && appState.settings.midiConfig.sendChords && result.chord) {
+      appState.midiManager.sendChord({ root: result.chord.root, quality: result.chord.quality }, appState.settings.midiConfig.noteVelocity);
+    }
+    if (appState.midiManager && appState.settings.midiConfig.sendSingleNotes && result.note) {
+      appState.midiManager.sendNoteOn(result.note.pitch.midi, appState.settings.midiConfig.noteVelocity);
+    }
   
   // Log chord for session and update interactive fretboard
   if (result.chord && result.chord.symbol !== appState.currentChord) {
@@ -557,8 +570,8 @@ export function setTriggerMode(mode: 'guitartuna' | 'continuous'): void {
   if (appState.analyser && appState.micGainNode) {
     appState.analyser.disconnect();
     appState.analyser = appState.audioContext!.createAnalyser();
-    appState.analyser.fftSize = mode === 'continuous' ? 8192 : 4096;
-    appState.analyser.smoothingTimeConstant = 0.12;
+    appState.analyser.fftSize = 4096;
+    appState.analyser.smoothingTimeConstant = 0.10;
     appState.micGainNode.connect(appState.analyser);
     appState.detectionEngine.setAnalyser(appState.analyser);
   }

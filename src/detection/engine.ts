@@ -1,6 +1,6 @@
 /**
  * Real-time Audio Detection Engine
- * Spectral subtraction, onset detection, chroma analysis, chord template matching
+ * Spectral subtraction, onset detection, time-domain autocorrelation, chroma analysis, chord template matching
  */
 
 import { 
@@ -31,28 +31,22 @@ export interface DetectionConfig {
   seventhStrictness: number;
   triggerMode: 'guitartuna' | 'continuous';
   oversubtraction: number;
-  // Additional thresholds for continuous mode
-  minEnergyThreshold?: number; // linear amplitude sum threshold
-  minDbThreshold?: number; // dB threshold for maxDb
 }
 
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
   fftSize: 4096,
-  smoothingTimeConstant: 0.12,
-  minFreq: 75,
-  maxFreq: 1250,
-  noiseGateDb: 14,
+  smoothingTimeConstant: 0.10,
+  minFreq: 65,
+  maxFreq: 1400,
+  noiseGateDb: 20, // reduced from 25 to allow weaker signals but still reduce noise
   micGainMultiplier: 4.0,
   seventhStrictness: 0.55,
   triggerMode: 'continuous',
   oversubtraction: 1.30,
-  // Continuous mode thresholds
-  minEnergyThreshold: 0.012, // sensitive linear amplitude sum
-  minDbThreshold: -74 // dB threshold for maxDb
 };
 
 // ============================================================================
-// Chord Templates for Template Correlation
+// Core 10 Chord Templates (V1 Proven Set)
 // ============================================================================
 
 export interface ChordTemplate {
@@ -134,48 +128,6 @@ export const CHORD_TEMPLATES: ChordTemplate[] = [
     formula: '1 - 3 - #5', 
     intervals: 'Root, Major 3rd, Augmented 5th' 
   },
-  { 
-    name: 'Major 6th', 
-    short: '6', 
-    weights: [1.3, -0.5, -0.3, -0.7, 1.1, -0.4, -0.6, 1.0, 0.9, -0.4, -0.5, -0.5], 
-    formula: '1 - 3 - 5 - 6', 
-    intervals: 'Root, Maj 3rd, 5th, Maj 6th' 
-  },
-  { 
-    name: 'Minor 6th', 
-    short: 'm6', 
-    weights: [1.3, -0.5, -0.3, 1.1, -0.7, -0.4, -0.6, 1.0, 0.9, -0.4, -0.5, -0.5], 
-    formula: '1 - b3 - 5 - 6', 
-    intervals: 'Root, Min 3rd, 5th, Maj 6th' 
-  },
-  { 
-    name: 'Dominant 9th', 
-    short: '9', 
-    weights: [1.2, -0.5, -0.3, -0.6, 1.0, -0.4, -0.5, 0.9, -0.5, 0.8, 0.9, -0.5], 
-    formula: '1 - 3 - 5 - b7 - 9', 
-    intervals: 'Root, Maj 3rd, 5th, Min 7th, 9th' 
-  },
-  { 
-    name: 'Minor 9th', 
-    short: 'm9', 
-    weights: [1.2, -0.5, -0.3, 1.0, -0.6, -0.4, -0.5, 0.9, -0.5, 0.8, 0.9, -0.5], 
-    formula: '1 - b3 - 5 - b7 - 9', 
-    intervals: 'Root, Min 3rd, 5th, Min 7th, 9th' 
-  },
-  { 
-    name: 'Minor 7b5', 
-    short: 'm7b5', 
-    weights: [1.2, -0.5, -0.4, 1.1, -0.6, -0.4, 1.0, -0.6, -0.5, -0.4, 0.9, -0.5], 
-    formula: '1 - b3 - b5 - b7', 
-    intervals: 'Root, Min 3rd, Dim 5th, Min 7th' 
-  },
-  { 
-    name: 'Diminished 7th', 
-    short: 'dim7', 
-    weights: [1.2, -0.5, -0.4, 1.1, -0.6, -0.4, 1.0, -0.6, -0.5, 0.9, -0.5, -0.5], 
-    formula: '1 - b3 - b5 - bb7', 
-    intervals: 'Root, Min 3rd, Dim 5th, Dim 7th' 
-  },
 ];
 
 // ============================================================================
@@ -189,31 +141,24 @@ export class DetectionEngine {
   private isCalibrating = false;
   private calibrationFrames = 0;
   private calibrationBuffer: Float32Array | null = null;
+  private timeBuffer: Float32Array | null = null;
   
   // State
   private smoothedChroma = new Float32Array(12);
   private prevFrameBandEnergy = 0;
-  // Running ambient noise floor (dB), learned from quiet frames so the signal
-  // gate adapts to any microphone level instead of using a fixed threshold.
-  private runningNoiseFloorDb = -95;
   
   // Anti-fluctuation hysteresis & continuous detection state
   private candidateVoteHistory: string[] = [];
   private lastLockedChord: string | null = null;
-  private lastLockedTime = 0;
   private consecutiveNoteFrames = 0;
   private consecutiveChordFrames = 0;
   private currentDisplayMode: 'idle' | 'note' | 'chord' = 'idle';
   
-  // Sustain hold & snapshot memory (prevents UI wipe during natural finger transitions)
-  private lastDetectedChordSnapshot: DetectionResult | null = null;
-  private lastDetectedNoteSnapshot: DetectionResult | null = null;
+  // Sustain hold & snapshot memory
+  private lastDetectedChordSnapshot: any = null;
+  private lastDetectedNoteSnapshot: any = null;
   private chordSustainHoldUntil = 0;
   private noteSustainHoldUntil = 0;
-  private confirmedChordCount = 0;
-  
-  // Cooldown
-  private lockCooldownTimer: number | null = null;
 
   constructor(config: Partial<DetectionConfig> = {}) {
     this.config = { ...DEFAULT_DETECTION_CONFIG, ...config };
@@ -225,15 +170,15 @@ export class DetectionEngine {
 
   setAnalyser(analyser: AnalyserNode): void {
     this.analyser = analyser;
+    this.timeBuffer = new Float32Array(analyser.fftSize);
   }
 
   // ============================================================================
-  // Noise Calibration (GuitarTuna-style)
+  // Noise Calibration
   // ============================================================================
 
   startNoiseCalibration(): void {
     if (!this.analyser) return;
-    
     this.isCalibrating = true;
     this.calibrationFrames = 0;
     const bufferLength = this.analyser.frequencyBinCount;
@@ -244,20 +189,16 @@ export class DetectionEngine {
     if (!this.isCalibrating || !this.calibrationBuffer) return null;
 
     this.calibrationFrames++;
-    
-    // Accumulate linear amplitudes
     for (let b = 0; b < freqData.length; b++) {
       const linAmp = Math.pow(10, freqData[b] / 20);
       this.calibrationBuffer[b] += linAmp;
     }
 
-    if (this.calibrationFrames >= 80) { // ~2 seconds at 60fps
-      // Average
+    if (this.calibrationFrames >= 80) {
       for (let b = 0; b < this.calibrationBuffer.length; b++) {
         this.calibrationBuffer[b] /= this.calibrationFrames;
       }
       
-      // Calculate noise floor
       let maxDb = -120;
       for (let i = 0; i < freqData.length; i++) {
         if (freqData[i] > maxDb) maxDb = freqData[i];
@@ -272,7 +213,6 @@ export class DetectionEngine {
       
       this.isCalibrating = false;
       this.calibrationBuffer = null;
-      
       return { complete: true, noiseFloorDb: maxDb };
     }
     
@@ -285,7 +225,6 @@ export class DetectionEngine {
 
   applySpectralSubtraction(rawAmps: Float32Array): Float32Array {
     const cleanAmps = new Float32Array(rawAmps.length);
-    
     if (this.noiseProfile?.calibrated && this.noiseProfile.amps) {
       for (let b = 0; b < rawAmps.length; b++) {
         cleanAmps[b] = Math.max(0, rawAmps[b] - this.noiseProfile.amps[b] * this.config.oversubtraction);
@@ -293,8 +232,83 @@ export class DetectionEngine {
     } else {
       cleanAmps.set(rawAmps);
     }
-    
     return cleanAmps;
+  }
+
+  // ============================================================================
+  // Time-Domain Autocorrelation (Rock-Solid Monophonic Single Note Detection)
+  // ============================================================================
+
+  fastAutocorrelate(timeBuf: Float32Array, sampleRate: number): { freq: number; confidence: number; rms: number } {
+    const bufLen = timeBuf.length;
+    let sumSquares = 0;
+    for (let i = 0; i < bufLen; i++) {
+      const val = timeBuf[i];
+      sumSquares += val * val;
+    }
+    const rms = Math.sqrt(sumSquares / bufLen);
+    if (rms < 0.007) return { freq: -1, confidence: 0, rms };
+
+    const minPeriod = Math.floor(sampleRate / 850); // ~51 samples (G5)
+    const maxPeriod = Math.floor(sampleRate / 68);  // ~648 samples (Drop D ~73 Hz)
+    const windowLen = 1024;
+    if (windowLen + maxPeriod > bufLen) return { freq: -1, confidence: 0, rms };
+
+    let energy0 = 0;
+    for (let i = 0; i < windowLen; i++) {
+      energy0 += timeBuf[i] * timeBuf[i];
+    }
+    if (energy0 < 1e-5) return { freq: -1, confidence: 0, rms };
+
+    let bestPeriod = -1;
+    let maxCorr = -1;
+    const correlations = new Float32Array(maxPeriod + 2);
+    let pastZeroDip = false;
+
+    for (let lag = minPeriod; lag <= maxPeriod; lag++) {
+      let dot = 0;
+      let energyLag = 0;
+      for (let i = 0; i < windowLen; i++) {
+        const v0 = timeBuf[i];
+        const vk = timeBuf[i + lag];
+        dot += v0 * vk;
+        energyLag += vk * vk;
+      }
+      const norm = Math.sqrt(energy0 * energyLag) + 1e-9;
+      const r = dot / norm;
+      correlations[lag] = r;
+
+      if (!pastZeroDip && r < 0.20) pastZeroDip = true;
+      if (pastZeroDip && r > maxCorr) {
+        maxCorr = r;
+        bestPeriod = lag;
+      }
+    }
+
+    if (maxCorr < 0.45 || bestPeriod <= 0) {
+      return { freq: -1, confidence: maxCorr > 0 ? maxCorr : 0, rms };
+    }
+
+    // First-peak selection to eliminate subharmonic octave doubling (preventing 2*T trap)
+    let chosenPeriod = bestPeriod;
+    for (let lag = minPeriod + 1; lag < bestPeriod - 2; lag++) {
+      if (correlations[lag] > correlations[lag - 1] &&
+          correlations[lag] > correlations[lag + 1] &&
+          correlations[lag] >= maxCorr * 0.82) {
+        chosenPeriod = lag;
+        break;
+      }
+    }
+
+    // Parabolic sub-sample peak refinement
+    const alpha = correlations[chosenPeriod - 1];
+    const beta = correlations[chosenPeriod];
+    const gamma = correlations[chosenPeriod + 1];
+    const delta = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma + 1e-9);
+    const refinedPeriod = chosenPeriod + delta;
+    const freq = sampleRate / refinedPeriod;
+
+    return { freq, confidence: beta, rms };
   }
 
   // ============================================================================
@@ -306,26 +320,15 @@ export class DetectionEngine {
     const minBin = Math.floor(this.config.minFreq / binWidth);
     const maxBin = Math.min(cleanAmps.length - 2, Math.ceil(this.config.maxFreq / binWidth));
 
-    // Threshold relative to the frame's strongest bin, so peak detection is
-    // independent of absolute mic level (with a tiny absolute floor to reject
-    // near-silence). Fixes quiet built-in mics detecting nothing.
-    let maxAmp = 0;
-    for (let b = minBin; b <= maxBin; b++) {
-      if (cleanAmps[b] > maxAmp) maxAmp = cleanAmps[b];
-    }
-    const peakThreshold = Math.max(3e-5, maxAmp * 0.08);
-
     const peaks: DetectedPeak[] = [];
 
     for (let b = minBin; b <= maxBin; b++) {
       const val = cleanAmps[b];
-      if (val > peakThreshold && val > cleanAmps[b - 1] && val > cleanAmps[b + 1]) {
-        // Sub-bin parabolic peak interpolation
+      if (val > 0.0016 && val > cleanAmps[b - 1] && val > cleanAmps[b + 1]) {
         const alpha = cleanAmps[b - 1];
         const beta = cleanAmps[b];
         const gamma = cleanAmps[b + 1];
-        const denom = (alpha - 2 * beta + gamma);
-        const delta = denom !== 0 ? 0.5 * (alpha - gamma) / denom : 0;
+        const delta = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma + 1e-9);
         const interpBin = b + delta;
         const peakFreq = interpBin * binWidth;
         
@@ -333,14 +336,11 @@ export class DetectionEngine {
         const nearestPitch = Math.round(midi);
         const pitchClass = ((nearestPitch % 12) + 12) % 12;
         
-        // Frequency weighting (lower frequencies get more weight for fundamentals)
-        const freqWeight = Math.min(2.5, Math.max(0.65, peakFreq / 240));
-        
         peaks.push({
           freq: peakFreq,
           midi,
           note: NOTE_NAMES[pitchClass],
-          amp: val * freqWeight, // Apply weighting directly to amplitude
+          amp: val,
           pitchClass,
           bin: interpBin,
         });
@@ -350,17 +350,13 @@ export class DetectionEngine {
     return peaks;
   }
 
-  // ============================================================================
-  // Extract Real-time Ringing Notes from Peaks
-  // ============================================================================
-
   extractRingingNotes(peaks: DetectedPeak[]): Array<{ note: NoteName; freq: number; octave: number; amp: number; cents: number }> {
     if (!peaks || peaks.length === 0) return [];
     const sorted = [...peaks].sort((a, b) => b.amp - a.amp);
     const seenPcs = new Set<number>();
     const ringing: Array<{ note: NoteName; freq: number; octave: number; amp: number; cents: number }> = [];
     for (const pk of sorted) {
-      if (!seenPcs.has(pk.pitchClass) && ringing.length < 6) {
+      if (!seenPcs.has(pk.pitchClass) && ringing.length < 5) {
         seenPcs.add(pk.pitchClass);
         const oct = Math.floor(pk.midi / 12) - 1;
         const nearestMidi = Math.round(pk.midi);
@@ -378,29 +374,6 @@ export class DetectionEngine {
   }
 
   // ============================================================================
-  // Harmonic Overtone Whitening
-  // ============================================================================
-
-  whitenHarmonics(chroma: Float32Array, peaks: DetectedPeak[]): void {
-    if (peaks.length === 0) return;
-    
-    peaks.forEach(pk => {
-      // Suppress 2nd and 3rd harmonics of low fundamentals
-      if (pk.freq < 380 && pk.amp > 0.035) {
-        // 3rd harmonic
-        const thirdMidi = Math.round(69 + 12 * Math.log2((pk.freq * 3) / 440));
-        const thirdPc = ((thirdMidi % 12) + 12) % 12;
-        chroma[thirdPc] = Math.max(0, chroma[thirdPc] - pk.amp * 0.35);
-        
-        // 2nd harmonic
-        const secondMidi = Math.round(69 + 12 * Math.log2((pk.freq * 2) / 440));
-        const secondPc = ((secondMidi % 12) + 12) % 12;
-        chroma[secondPc] = Math.max(0, chroma[secondPc] - pk.amp * 0.20);
-      }
-    });
-  }
-
-  // ============================================================================
   // Build Chroma Vector
   // ============================================================================
 
@@ -411,9 +384,6 @@ export class DetectionEngine {
       const freqWeight = Math.min(2.5, Math.max(0.65, pk.freq / 240));
       rawChroma[pk.pitchClass] += pk.amp * freqWeight;
     });
-    
-    // Whiten harmonics
-    this.whitenHarmonics(rawChroma, peaks);
     
     // Normalize
     let maxChroma = 0;
@@ -428,63 +398,13 @@ export class DetectionEngine {
   }
 
   // ============================================================================
-  // Single Note vs Chord Discrimination
-  // ============================================================================
-
-  discriminateMode(
-    smoothedChroma: Float32Array, 
-    peaks: DetectedPeak[]
-  ): { isSingleNote: boolean; dominantPc: number; maxChromaEnergy: number; sumEnergy: number; activePitchClasses: number } {
-    let activePitchClasses = 0;
-    let dominantPc = -1;
-    let maxChromaEnergy = 0;
-    let sumEnergy = 0;
-    
-    for (let i = 0; i < 12; i++) {
-      sumEnergy += smoothedChroma[i];
-      if (smoothedChroma[i] > maxChromaEnergy) {
-        maxChromaEnergy = smoothedChroma[i];
-        dominantPc = i;
-      }
-      if (smoothedChroma[i] > 0.28) {
-        activePitchClasses++;
-      }
-    }
-    
-    // Find lowest plausible fundamental
-    const strongestPeak = peaks[0];
-    const lowCandidates = peaks.filter(p => 
-      p.freq >= 75 && p.freq <= 450 && 
-      p.amp >= (strongestPeak ? strongestPeak.amp * 0.25 : 0)
-    );
-    lowCandidates.sort((a, b) => a.freq - b.freq);
-    const fundamentalFreq = (lowCandidates.length > 0) ? lowCandidates[0].freq : (strongestPeak ? strongestPeak.freq : 0);
-    
-    // Check harmonic multiples
-    let harmonicMatchCount = 0;
-    peaks.forEach(p => {
-      const ratio = p.freq / (fundamentalFreq || 1);
-      const near = Math.round(ratio);
-      if (near >= 1 && near <= 7 && Math.abs(ratio - near) < 0.09) {
-        harmonicMatchCount++;
-      }
-    });
-    
-    const isSingleNote = (activePitchClasses <= 1) || 
-                         (maxChromaEnergy / (sumEnergy + 1e-6) >= 0.56) ||
-                         (peaks.length > 0 && harmonicMatchCount >= peaks.length * 0.70 && activePitchClasses <= 2);
-    
-    return { isSingleNote, dominantPc, maxChromaEnergy, sumEnergy, activePitchClasses };
-  }
-
-  // ============================================================================
   // Single Note Processing
   // ============================================================================
 
   processSingleNote(
     f0: number, 
     peaks: DetectedPeak[], 
-    dominantPc: number,
+    _dominantPc?: number,
     tuning: StringTuning[] = STANDARD_TUNING
   ): DetectionResult {
     const midi = 69 + 12 * Math.log2(f0 / 440);
@@ -492,18 +412,12 @@ export class DetectionEngine {
     const pitch = midiToPitch(roundMidi);
     const cents = Math.round((midi - roundMidi) * 100);
     
-    // Guitar position
     const guitarPos = this.findGuitarPosition(roundMidi, tuning);
-    
     const tunerVerdict: 'in-tune' | 'flat' | 'sharp' = 
       Math.abs(cents) <= 4 ? 'in-tune' : (cents < 0 ? 'flat' : 'sharp');
-    
-    // Update smoothed chroma for UI
-    for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.25;
-    this.smoothedChroma[dominantPc] = 1;
 
     const ringingNotes = this.extractRingingNotes(peaks);
-    this.noteSustainHoldUntil = Date.now() + 650;
+    this.noteSustainHoldUntil = Date.now() + 500;
     
     const result: DetectionResult = {
       mode: 'single-note',
@@ -517,8 +431,8 @@ export class DetectionEngine {
       chroma: new Float32Array(this.smoothedChroma),
       peaks,
       ringingNotes,
-      spectrum: new Float32Array(0), // filled by caller
-      signalLevelDb: 0, // filled by caller
+      spectrum: new Float32Array(0),
+      signalLevelDb: 0,
       statusMessage: `Plucked Note: ${pitch.note}${pitch.octave} (${pitch.freq.toFixed(1)} Hz) • Listening...`,
     };
 
@@ -527,7 +441,7 @@ export class DetectionEngine {
   }
 
   // ============================================================================
-  // Chord Processing (Template Correlation + Hysteresis)
+  // Chord Processing (Template Correlation + 7th Disambiguation + Hysteresis)
   // ============================================================================
 
   processChord(
@@ -544,7 +458,7 @@ export class DetectionEngine {
       corr: number;
     }> = [];
 
-    // Template correlation for all roots and qualities
+    // Template correlation for all 12 roots and 10 qualities
     for (let root = 0; root < 12; root++) {
       const rootName = NOTE_NAMES[root];
       
@@ -575,18 +489,36 @@ export class DetectionEngine {
       });
     }
 
-    // Incumbent hysteresis bonus (expires after 700ms so new chord transitions are not blocked)
-    const isIncumbentValid = this.lastLockedChord && (Date.now() - this.lastLockedTime < 700);
-    if (isIncumbentValid) {
-      matches.forEach(m => {
-        if (this.lastLockedChord === m.short) {
-          m.corr += 0.05;
-        }
-      });
-    }
+    // Incumbent hysteresis bonus (+0.05)
+    matches.forEach(m => {
+      if (this.lastLockedChord === m.short) {
+        m.corr += 0.05;
+      }
+    });
 
     matches.sort((a, b) => b.corr - a.corr);
     let best = matches[0];
+
+    // 7th Note Disambiguation & Gating Engine (Am vs Am7, C vs Cmaj7)
+    const rootIdx = NOTE_NAMES.indexOf(best.root as NoteName);
+    const isMinor = best.quality.includes("Minor") || best.quality.includes("m7");
+    const triadQuality = isMinor ? "Minor" : "Major";
+    const triadMatch = matches.find(m => m.root === best.root && m.quality === triadQuality);
+
+    const seventhInterval = (best.quality === "Major 7th") ? 11 : 10;
+    const thirdInterval = isMinor ? 3 : 4;
+    const rootEnergy = smoothedChroma[rootIdx];
+    const thirdEnergy = smoothedChroma[(rootIdx + thirdInterval) % 12];
+    const fifthEnergy = smoothedChroma[(rootIdx + 7) % 12];
+    const seventhEnergy = smoothedChroma[(rootIdx + seventhInterval) % 12];
+    const triadAvg = (rootEnergy + thirdEnergy + fifthEnergy) / 3;
+    const seventhRatio = seventhEnergy / (triadAvg + 0.001);
+
+    if (best.quality.includes("7") || best.quality.includes("7th")) {
+      if (triadMatch && seventhRatio < this.config.seventhStrictness) {
+        best = triadMatch;
+      }
+    }
 
     // Consensus voting buffer (3 frames)
     this.candidateVoteHistory.push(best.short);
@@ -595,14 +527,18 @@ export class DetectionEngine {
     const voteCount = this.candidateVoteHistory.filter(c => c === best.short).length;
     const isConsensusWinner = (voteCount >= 2) || (best.corr >= 0.32);
 
-    // Reject non-tonal input (noise, room hum, string transitions): the best
-    // template must actually correlate. Empirical acoustic guitar correlation
-    // threshold is 0.28 to account for physical string inharmonicity and wood resonance.
+    const topCandidates = matches.slice(0, 3).map(m => ({
+      symbol: m.short,
+      confidence: Math.min(99, Math.max(0, Math.round(m.corr * 100))),
+      name: m.name,
+    }));
+
     const MIN_CHORD_CORR = 0.18;
     if (best.corr < MIN_CHORD_CORR || !isConsensusWinner) {
       return {
         mode: 'idle',
         timestamp: Date.now(),
+        chord: this.lastDetectedChordSnapshot?.chord,
         chroma: new Float32Array(smoothedChroma),
         peaks,
         ringingNotes: this.extractRingingNotes(peaks),
@@ -612,37 +548,23 @@ export class DetectionEngine {
       };
     }
 
-    let confidencePct = '0%';
-    let activeNotes: NoteName[] = [];
-    let intervalsStr = best.formula;
-
-    if (best && best.corr > 0.18 && isConsensusWinner) {
-      confidencePct = Math.min(99, Math.round(best.corr * 100)) + '%';
-      
-      const rootIdx2 = NOTE_NAMES.indexOf(best.root as NoteName);
-      for (let i = 0; i < 12; i++) {
-        if (smoothedChroma[i] > 0.28) activeNotes.push(NOTE_NAMES[i]);
-      }
-      
-      // Western degree intervals relative to root (1 - b3 - 5)
-      intervalsStr = activeNotes.map(n => {
-        const noteIdx = NOTE_NAMES.indexOf(n);
-        const diff = (noteIdx - rootIdx2 + 12) % 12;
-        return DEGREE_NAMES[diff];
-      }).join(' - ');
-      
-      this.lastLockedChord = best.short;
-      this.lastLockedTime = Date.now();
-      this.chordSustainHoldUntil = Date.now() + 650; // v1 value: short sustain, doesn't block new detection
-      this.confirmedChordCount++;
+    const confidencePct = Math.min(99, Math.round(best.corr * 100)) + '%';
+    const activeNotes: NoteName[] = [];
+    const rootIdx2 = NOTE_NAMES.indexOf(best.root as NoteName);
+    for (let i = 0; i < 12; i++) {
+      if (smoothedChroma[i] > 0.32) activeNotes.push(NOTE_NAMES[i]);
     }
+    
+    const intervalsStr = activeNotes.map(n => {
+      const noteIdx = NOTE_NAMES.indexOf(n);
+      const diff = (noteIdx - rootIdx2 + 12) % 12;
+      return DEGREE_NAMES[diff];
+    }).join(' - ');
+    
+    this.lastLockedChord = best.short;
+    this.chordSustainHoldUntil = Date.now() + 650;
 
     const ringingNotes = this.extractRingingNotes(peaks);
-    const topCandidates = matches.slice(0, 3).map(m => ({
-      symbol: m.short,
-      confidence: Math.min(99, Math.max(0, Math.round(m.corr * 100))),
-      name: m.name,
-    }));
 
     const result: DetectionResult = {
       mode: 'chord',
@@ -652,7 +574,7 @@ export class DetectionEngine {
         root: best.root as NoteName,
         quality: best.quality as ChordQuality,
         confidence: parseInt(confidencePct),
-        activeNotes: activeNotes,
+        activeNotes: activeNotes.length > 0 ? activeNotes : [best.root as NoteName],
         intervals: intervalsStr || best.formula,
         formula: best.formula,
         sargam: intervalsStr || best.formula,
@@ -663,15 +585,10 @@ export class DetectionEngine {
       ringingNotes,
       spectrum: new Float32Array(0),
       signalLevelDb: 0,
-      statusMessage: parseInt(confidencePct) >= 28 
-        ? `Confirmed Chord: ${best.short} (${confidencePct}) • Listening for next change...` 
-        : 'Detecting guitar chord...',
+      statusMessage: `Confirmed Chord: ${best.short} (${confidencePct}) • Listening for next change...`,
     };
 
-    if (parseInt(confidencePct) >= 28) {
-      this.lastDetectedChordSnapshot = result;
-    }
-
+    this.lastDetectedChordSnapshot = result;
     return result;
   }
 
@@ -712,77 +629,49 @@ export class DetectionEngine {
       totalGuitarBandEnergy += cleanAmps[i];
     }
 
-    // 5. Responsive Attack Detection (sensitive to quiet mics and distinct strums)
-    const energyDiff = totalGuitarBandEnergy - this.prevFrameBandEnergy;
-    const energyRatio = totalGuitarBandEnergy / (this.prevFrameBandEnergy + 1e-6);
+    // 5. Responsive Attack Detection (32ms energy flux)
+    const energyFlux = totalGuitarBandEnergy - this.prevFrameBandEnergy;
     this.prevFrameBandEnergy = totalGuitarBandEnergy;
-
-    const isNewAttack = (energyRatio > 1.30 && totalGuitarBandEnergy > 0.0003) ||
-                        (energyDiff > 0.0035);
+    const isNewAttack = energyFlux > 0.02; // increased threshold to avoid false triggers
     if (isNewAttack) {
-      // Release previous chord lock instantly on new strum attack!
       this.lastLockedChord = null;
       this.candidateVoteHistory = [];
       this.chordSustainHoldUntil = 0;
       this.noteSustainHoldUntil = 0;
     }
 
-    // Adaptive gate: the signal must rise a margin above the learned ambient
-    // floor. This works for quiet laptop mics and loud interfaces alike,
-    // instead of a fixed absolute dB/energy threshold that only fit one setup.
-    // The noise-gate slider (0-50) widens the margin for noisy rooms.
-    const signalMarginDb = 4 + Math.max(0, this.config.noiseGateDb) * 0.22;
-    const floorBaseline = this.noiseProfile?.calibrated
-      ? Math.max(this.runningNoiseFloorDb, this.noiseProfile.measuredNoiseFloorDb)
-      : this.runningNoiseFloorDb;
+    // 6. Signal presence check (matching V1 thresholds)
+    const minEnergyThreshold = this.noiseProfile?.calibrated ? 0.008 : 0.012;
+    const minDbThreshold = this.noiseProfile?.calibrated 
+      ? (this.noiseProfile.measuredNoiseFloorDb + 2.0) 
+      : -74;
+    const meterVal = Math.max(0, Math.min(100, (maxDb + 75) * 1.66));
+    const gatePercent = Math.max(3, (this.config.noiseGateDb / 50) * 18);
 
-    const isRawSignalPresent = (maxDb > floorBaseline + signalMarginDb) &&
-                               (totalGuitarBandEnergy > 2.5e-4);
+    const isRawSignalPresent = (totalGuitarBandEnergy > minEnergyThreshold) && 
+                               (maxDb > minDbThreshold) && 
+                               (meterVal >= gatePercent);
 
-    // Learn the ambient floor from frames without a clear signal so sustained
-    // playing doesn't inflate it. Clamp to a sane range.
-    if (!isRawSignalPresent) {
-      this.runningNoiseFloorDb = Math.max(
-        -120,
-        Math.min(-20, this.runningNoiseFloorDb * 0.9 + maxDb * 0.1),
-      );
-    }
-
-    // Sustain hold check during inter-strum finger transition
     let isSignalPresent = isRawSignalPresent;
     if (!isRawSignalPresent) {
       if (now < this.chordSustainHoldUntil && this.lastDetectedChordSnapshot) {
-        return {
-          ...this.lastDetectedChordSnapshot,
-          timestamp: now,
-          isSustained: true,
-          signalLevelDb: maxDb,
-          statusMessage: `Sustaining ${this.lastDetectedChordSnapshot.chord?.symbol || ''} • Listening for next change...`,
-        };
+        isSignalPresent = true;
       } else if (now < this.noteSustainHoldUntil && this.lastDetectedNoteSnapshot) {
-        return {
-          ...this.lastDetectedNoteSnapshot,
-          timestamp: now,
-          isSustained: true,
-          signalLevelDb: maxDb,
-          statusMessage: `Sustaining note • Listening for next change...`,
-        };
+        isSignalPresent = true;
       }
     }
 
+    // 7. Handle Silence (Full state reset)
     if (!isSignalPresent) {
-      // True silence past sustain hold — full reset like v1
-      for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.82;
-      
       this.consecutiveNoteFrames = 0;
       this.consecutiveChordFrames = 0;
       this.currentDisplayMode = 'idle';
-      this.lastLockedChord = null;
-      this.candidateVoteHistory = [];
-      // Clear snapshots so engine fully resets for next strum (v1 behavior)
       this.lastDetectedChordSnapshot = null;
       this.lastDetectedNoteSnapshot = null;
-      
+      this.lastLockedChord = null;
+      this.candidateVoteHistory = [];
+      for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.85;
+
       return {
         mode: 'idle',
         timestamp: now,
@@ -795,52 +684,37 @@ export class DetectionEngine {
       };
     }
 
-    // 6. Peak extraction
-    const peaks = this.extractPeaks(cleanAmps, sampleRate);
-    if (peaks.length === 0) {
-      for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.82;
-      return {
-        mode: 'idle',
-        timestamp: now,
-        chroma: new Float32Array(this.smoothedChroma),
-        peaks: [],
-        ringingNotes: [],
-        spectrum: freqData,
-        signalLevelDb: maxDb,
-        statusMessage: 'Listening...',
-      };
+    // 8. Time-domain Autocorrelation for Monophonic Pitch Extraction
+    if (!this.timeBuffer || this.timeBuffer.length !== this.analyser.fftSize) {
+      this.timeBuffer = new Float32Array(this.analyser.fftSize);
     }
+    this.analyser.getFloatTimeDomainData(this.timeBuffer as any);
+    const autoCorr = this.fastAutocorrelate(this.timeBuffer, sampleRate);
 
-    // 7. Build chroma
-    let rawChroma = this.buildChroma(peaks);
+    // 9. Peak extraction
+    const peaks = this.extractPeaks(cleanAmps, sampleRate);
+    peaks.sort((a, b) => b.amp - a.amp);
 
-    // 8. Dynamic smoothing: on attack, immediately reset chroma so new chord isn't contaminated by old one
+    // 10. Build Chroma
+    const rawChroma = this.buildChroma(peaks);
+
+    // 11. Dynamic Smoothing
     if (isNewAttack) {
       for (let i = 0; i < 12; i++) this.smoothedChroma[i] = rawChroma[i];
     } else {
-      const alpha = 0.40;
+      const alpha = 0.50;
       for (let i = 0; i < 12; i++) {
         this.smoothedChroma[i] = (1 - alpha) * this.smoothedChroma[i] + alpha * rawChroma[i];
       }
     }
 
-    // 9. Mode discrimination
-    const strongestPeak = peaks[0];
-    const lowCandidates = peaks.filter(p => 
-      p.freq >= 75 && p.freq <= 450 && 
-      p.amp >= (strongestPeak ? strongestPeak.amp * 0.25 : 0)
-    );
-    lowCandidates.sort((a, b) => a.freq - b.freq);
-    const f0 = (lowCandidates.length > 0) ? lowCandidates[0].freq : (strongestPeak ? strongestPeak.freq : 0);
+    // 12. Single Note vs Chord Discrimination (Time-Domain Autocorrelation, V1 Proven)
+    const hasDominantSinglePeak = peaks.length === 1 ||
+      (peaks.length >= 2 && peaks[0].amp > 2.5 * peaks[1].amp);
+    const isSingleNote = (autoCorr.freq >= 70 && autoCorr.freq <= 850) &&
+                         (autoCorr.confidence >= 0.60 || (autoCorr.confidence >= 0.48 && hasDominantSinglePeak));
 
-    const { isSingleNote, dominantPc, activePitchClasses } = this.discriminateMode(
-      this.smoothedChroma, 
-      peaks
-    );
-
-    // 10. Hysteresis mode switching (anti-fluctuation)
-    const definitelyChord = activePitchClasses >= 3;
-    if (isSingleNote && !definitelyChord && f0 >= 75) {
+    if (isSingleNote) {
       this.consecutiveNoteFrames++;
       this.consecutiveChordFrames = 0;
     } else {
@@ -849,10 +723,16 @@ export class DetectionEngine {
     }
 
     const allowModeSwitchToNote = this.consecutiveNoteFrames >= 2;
-    const allowModeSwitchToChord = this.consecutiveChordFrames >= 1;
+    const allowModeSwitchToChord = this.consecutiveChordFrames >= 2;
 
-    if ((this.currentDisplayMode === 'note' && !allowModeSwitchToChord) || (allowModeSwitchToNote && !definitelyChord)) {
+    if ((this.currentDisplayMode === 'note' && !allowModeSwitchToChord) || allowModeSwitchToNote) {
       this.currentDisplayMode = 'note';
+      this.noteSustainHoldUntil = now + 500;
+      this.lastLockedChord = null;
+      for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.35;
+
+      const f0 = autoCorr.freq > 0 ? autoCorr.freq : (peaks[0]?.freq || 0);
+      const dominantPc = peaks[0]?.pitchClass ?? 0;
       return this.processSingleNote(f0, peaks, dominantPc, tuning);
     } else {
       this.currentDisplayMode = 'chord';
@@ -885,62 +765,6 @@ export class DetectionEngine {
   }
 
   // ============================================================================
-  // Polyphonic Tuner (6-string)
-  // ============================================================================
-
-  processPolyphonicTuner(
-    peaks: DetectedPeak[],
-    tuning: StringTuning[] = STANDARD_TUNING
-  ): DetectionResult {
-    const strings = tuning.map((str, stringIndex) => {
-      const targetFreq = str.freq;
-      const targetMidi = str.midi;
-      
-      // Find closest peak to this string's fundamental
-      let bestPeak: DetectedPeak | null = null;
-      let bestDiff = Infinity;
-      
-      for (const pk of peaks) {
-        const diff = Math.abs(pk.freq - targetFreq);
-        if (diff < bestDiff && diff < targetFreq * 0.15) { // within ~15%
-          bestDiff = diff;
-          bestPeak = pk;
-        }
-      }
-      
-      if (bestPeak) {
-        const detectedMidi = 69 + 12 * Math.log2(bestPeak.freq / 440);
-        const cents = Math.round((detectedMidi - targetMidi) * 100);
-        return {
-          stringIndex,
-          targetFreq,
-          detectedFreq: bestPeak.freq,
-          cents,
-          inTune: Math.abs(cents) <= 4,
-        };
-      }
-      
-      return {
-        stringIndex,
-        targetFreq,
-        detectedFreq: null,
-        cents: null,
-        inTune: false,
-      };
-    });
-
-    return {
-      mode: 'polyphonic-tuner',
-      timestamp: Date.now(),
-      polyphonicTuner: { strings },
-      chroma: new Float32Array(this.smoothedChroma),
-      peaks,
-      spectrum: new Float32Array(0),
-      signalLevelDb: 0,
-    };
-  }
-
-  // ============================================================================
   // Getters
   // ============================================================================
 
@@ -959,21 +783,14 @@ export class DetectionEngine {
   reset(): void {
     this.smoothedChroma.fill(0);
     this.prevFrameBandEnergy = 0;
-    this.runningNoiseFloorDb = -95;
     this.candidateVoteHistory = [];
     this.lastLockedChord = null;
-    this.lastLockedTime = 0;
     this.lastDetectedChordSnapshot = null;
     this.lastDetectedNoteSnapshot = null;
     this.chordSustainHoldUntil = 0;
     this.noteSustainHoldUntil = 0;
-    this.confirmedChordCount = 0;
     this.consecutiveNoteFrames = 0;
     this.consecutiveChordFrames = 0;
     this.currentDisplayMode = 'idle';
-    if (this.lockCooldownTimer) {
-      clearTimeout(this.lockCooldownTimer);
-      this.lockCooldownTimer = null;
-    }
   }
 }
