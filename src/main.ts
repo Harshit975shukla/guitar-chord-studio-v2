@@ -339,8 +339,8 @@ export async function startMicrophone(): Promise<boolean> {
     appState.micGainNode.gain.value = appState.settings.micGain || 4.0;
     
     appState.analyser = appState.audioContext.createAnalyser();
-    appState.analyser.fftSize = 4096;
-    appState.analyser.smoothingTimeConstant = 0.10;
+    appState.analyser.fftSize = 8192; // fixed for continuous detection
+    appState.analyser.smoothingTimeConstant = 0.12;
     
     appState.detectionEngine.setAnalyser(appState.analyser);
     appState.detectionEngine.setConfig({
@@ -348,7 +348,7 @@ export async function startMicrophone(): Promise<boolean> {
       seventhStrictness: appState.settings.seventhStrictness,
       triggerMode: appState.settings.triggerMode,
       micGainMultiplier: appState.settings.micGain,
-      fftSize: 4096,
+      fftSize: 8192,
     });
     
     // Connect: source -> highpass -> lowpass -> gain -> analyser
@@ -358,19 +358,24 @@ export async function startMicrophone(): Promise<boolean> {
     appState.micGainNode.connect(appState.analyser);
     
     appState.isListening = true;
+    appState.detectionEngine.reset();
+    
+    // Start detection loop
     startDetectionLoop();
     
+    // Update UI
     updateMicUI(true);
+    
     return true;
-  } catch (err) {
-    console.error('Microphone access error:', err);
-    alert('Microphone could not be accessed. Please check permissions.');
+  } catch (error) {
+    console.error('Failed to start microphone:', error);
+    alert('Could not access microphone. Please check permissions in your browser settings.');
     return false;
   }
 }
 
 export function stopMicrophone(): void {
-  appState.isListening = false;
+  if (!appState.isListening) return;
   
   if (appState.micStream) {
     appState.micStream.getTracks().forEach(track => track.stop());
@@ -382,46 +387,38 @@ export function stopMicrophone(): void {
     appState.animationFrameId = null;
   }
   
+  appState.isListening = false;
   appState.detectionEngine.reset();
   updateMicUI(false);
 }
 
 function startDetectionLoop(): void {
-  let lastDspTimestamp = 0;
-  let staticFreqBuffer: Float32Array<ArrayBuffer> | null = null;
-
   const loop = () => {
     if (!appState.isListening || !appState.analyser || !appState.audioContext) return;
     
     const bufferLength = appState.analyser.frequencyBinCount;
-    if (!staticFreqBuffer || staticFreqBuffer.length !== bufferLength) {
-      staticFreqBuffer = new Float32Array(bufferLength);
-    }
-    appState.analyser.getFloatFrequencyData(staticFreqBuffer);
+    const freqData = new Float32Array(bufferLength);
+    appState.analyser.getFloatFrequencyData(freqData);
     
-    // Visual meters and spectrum update at 60 FPS
-    updateLevelMeter(staticFreqBuffer);
-    updateSpectrumVisualizer(staticFreqBuffer);
+    // Process frame
+    const result = appState.detectionEngine.processFrame(
+      freqData, 
+      appState.audioContext.sampleRate,
+      appState.effectiveTuning
+    );
     
-    // DSP throttle: run audio peak extraction, autocorrelation, and template matching every ~30ms
-    const now = performance.now();
-    if (now - lastDspTimestamp >= 30) {
-      lastDspTimestamp = now;
-      const result = appState.detectionEngine.processFrame(
-        staticFreqBuffer, 
-        appState.audioContext.sampleRate,
-        appState.effectiveTuning
-      );
-      
-      if (result) {
-        handleDetectionResult(result, staticFreqBuffer);
-      }
+    if (result) {
+      handleDetectionResult(result, freqData);
     }
+    
+    // Update UI meters
+    updateLevelMeter(freqData);
+    updateSpectrumVisualizer(freqData);
     
     appState.animationFrameId = requestAnimationFrame(loop);
   };
   
-  loop();
+  appState.animationFrameId = requestAnimationFrame(loop);
 }
 
 function handleDetectionResult(result: DetectionResult, spectrum: Float32Array): void {
