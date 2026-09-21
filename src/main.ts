@@ -1062,7 +1062,14 @@ export function endSession(): void {
 
 export function switchTab(tabId: string): void {
   appState.activeTab = tabId;
-  
+
+  // Stop transport players when navigating away from their own tab, so their
+  // audio doesn't keep sounding on other tabs (e.g. a song/rhythm/metronome
+  // still playing while you're on the Tuner).
+  if (tabId !== 'metronome') stopMetronome();
+  if (tabId !== 'rhythm' && rhythmPlaying) toggleRhythmPlayback();
+  if (tabId !== 'songs') appState.songStudio.stopPlayback();
+
   // Update tab buttons
   document.querySelectorAll('.studio-tab-btn').forEach(btn => {
     const button = btn as HTMLElement;
