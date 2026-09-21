@@ -175,6 +175,8 @@ export interface NoiseProfile {
 // Detection Config
 // ============================================================================
 
+export type DetectionTargetMode = 'auto' | 'chords' | 'notes';
+
 export interface DetectionConfig {
   fftSize: number;
   smoothingTimeConstant: number;
@@ -184,6 +186,7 @@ export interface DetectionConfig {
   micGainMultiplier: number;
   seventhStrictness: number;
   triggerMode: 'guitartuna' | 'continuous';
+  targetMode: DetectionTargetMode;
   oversubtraction: number;
 }
 
@@ -196,6 +199,7 @@ export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
   micGainMultiplier: 4.0,
   seventhStrictness: 0.55,
   triggerMode: 'guitartuna',
+  targetMode: 'chords',
   oversubtraction: 1.80,
 };
 
@@ -398,6 +402,7 @@ export interface UserSettings {
   noiseGateDb: number;
   seventhStrictness: number;
   triggerMode: 'guitartuna' | 'continuous';
+  targetMode: DetectionTargetMode;
   acousticModel: AcousticModel;
   monitorEnabled: boolean;
   monitorGain: number;
@@ -425,6 +430,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   noiseGateDb: 18,
   seventhStrictness: 0.55,
   triggerMode: 'guitartuna',
+  targetMode: 'chords',
   acousticModel: 'dreadnought',
   monitorEnabled: false,
   monitorGain: 0.5,

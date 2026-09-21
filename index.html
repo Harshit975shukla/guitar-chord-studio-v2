@@ -845,6 +845,9 @@
             <div class="chord-status-badge" id="strum-hold-badge" style="display:none; background:rgba(255, 179, 0, 0.2); color:#ffd54f;">
               <span>🎸</span> Strum Captured & Locked
             </div>
+            <div class="chord-status-badge" id="target-mode-badge" style="background:rgba(56, 189, 248, 0.15); color:#7dd3fc; border: 1px solid rgba(56, 189, 248, 0.35);">
+              <span>🎯</span> Target: <strong id="target-mode-badge-label" style="margin-left:4px; color:#38bdf8;">Chords Only</strong>
+            </div>
           </div>
 
           <div class="detected-chord-name" id="display-chord-name" aria-live="assertive">Ready</div>
@@ -863,6 +866,19 @@
             <div class="info-pill"><span>Intervals:</span> <strong id="info-intervals">-</strong></div>
             <div class="info-pill" style="display:none;"><strong id="info-sargam">-</strong></div>
             <div class="info-pill"><span>Match:</span> <strong id="info-confidence" style="color:var(--accent-emerald);">-</strong></div>
+          </div>
+
+          <!-- INLINE TUNING GAUGE FOR NOTES MODE -->
+          <div id="live-note-tuning-gauge" style="display:none; margin-top:12px; background:rgba(0,0,0,0.4); border:1px solid rgba(56,189,248,0.3); border-radius:12px; padding:10px 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; margin-bottom:6px;">
+              <span style="color:#38bdf8; font-weight:600;">♭ Flat (-50¢)</span>
+              <span id="live-tuner-verdict" style="font-weight:800; font-size:0.85rem; color:#10b981;">In Tune</span>
+              <span style="color:#f43f5e; font-weight:600;">Sharp (+50¢) ♯</span>
+            </div>
+            <div style="position:relative; height:12px; background:rgba(255,255,255,0.08); border-radius:6px; overflow:hidden; border:1px solid var(--border-light);">
+              <div style="position:absolute; left:50%; top:0; bottom:0; width:4px; background:#10b981; transform:translateX(-50%); z-index:2;"></div>
+              <div id="live-note-needle" style="position:absolute; left:50%; top:0; bottom:0; width:8px; background:var(--accent-gold); border-radius:4px; transform:translateX(-50%); transition:left 0.08s ease-out; box-shadow:0 0 8px rgba(255,179,0,0.8); z-index:3;"></div>
+            </div>
           </div>
 
           <!-- REAL-TIME RINGING NOTES & CONTINUOUS STATUS BAR -->
@@ -941,6 +957,21 @@
 
           <!-- Sensitivity, Noise Gate & Controls -->
           <div class="controls-grid">
+            <!-- Listening Target Mode Selector (Chords Only vs Notes vs Auto) -->
+            <div class="slider-item" style="grid-column: 1 / -1; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 179, 0, 0.28); border-radius: 14px; padding: 14px 18px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; flex-wrap:wrap; gap:6px;">
+                <span style="font-weight:700; color:var(--accent-gold); display:flex; align-items:center; gap:8px; font-size:0.95rem;">
+                  <span>🎯</span> Listening Target:
+                </span>
+                <span style="font-size:0.75rem; color:var(--text-muted);" id="target-mode-explainer">Focuses 100% on chords with strict certainty (no note confusion)</span>
+              </div>
+              <div class="mode-toggle-group" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px; padding:4px;">
+                <button class="mode-pill active" id="btn-target-chords" aria-pressed="true" style="padding: 10px 14px; font-weight:700; font-size:0.82rem;">🎸 Chords Only</button>
+                <button class="mode-pill" id="btn-target-notes" aria-pressed="false" style="padding: 10px 14px; font-weight:700; font-size:0.82rem;">🎵 Notes & Tuner</button>
+                <button class="mode-pill" id="btn-target-auto" aria-pressed="false" style="padding: 10px 14px; font-weight:700; font-size:0.82rem;">🔀 Auto (Smart)</button>
+              </div>
+            </div>
+
             <div class="slider-item">
               <div style="display:flex; justify-content:space-between;">
                 <span>Mic Sensitivity:</span>

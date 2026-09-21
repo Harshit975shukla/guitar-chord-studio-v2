@@ -11,6 +11,7 @@ import {
   TuningPreset,
   Song,
   DetectionResult,
+  DetectionTargetMode,
   ChordVoicing,
   PracticeSession,
   DrillConfig,
@@ -250,6 +251,13 @@ function applySettingsToState(): void {
   const s = appState.settings;
   appState.activeTuning = getTuningPreset(s.activeTuningPreset) || TUNING_PRESETS[0];
   updateEffectiveTuning();
+  appState.detectionEngine.setConfig({
+    noiseGateDb: s.noiseGateDb,
+    seventhStrictness: s.seventhStrictness,
+    triggerMode: s.triggerMode,
+    targetMode: s.targetMode || 'chords',
+    micGainMultiplier: s.micGain,
+  });
 }
 
 function updateEffectiveTuning(): void {
@@ -360,6 +368,7 @@ export async function startMicrophone(): Promise<boolean> {
       noiseGateDb: appState.settings.noiseGateDb,
       seventhStrictness: appState.settings.seventhStrictness,
       triggerMode: appState.settings.triggerMode,
+      targetMode: appState.settings.targetMode || 'chords',
       micGainMultiplier: appState.settings.micGain,
       fftSize: 4096,
     });
@@ -488,7 +497,7 @@ function handleDetectionResult(result: DetectionResult, spectrum: Float32Array):
     }
   
   // Log chord for session and update interactive fretboard
-  if (result.chord && result.chord.symbol !== appState.currentChord) {
+  if (result.mode === 'chord' && result.chord && result.chord.symbol !== appState.currentChord) {
     logChordDetection(result.chord);
     appState.currentChord = result.chord.symbol;
     loadChordPreset(result.chord.symbol);
@@ -603,6 +612,60 @@ export function setTriggerMode(mode: 'guitartuna' | 'continuous'): void {
   if (continuousBtn) {
     continuousBtn.classList.toggle('active', mode === 'continuous');
     continuousBtn.setAttribute('aria-pressed', mode === 'continuous' ? 'true' : 'false');
+  }
+}
+
+export function setTargetMode(mode: DetectionTargetMode): void {
+  appState.settings.targetMode = mode;
+  saveSettings(appState.settings);
+  appState.detectionEngine.setConfig({ targetMode: mode });
+  appState.detectionEngine.reset();
+  
+  const chordsBtn = document.getElementById('btn-target-chords');
+  const notesBtn = document.getElementById('btn-target-notes');
+  const autoBtn = document.getElementById('btn-target-auto');
+  const explainer = document.getElementById('target-mode-explainer');
+  const badgeLabel = document.getElementById('target-mode-badge-label');
+  const tuningGauge = document.getElementById('live-note-tuning-gauge');
+
+  if (chordsBtn) {
+    chordsBtn.classList.toggle('active', mode === 'chords');
+    chordsBtn.setAttribute('aria-pressed', mode === 'chords' ? 'true' : 'false');
+  }
+  if (notesBtn) {
+    notesBtn.classList.toggle('active', mode === 'notes');
+    notesBtn.setAttribute('aria-pressed', mode === 'notes' ? 'true' : 'false');
+  }
+  if (autoBtn) {
+    autoBtn.classList.toggle('active', mode === 'auto');
+    autoBtn.setAttribute('aria-pressed', mode === 'auto' ? 'true' : 'false');
+  }
+  if (badgeLabel) {
+    badgeLabel.textContent = mode === 'chords' ? 'Chords Only' : mode === 'notes' ? 'Notes & Tuner' : 'Auto (Smart)';
+    badgeLabel.style.color = mode === 'chords' ? '#ffd54f' : mode === 'notes' ? '#38bdf8' : '#a78bfa';
+  }
+  if (explainer) {
+    if (mode === 'chords') {
+      explainer.textContent = 'Focuses 100% on chords with strict certainty (no note confusion)';
+    } else if (mode === 'notes') {
+      explainer.textContent = 'Focuses 100% on single notes & chromatic tuner (no chord guessing)';
+    } else {
+      explainer.textContent = 'Smart auto-discriminator between chords and single notes';
+    }
+  }
+  if (tuningGauge) {
+    tuningGauge.style.display = mode === 'notes' ? 'block' : 'none';
+  }
+
+  const substatusEl = document.getElementById('live-detector-substatus');
+  if (substatusEl) {
+    if (mode === 'chords') {
+      substatusEl.textContent = '🎸 Chords Mode Active • Strum full chord cleanly (strict certainty lock)';
+    } else if (mode === 'notes') {
+      substatusEl.textContent = '🎵 Notes & Tuner Mode Active • Pluck single string for pitch & tuning';
+    } else {
+      substatusEl.textContent = '👂 Auto Smart Mode Active • Strum any chord or pluck any string';
+    }
   }
 }
 
@@ -969,6 +1032,7 @@ export function switchTab(tabId: string): void {
   if (tabId === 'transcriber') renderTranscriber();
   if (tabId === 'looper') renderLooper();
   if (tabId === 'recorder') initRecorderTab();
+  if (tabId === 'tuner') populateTunerPegs();
   
   saveCurrentSession({
     activeTab: tabId,
@@ -983,6 +1047,26 @@ export function switchTab(tabId: string): void {
 // ============================================================================
 // UI Update Functions
 // ============================================================================
+
+function populateTunerPegs(): void {
+  const pegsContainer = document.getElementById('tuner-pegs');
+  if (!pegsContainer) return;
+  pegsContainer.innerHTML = '';
+  appState.effectiveTuning.forEach((st, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'studio-tab-btn';
+    btn.style.padding = '8px 12px';
+    btn.style.textAlign = 'center';
+    btn.style.justifyContent = 'center';
+    btn.id = `tuner-peg-${idx}`;
+    const octave = Math.floor(st.midi / 12) - 1;
+    btn.innerHTML = `<div><strong>${st.note}${octave}</strong><br><span style="font-size:0.7rem; color:var(--text-muted);">${st.freq.toFixed(1)}Hz</span></div>`;
+    btn.addEventListener('click', () => {
+      playTestSound();
+    });
+    pegsContainer.appendChild(btn);
+  });
+}
 
 function updateMicUI(listening: boolean): void {
   const btn = document.getElementById('btn-toggle-mic');
@@ -1069,6 +1153,9 @@ function updateChordDisplay(result: DetectionResult): void {
   const c1 = document.getElementById('cand-1');
   const c2 = document.getElementById('cand-2');
   const c3 = document.getElementById('cand-3');
+  const tuningGauge = document.getElementById('live-note-tuning-gauge');
+  const liveNeedle = document.getElementById('live-note-needle');
+  const liveVerdict = document.getElementById('live-tuner-verdict');
   
   if (result.mode === 'single-note' && result.note) {
     nameEl!.innerHTML = `Note: <span style="color:#38bdf8;">${result.note.pitch.note}${result.note.pitch.octave}</span>`;
@@ -1082,7 +1169,40 @@ function updateChordDisplay(result: DetectionResult): void {
     if (c1) c1.innerHTML = `#1 <strong>${result.note.pitch.note}${result.note.pitch.octave}</strong> (${result.note.pitch.freq.toFixed(1)}Hz)`;
     if (c2) c2.innerHTML = `#2 <strong>-</strong>`;
     if (c3) c3.innerHTML = `#3 <strong>-</strong>`;
+
+    // Inline tuning needle
+    if (tuningGauge) tuningGauge.style.display = 'block';
+    const clampedCents = Math.max(-50, Math.min(50, result.note.pitch.cents));
+    const needlePct = 50 + (clampedCents / 50) * 45;
+    if (liveNeedle) {
+      liveNeedle.style.left = `${needlePct}%`;
+      liveNeedle.style.background = result.note.tunerVerdict === 'in-tune' ? '#10b981' : result.note.tunerVerdict === 'flat' ? '#38bdf8' : '#f43f5e';
+    }
+    if (liveVerdict) {
+      liveVerdict.textContent = result.note.tunerVerdict === 'in-tune' 
+        ? `🎯 In Tune (${result.note.pitch.cents > 0 ? '+' : ''}${result.note.pitch.cents}¢)` 
+        : result.note.tunerVerdict === 'flat' 
+        ? `♭ Flat • Tune Up (${result.note.pitch.cents}¢)` 
+        : `♯ Sharp • Tune Down (+${result.note.pitch.cents}¢)`;
+      liveVerdict.style.color = result.note.tunerVerdict === 'in-tune' ? '#10b981' : result.note.tunerVerdict === 'flat' ? '#38bdf8' : '#f43f5e';
+    }
+
+    // Sync Headstock Tuner tab elements
+    const tunerCenterNote = document.getElementById('tuner-center-note');
+    const tunerCenterFreq = document.getElementById('tuner-center-freq');
+    const tunerGaugeNeedle = document.getElementById('tuner-gauge-needle');
+    const tunerStatusBadge = document.getElementById('tuner-status-badge');
+    if (tunerCenterNote) tunerCenterNote.textContent = `${result.note.pitch.note}${result.note.pitch.octave}`;
+    if (tunerCenterFreq) tunerCenterFreq.textContent = `Target: ${result.note.pitch.note} • Detected: ${result.note.pitch.freq.toFixed(1)} Hz (${result.note.pitch.cents > 0 ? '+' : ''}${result.note.pitch.cents}¢)`;
+    if (tunerGaugeNeedle) tunerGaugeNeedle.style.left = `${needlePct}%`;
+    if (tunerStatusBadge) {
+      tunerStatusBadge.textContent = result.note.tunerVerdict === 'in-tune' ? '✅ In Tune' : result.note.tunerVerdict === 'flat' ? '♭ Too Flat (Tune Up)' : '♯ Too Sharp (Tune Down)';
+      tunerStatusBadge.style.color = result.note.tunerVerdict === 'in-tune' ? '#10b981' : result.note.tunerVerdict === 'flat' ? '#38bdf8' : '#f43f5e';
+    }
   } else if (result.mode === 'chord' && result.chord) {
+    if (tuningGauge) tuningGauge.style.display = 'none';
+    const strumHoldBadge = document.getElementById('strum-hold-badge');
+    if (strumHoldBadge) strumHoldBadge.style.display = 'inline-flex';
     nameEl!.textContent = result.chord.symbol;
     rootEl!.textContent = result.chord.root;
     qualityEl!.textContent = result.chord.quality;
@@ -1098,18 +1218,27 @@ function updateChordDisplay(result: DetectionResult): void {
       if (c3 && c[2]) c3.innerHTML = `#3 <strong>${c[2].symbol}</strong> (${c[2].confidence}%)`;
     }
   } else {
-    // Only reset to 'Ready' if no chord or note has ever been detected yet
-    if (!appState.currentChord && (!nameEl?.textContent || nameEl.textContent === 'Ready' || nameEl.textContent === '-')) {
-      nameEl!.textContent = 'Ready';
-      rootEl!.textContent = '-';
-      qualityEl!.textContent = '-';
-      notesEl!.textContent = '-';
-      if (intervalsEl) intervalsEl.textContent = '-';
-      if (sargamEl) sargamEl.textContent = '-';
-      confidenceEl!.textContent = '-';
-      if (c1) c1.innerHTML = `#1 <strong>-</strong>`;
-      if (c2) c2.innerHTML = `#2 <strong>-</strong>`;
-      if (c3) c3.innerHTML = `#3 <strong>-</strong>`;
+    if (tuningGauge && appState.settings.targetMode !== 'notes') {
+      tuningGauge.style.display = 'none';
+    }
+    const strumHoldBadge = document.getElementById('strum-hold-badge');
+    if (strumHoldBadge) strumHoldBadge.style.display = 'none';
+
+    // When the engine is idle and no chord is being held, reset display cleanly
+    if (!result.chord) {
+      if (nameEl && nameEl.textContent !== 'Ready') {
+        nameEl.textContent = 'Ready';
+        rootEl!.textContent = '-';
+        qualityEl!.textContent = '-';
+        notesEl!.textContent = '-';
+        if (intervalsEl) intervalsEl.textContent = '-';
+        if (sargamEl) sargamEl.textContent = '-';
+        confidenceEl!.textContent = '-';
+        if (c1) c1.innerHTML = `#1 <strong>-</strong>`;
+        if (c2) c2.innerHTML = `#2 <strong>-</strong>`;
+        if (c3) c3.innerHTML = `#3 <strong>-</strong>`;
+        appState.currentChord = null;
+      }
     }
   }
   
@@ -1119,8 +1248,8 @@ function updateChordDisplay(result: DetectionResult): void {
       `<span class="badge" style="background:rgba(56,189,248,0.18); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; font-size:0.82rem; padding:3px 8px; border-radius:6px; font-weight:700;">${n.note}${n.octave} <span style="font-size:0.7rem; color:var(--text-muted);">(${Math.round(n.freq)}Hz)</span></span>`
     ).join('');
   } else if (ringingChipsEl) {
-    if (appState.currentChord) {
-      ringingChipsEl.innerHTML = `<span class="badge" style="background:rgba(255,255,255,0.05); color:var(--accent-gold); font-size:0.78rem; border:1px solid rgba(255,179,0,0.25);">🎸 ${appState.currentChord} confirmed • Listening continuously</span>`;
+    if (result.chord) {
+      ringingChipsEl.innerHTML = `<span class="badge" style="background:rgba(255,255,255,0.05); color:var(--accent-gold); font-size:0.78rem; border:1px solid rgba(255,179,0,0.25);">🎸 ${result.chord.symbol} confirmed</span>`;
     } else {
       ringingChipsEl.innerHTML = '<span class="badge" style="background:rgba(255,255,255,0.04); color:var(--text-muted); font-size:0.75rem;">Listening • Strike any chord or note</span>';
     }
@@ -1478,8 +1607,34 @@ function initTabButtons(): void {
     continuousBtn.addEventListener('click', () => setTriggerMode('continuous'));
   }
   
+  // Target mode buttons (Chords Only vs Notes & Tuner vs Auto)
+  const targetMode = appState.settings.targetMode || 'chords';
+  const chordsTargetBtn = document.getElementById('btn-target-chords');
+  const notesTargetBtn = document.getElementById('btn-target-notes');
+  const autoTargetBtn = document.getElementById('btn-target-auto');
+  if (chordsTargetBtn) {
+    chordsTargetBtn.addEventListener('click', () => setTargetMode('chords'));
+  }
+  if (notesTargetBtn) {
+    notesTargetBtn.addEventListener('click', () => setTargetMode('notes'));
+  }
+  if (autoTargetBtn) {
+    autoTargetBtn.addEventListener('click', () => setTargetMode('auto'));
+  }
+  setTargetMode(targetMode);
+
   // Tuning preset select
   const tuningSelect = document.getElementById('tuner-preset-select') as HTMLSelectElement;
+  if (tuningSelect && tuningSelect.options.length === 0) {
+    TUNING_PRESETS.forEach(tp => {
+      const opt = document.createElement('option');
+      opt.value = tp.id;
+      opt.textContent = `${tp.name} (${tp.description})`;
+      if (tp.id === appState.activeTuning.id) opt.selected = true;
+      tuningSelect.appendChild(opt);
+    });
+  }
+  populateTunerPegs();
   if (tuningSelect) tuningSelect.addEventListener('change', (e) => setTuningPreset((e.target as HTMLSelectElement).value));
   
   // Capo select
@@ -2002,6 +2157,8 @@ declare global {
     setTrackVolume: (i: number, v: number) => void;
     toggleTrackMute: (i: number) => void;
     clearTrack: (i: number) => void;
+    setTargetMode: (mode: DetectionTargetMode) => void;
+    setTriggerMode: (mode: 'guitartuna' | 'continuous') => void;
     appState: AppState;
   }
 }
@@ -2011,6 +2168,8 @@ if (typeof window !== 'undefined') {
   window.switchTab = switchTab;
   window.strumCurrentChord = strumCurrentChord;
   window.loadChordPreset = loadChordPreset;
+  window.setTargetMode = setTargetMode;
+  window.setTriggerMode = setTriggerMode;
   // Inspect loads the chord onto the detector fretboard and switches to it so it's visible
   window.inspectChordPreset = (chord: string) => {
     loadChordPreset(chord);

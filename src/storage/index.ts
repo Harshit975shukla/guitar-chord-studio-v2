@@ -52,7 +52,8 @@ function setJSON<T>(key: string, value: T): void {
 // ============================================================================
 
 export function loadSettings(): UserSettings {
-  return getJSON<UserSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  const loaded = getJSON<UserSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  return { ...DEFAULT_SETTINGS, ...loaded };
 }
 
 export function saveSettings(settings: UserSettings): void {

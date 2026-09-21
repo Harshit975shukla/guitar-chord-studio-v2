@@ -11,6 +11,7 @@ export type {
   StringTuning,
   TuningPreset,
   DetectionMode,
+  DetectionTargetMode,
   DetectedPeak,
   DetectionResult,
   GuitarPosition,
