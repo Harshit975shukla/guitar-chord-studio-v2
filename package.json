@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && node scripts/stamp-sw.mjs",
     "preview": "vite preview",
-    "lint": "eslint src --ext ts,tsx"
+    "lint": "eslint src --ext ts,tsx",
+    "test:detection": "tsx scripts/detection-smoke.mjs"
   },
   "devDependencies": {
+    "tsx": "^4.19.2",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   }

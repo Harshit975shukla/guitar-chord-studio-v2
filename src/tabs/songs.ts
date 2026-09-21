@@ -5,6 +5,17 @@ import { Song, StringTuning, STANDARD_TUNING, NoteName, NOTE_NAMES } from '../ty
 import { playAcousticString, strumChord, AcousticBus } from '../audio/engine';
 import { buildChordDefinition, CHORD_PRESETS } from '../chords/definitions';
 
+/** Escape user-provided text before interpolating into innerHTML (custom songs
+ *  are user-authored and persisted, so their title/lyrics/chords are untrusted). */
+function esc(v: unknown): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export const SONG_CATALOG: Song[] = [
   {
     id: 'hotel_california',
@@ -1472,7 +1483,7 @@ export class SongStudio {
     const bpmEl = document.getElementById('song-pill-bpm');
     const strumVisual = document.getElementById('song-strum-pattern-visual');
 
-    if (titleEl) titleEl.innerHTML = `🎸 ${song.title}`;
+    if (titleEl) titleEl.innerHTML = `🎸 ${esc(song.title)}`;
     const artist = song.artist || song.singer || 'Acoustic';
     const album = song.album || song.movie || '';
     if (metaEl) metaEl.textContent = `Artist: ${artist}${album ? ' • Album: ' + album : ''} • Key: ${song.key}`;
@@ -1498,7 +1509,7 @@ export class SongStudio {
       const chip = document.createElement('button');
       chip.className = 'chord-tag-badge';
       chip.style.cursor = 'pointer';
-      chip.innerHTML = `<span>▶️</span> ${chord}`;
+      chip.innerHTML = `<span>▶️</span> ${esc(chord)}`;
       chip.onclick = () => {
         this.renderChordOnFretboard(chord);
         this.strumActiveChordByName(chord);
@@ -1566,15 +1577,15 @@ export class SongStudio {
       let chordsRow = '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px;">';
       if (line.chords) {
         line.chords.forEach((c: any) => {
-          chordsRow += `<span class="chord-tag-badge" id="chord-badge-${idx}-${c.chord}">${c.chord} <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">(${c.word})</span></span>`;
+          chordsRow += `<span class="chord-tag-badge" id="chord-badge-${idx}-${esc(c.chord)}">${esc(c.chord)} <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">(${esc(c.word)})</span></span>`;
         });
       }
       chordsRow += '</div>';
 
       lineDiv.innerHTML = `
-        <div style="font-size:0.75rem; color:var(--accent-gold); font-weight:700; margin-bottom:2px;">${line.sec || line.section || `Verse ${idx + 1}`}</div>
+        <div style="font-size:0.75rem; color:var(--accent-gold); font-weight:700; margin-bottom:2px;">${esc(line.sec || line.section || `Verse ${idx + 1}`)}</div>
         ${chordsRow}
-        <div style="font-size:0.95rem; color:#fff; font-weight:500;">${line.text}</div>
+        <div style="font-size:0.95rem; color:#fff; font-weight:500;">${esc(line.text)}</div>
       `;
 
       lineDiv.onclick = () => {

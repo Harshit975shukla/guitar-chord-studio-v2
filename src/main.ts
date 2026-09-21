@@ -397,7 +397,25 @@ export async function startMicrophone(): Promise<boolean> {
     return true;
   } catch (error) {
     console.error('Failed to start microphone:', error);
-    alert('Could not access microphone. Please check permissions in your browser settings.');
+    const name = (error as any)?.name || '';
+    let msg: string;
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+      msg = '🎤 Microphone blocked. Click the mic/lock icon in your browser’s address bar and allow access, then try again.';
+    } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+      msg = '🎤 No microphone found. Check your input device in the OS sound settings, then try again.';
+    } else if (name === 'NotReadableError') {
+      msg = '🎤 Microphone is in use by another app. Close it (e.g. video call, DAW) and try again.';
+    } else {
+      msg = '🎤 Could not access the microphone. Check browser permissions and try again.';
+    }
+    const substatus = document.getElementById('live-detector-substatus');
+    if (substatus) {
+      substatus.textContent = msg;
+      substatus.style.color = 'var(--accent-rose, #f43f5e)';
+    } else {
+      alert(msg);
+    }
+    updateMicUI(false);
     return false;
   }
 }

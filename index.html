@@ -10,6 +10,28 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GuitarStudio">
   <link rel="apple-touch-icon" href="./icon-192.png">
+  <script>
+    // Lightweight global error logger: keeps the last 20 runtime errors in
+    // localStorage so real user crashes can be inspected (window.__appErrors()).
+    (function () {
+      var KEY = 'gcs_error_log';
+      function record(entry) {
+        try {
+          var log = JSON.parse(localStorage.getItem(KEY) || '[]');
+          log.push(Object.assign({ t: new Date().toISOString() }, entry));
+          while (log.length > 20) log.shift();
+          localStorage.setItem(KEY, JSON.stringify(log));
+        } catch (e) { /* storage full/unavailable — ignore */ }
+      }
+      window.addEventListener('error', function (e) {
+        record({ type: 'error', message: String(e.message), source: e.filename, line: e.lineno });
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        record({ type: 'unhandledrejection', message: String(e.reason && e.reason.message || e.reason) });
+      });
+      window.__appErrors = function () { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } };
+    })();
+  </script>
   <style>
     /* ==========================================================================
        CSS Custom Properties (Design Tokens)
@@ -1946,5 +1968,30 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
   <script src="./all_chord_shapes.js"></script>
   <script src="./song_catalog_data.js"></script>
   <script type="module" src="/src/main.ts"></script>
+  <script>
+    // First-run tips: one-time dismissible banner explaining detection basics.
+    // Purely additive UI — does not touch the detection engine.
+    (function () {
+      var KEY = 'gcs_seen_tips_v1';
+      try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
+      window.addEventListener('load', function () {
+        var b = document.createElement('div');
+        b.setAttribute('role', 'dialog');
+        b.setAttribute('aria-label', 'Getting started tips');
+        b.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;max-width:520px;width:calc(100% - 32px);background:#161b22;border:1px solid rgba(255,179,0,0.4);border-radius:14px;padding:16px 18px;box-shadow:0 8px 30px rgba(0,0,0,0.5);color:#e6edf3;font-family:system-ui,sans-serif;';
+        b.innerHTML =
+          '<div style="font-weight:800;color:#ffb300;margin-bottom:8px;display:flex;align-items:center;gap:8px;">🎸 Quick start</div>' +
+          '<ul style="margin:0 0 12px 0;padding-left:20px;font-size:0.88rem;line-height:1.6;">' +
+          '<li><strong>Allow the microphone</strong> when your browser asks.</li>' +
+          '<li>After enabling the mic, <strong>stay silent ~1.5s</strong> so it can calibrate to your room.</li>' +
+          '<li><strong>Strum</strong> to detect chords. For single notes, switch <strong>Listening Target</strong> to <strong>Notes</strong> or <strong>Auto</strong>.</li>' +
+          '</ul>' +
+          '<div style="text-align:right;"><button id="gcs-tips-dismiss" style="background:#ffb300;color:#000;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Got it</button></div>';
+        document.body.appendChild(b);
+        var dismiss = function () { try { localStorage.setItem(KEY, '1'); } catch (e) {} b.remove(); };
+        b.querySelector('#gcs-tips-dismiss').addEventListener('click', dismiss);
+      });
+    })();
+  </script>
 </body>
 </html>
