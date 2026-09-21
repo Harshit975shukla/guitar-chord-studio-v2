@@ -55,12 +55,13 @@ import {
   CapoState,
 } from './chords/definitions';
 
-import { 
-  createAcousticBus, 
+import {
+  createAcousticBus,
   updateAcousticBusSettings,
   strumChord,
   playTestChord,
   playInTuneChime,
+  playMetronomeClick,
   AcousticBus,
 } from './audio/engine';
 
@@ -1870,8 +1871,131 @@ function renderChordLibraryGrid(): void {
   });
 }
 
+// ---- Metronome state (persists across tab re-renders) ----
+let metroBpm = 100;
+let metroRunning = false;
+let metroTimer: number | null = null;
+let metroBeat = 0;
+let metroBeatsPerMeasure = 4;
+let metroAccent = true;
+const metroTapTimes: number[] = [];
+
+function metroTempoName(bpm: number): string {
+  if (bpm < 60) return 'Largo';
+  if (bpm < 76) return 'Adagio';
+  if (bpm < 108) return 'Andante';
+  if (bpm < 120) return 'Moderato';
+  if (bpm < 168) return 'Allegro';
+  return 'Presto';
+}
+
+function renderMetroBeats(): void {
+  const c = document.getElementById('metro-beats-container');
+  if (!c) return;
+  c.innerHTML = '';
+  for (let i = 0; i < metroBeatsPerMeasure; i++) {
+    const dot = document.createElement('div');
+    dot.id = `metro-beat-${i}`;
+    dot.style.cssText = `width:16px;height:16px;border-radius:50%;background:${i === metroBeat && metroRunning ? (i === 0 ? 'var(--accent-gold)' : '#d0d0d0') : '#2a2a2a'};transition:background 0.05s;`;
+    c.appendChild(dot);
+  }
+}
+
+function updateMetroBpmUI(): void {
+  const disp = document.getElementById('metro-bpm-display');
+  const name = document.getElementById('metro-tempo-name');
+  const slider = document.getElementById('metro-slider') as HTMLInputElement | null;
+  if (disp) disp.textContent = String(metroBpm);
+  if (name) name.textContent = metroTempoName(metroBpm);
+  if (slider) slider.value = String(metroBpm);
+}
+
+function metroTick(): void {
+  ensureAudioContext();
+  if (appState.audioContext) {
+    playMetronomeClick(appState.audioContext, metroAccent && metroBeat === 0);
+  }
+  renderMetroBeats();
+  metroBeat = (metroBeat + 1) % metroBeatsPerMeasure;
+}
+
+function startMetronome(): void {
+  if (metroRunning) return;
+  ensureAudioContext();
+  metroRunning = true;
+  metroBeat = 0;
+  const icon = document.getElementById('metro-play-icon');
+  if (icon) icon.textContent = '⏸️';
+  metroTick(); // immediate first click
+  metroTimer = window.setInterval(metroTick, 60000 / metroBpm);
+}
+
+function stopMetronome(): void {
+  metroRunning = false;
+  if (metroTimer !== null) { clearInterval(metroTimer); metroTimer = null; }
+  const icon = document.getElementById('metro-play-icon');
+  if (icon) icon.textContent = '▶️';
+  metroBeat = 0;
+  renderMetroBeats();
+}
+
+function setMetroBpm(bpm: number): void {
+  metroBpm = Math.max(40, Math.min(240, Math.round(bpm)));
+  updateMetroBpmUI();
+  if (metroRunning) { // restart interval at new tempo
+    if (metroTimer !== null) clearInterval(metroTimer);
+    metroTimer = window.setInterval(metroTick, 60000 / metroBpm);
+  }
+}
+
 function renderMetronome(): void {
-  // Metronome initialized
+  // Idempotent wiring (renderMetronome runs on every metronome tab open)
+  updateMetroBpmUI();
+  renderMetroBeats();
+
+  const slider = document.getElementById('metro-slider') as HTMLInputElement | null;
+  if (slider) slider.oninput = () => setMetroBpm(Number(slider.value));
+
+  const minus = document.getElementById('metro-bpm-minus');
+  if (minus) minus.onclick = () => setMetroBpm(metroBpm - 1);
+  const plus = document.getElementById('metro-bpm-plus');
+  if (plus) plus.onclick = () => setMetroBpm(metroBpm + 1);
+
+  const toggle = document.getElementById('btn-metro-toggle');
+  if (toggle) toggle.onclick = () => (metroRunning ? stopMetronome() : startMetronome());
+
+  const accent = document.getElementById('metro-accent') as HTMLInputElement | null;
+  if (accent) { accent.checked = metroAccent; accent.onchange = () => { metroAccent = accent.checked; }; }
+
+  const setSig = (beats: number, activeId: string) => {
+    metroBeatsPerMeasure = beats;
+    metroBeat = 0;
+    renderMetroBeats();
+    ['metro-sig-3', 'metro-sig-4', 'metro-sig-6'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) b.classList.toggle('active', id === activeId);
+    });
+  };
+  const sig3 = document.getElementById('metro-sig-3');
+  if (sig3) sig3.onclick = () => setSig(3, 'metro-sig-3');
+  const sig4 = document.getElementById('metro-sig-4');
+  if (sig4) sig4.onclick = () => setSig(4, 'metro-sig-4');
+  const sig6 = document.getElementById('metro-sig-6');
+  if (sig6) sig6.onclick = () => setSig(6, 'metro-sig-6');
+
+  const tap = document.getElementById('metro-tap');
+  if (tap) tap.onclick = () => {
+    const now = Date.now();
+    if (metroTapTimes.length && now - metroTapTimes[metroTapTimes.length - 1] > 2000) metroTapTimes.length = 0;
+    metroTapTimes.push(now);
+    if (metroTapTimes.length > 4) metroTapTimes.shift();
+    if (metroTapTimes.length >= 2) {
+      let sum = 0;
+      for (let i = 1; i < metroTapTimes.length; i++) sum += metroTapTimes[i] - metroTapTimes[i - 1];
+      const avgMs = sum / (metroTapTimes.length - 1);
+      if (avgMs > 0) setMetroBpm(60000 / avgMs);
+    }
+  };
 }
 
 function renderDrillUI(): void {
@@ -1927,7 +2051,7 @@ function renderRhythmPresets(): void {
   container.innerHTML = '';
   RHYTHM_PRESETS.forEach(preset => {
     const card = document.createElement('div');
-    card.className = 'mini-chord-card' + (preset.id === 'keharwa' ? ' active-rhythm' : '');
+    card.className = 'mini-chord-card' + (preset.id === currentRhythmId ? ' active-rhythm' : '');
     card.id = `rhy-card-${preset.id}`;
     card.innerHTML = `
       <div style="font-size:1.1rem; font-weight:800; color:var(--accent-gold);">${preset.name}</div>
@@ -1946,49 +2070,52 @@ function renderRhythmPresets(): void {
       opt.textContent = p.name;
       dockSelect.appendChild(opt);
     });
-    dockSelect.value = 'keharwa';
-    dockSelect.addEventListener('change', (e) => selectRhythmPreset((e.target as HTMLSelectElement).value));
+    dockSelect.value = currentRhythmId;
+    // on* assignment is idempotent — renderRhythmPresets runs on every tab open
+    dockSelect.onchange = (e) => selectRhythmPreset((e.target as HTMLSelectElement).value);
   }
-  
+
   updateRhythmDots();
-  
-  // Dock controls
+
+  // Dock controls (idempotent handlers to avoid stacking on repeat tab visits)
   const dockToggle = document.getElementById('btn-dock-rhythm-toggle');
-  if (dockToggle) dockToggle.addEventListener('click', toggleRhythmPlayback);
-  
+  if (dockToggle) dockToggle.onclick = toggleRhythmPlayback;
+
   const tempoSlider = document.getElementById('dock-tempo-slider') as HTMLInputElement;
-  if (tempoSlider) tempoSlider.addEventListener('input', (e) => {
+  if (tempoSlider) tempoSlider.oninput = (e) => {
     const val = parseInt((e.target as HTMLInputElement).value);
-    document.getElementById('dock-tempo-readout')!.textContent = val.toString();
-    document.getElementById('rhythm-tempo-val')!.textContent = `${val} BPM`;
-  });
-  
+    const r1 = document.getElementById('dock-tempo-readout'); if (r1) r1.textContent = val.toString();
+    const r2 = document.getElementById('rhythm-tempo-val'); if (r2) r2.textContent = `${val} BPM`;
+  };
+
   const bassVol = document.getElementById('dock-bass-vol') as HTMLInputElement;
-  if (bassVol) bassVol.addEventListener('input', (e) => {
+  if (bassVol) bassVol.oninput = (e) => {
     const val = parseFloat((e.target as HTMLInputElement).value);
-    document.getElementById('rhythm-bass-vol')!.textContent = `${Math.round(val * 100)}%`;
-  });
-  
+    const el = document.getElementById('rhythm-bass-vol'); if (el) el.textContent = `${Math.round(val * 100)}%`;
+  };
+
   const trebleVol = document.getElementById('dock-treble-vol') as HTMLInputElement;
-  if (trebleVol) trebleVol.addEventListener('input', (e) => {
+  if (trebleVol) trebleVol.oninput = (e) => {
     const val = parseFloat((e.target as HTMLInputElement).value);
-    document.getElementById('rhythm-treble-vol')!.textContent = `${Math.round(val * 100)}%`;
-  });
+    const el = document.getElementById('rhythm-treble-vol'); if (el) el.textContent = `${Math.round(val * 100)}%`;
+  };
 }
 
 function selectRhythmPreset(presetId: string): void {
+  currentRhythmId = presetId;
+  rhythmStep = 0;
   document.querySelectorAll('[id^="rhy-card-"]').forEach(c => c.classList.remove('active-rhythm'));
   const card = document.getElementById('rhy-card-' + presetId);
   if (card) card.classList.add('active-rhythm');
-  
+
   const dockSelect = document.getElementById('dock-rhythm-select') as HTMLSelectElement;
   if (dockSelect) dockSelect.value = presetId;
-  
+
   updateRhythmDots();
 }
 
 function updateRhythmDots(): void {
-  const preset = RHYTHM_PRESETS.find(p => p.id === 'keharwa'); // default
+  const preset = getRhythmPreset();
   const container = document.getElementById('dock-beat-dots');
   if (!container || !preset) return;
   
@@ -2001,8 +2128,108 @@ function updateRhythmDots(): void {
   }
 }
 
+// ---- Rhythm player state ----
+let currentRhythmId = 'keharwa';
+let rhythmPlaying = false;
+let rhythmTimer: number | null = null;
+let rhythmStep = 0;
+
+function getRhythmPreset() {
+  return RHYTHM_PRESETS.find(p => p.id === currentRhythmId) || RHYTHM_PRESETS[0];
+}
+
+function rhythmVolumes(): { bass: number; treble: number } {
+  const bass = parseFloat((document.getElementById('dock-bass-vol') as HTMLInputElement | null)?.value || '0.9');
+  const treble = parseFloat((document.getElementById('dock-treble-vol') as HTMLInputElement | null)?.value || '0.8');
+  return { bass: isNaN(bass) ? 0.9 : bass, treble: isNaN(treble) ? 0.8 : treble };
+}
+
+function rhythmBpm(): number {
+  const v = parseInt((document.getElementById('dock-tempo-slider') as HTMLInputElement | null)?.value || '80');
+  return Math.max(40, Math.min(240, isNaN(v) ? 80 : v));
+}
+
+function playRhythmStroke(type: string, vel: number): void {
+  ensureAudioContext();
+  const ctx = appState.audioContext;
+  if (!ctx) return;
+  const { bass, treble } = rhythmVolumes();
+  const now = ctx.currentTime;
+  const hasBass = type === 'cajon_bass' || type === 'bayan' || type === 'bayan_dayan';
+  const hasTreble = type.startsWith('dayan') || type === 'cajon_snare' || type === 'shaker' || type === 'bayan_dayan';
+
+  if (hasBass) {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(55, now + 0.16);
+    g.gain.setValueAtTime(Math.max(0.0001, vel * bass * 0.5), now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(now); osc.stop(now + 0.24);
+  }
+  if (hasTreble) {
+    if (type === 'shaker' || type === 'cajon_snare') {
+      // noise burst
+      const len = Math.floor(ctx.sampleRate * 0.09);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const src = ctx.createBufferSource(); src.buffer = buf;
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass';
+      hp.frequency.value = type === 'shaker' ? 5000 : 1800;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(Math.max(0.0001, vel * treble * 0.4), now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+      src.connect(hp); hp.connect(g); g.connect(ctx.destination);
+      src.start(now); src.stop(now + 0.1);
+    } else {
+      // tabla dayan-style tone
+      const osc = ctx.createOscillator();
+      const bp = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      bp.type = 'bandpass'; bp.frequency.value = 340; bp.Q.value = 6;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(360, now);
+      osc.frequency.exponentialRampToValueAtTime(180, now + 0.08);
+      g.gain.setValueAtTime(Math.max(0.0001, vel * treble * 0.32), now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+      osc.connect(bp); bp.connect(g); g.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.14);
+    }
+  }
+}
+
+function stepRhythm(): void {
+  const preset = getRhythmPreset();
+  const stroke = preset.pattern[rhythmStep % preset.pattern.length];
+  if (stroke) playRhythmStroke(stroke.type, stroke.vel);
+
+  // Highlight the active beat dot
+  const dots = document.querySelectorAll('[id^="rhy-dot-"]');
+  dots.forEach((d, i) => d.classList.toggle('active-beat', i === rhythmStep % preset.beats));
+
+  rhythmStep = (rhythmStep + 1) % preset.pattern.length;
+  if (rhythmPlaying) {
+    rhythmTimer = window.setTimeout(stepRhythm, 60000 / rhythmBpm());
+  }
+}
+
 function toggleRhythmPlayback(): void {
-  // Placeholder
+  const btn = document.getElementById('btn-dock-rhythm-toggle');
+  if (rhythmPlaying) {
+    rhythmPlaying = false;
+    if (rhythmTimer !== null) { clearTimeout(rhythmTimer); rhythmTimer = null; }
+    document.querySelectorAll('[id^="rhy-dot-"]').forEach(d => d.classList.remove('active-beat'));
+    if (btn) btn.innerHTML = '<span>▶️</span> Play';
+  } else {
+    ensureAudioContext();
+    rhythmPlaying = true;
+    rhythmStep = 0;
+    if (btn) btn.innerHTML = '<span>⏹️</span> Stop';
+    stepRhythm();
+  }
 }
 
 function renderTranscriber(): void {

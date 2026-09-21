@@ -1370,9 +1370,13 @@ export class SongStudio {
     document.querySelectorAll('.lyric-line-item').forEach((el, idx) => {
       el.classList.toggle('active-line', idx === this.currentLineIdx);
     });
-    const activeEl = document.getElementById(`lyric-line-${this.currentLineIdx}`);
-    if (activeEl) {
-      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Scroll only the lyrics container, not the whole page. Using
+    // scrollIntoView here repeatedly scrolled the entire viewport every step
+    // and made the page unusable during playback.
+    const activeEl = document.getElementById(`lyric-line-${this.currentLineIdx}`) as HTMLElement | null;
+    const box = document.getElementById('lyrics-scroll-box');
+    if (activeEl && box) {
+      box.scrollTop = activeEl.offsetTop - box.clientHeight / 2 + activeEl.clientHeight / 2;
     }
   }
 
