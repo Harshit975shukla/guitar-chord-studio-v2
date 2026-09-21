@@ -1,9 +1,29 @@
 // Song Catalog Data - 50+ verified songs
 // This would normally be loaded from a JSON file
 
-import { Song, StringTuning, STANDARD_TUNING, NoteName, NOTE_NAMES } from '../types';
+import { Song, StringTuning, STANDARD_TUNING, NOTE_NAMES, parseChordSymbol } from '../types';
 import { playAcousticString, strumChord, AcousticBus } from '../audio/engine';
 import { buildChordDefinition, CHORD_PRESETS } from '../chords/definitions';
+
+const PC_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const NOTE_TO_PC: Record<string, number> = {
+  C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5, 'F#': 6, Gb: 6,
+  G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11,
+};
+
+/** Shift a chord name (root + optional /bass) by N semitones, preserving quality suffix. */
+function transposeChordName(name: string, semis: number): string {
+  if (!name || !semis) return name;
+  const m = name.match(/^([A-G][#b]?)(.*?)(?:\/([A-G][#b]?))?$/);
+  if (!m) return name;
+  const rootPc = NOTE_TO_PC[m[1]];
+  if (rootPc === undefined) return name;
+  let out = PC_NAMES[(rootPc + semis + 1200) % 12] + (m[2] || '');
+  if (m[3] && NOTE_TO_PC[m[3]] !== undefined) {
+    out += '/' + PC_NAMES[(NOTE_TO_PC[m[3]] + semis + 1200) % 12];
+  }
+  return out;
+}
 
 /** Escape user-provided text before interpolating into innerHTML (custom songs
  *  are user-authored and persisted, so their title/lyrics/chords are untrusted). */
@@ -939,6 +959,13 @@ export class SongStudio {
   private audioContext: AudioContext | null = null;
   private acousticBus: AcousticBus | null = null;
   private isControlsInitialized = false;
+  // Transpose (semitones) + parsed original key for the target-key dropdown
+  private transposeSemis = 0;
+  private keyTonicPc = 0;
+  private keyIsMinor = true;
+  // When a song has too few lead notes (stub data), play its chord progression instead
+  private playAsChords = false;
+  private chordProgression: string[] = [];
   public onMicStartRequested?: () => void;
   public onPlayRequested?: () => Promise<void>;
 
@@ -1053,6 +1080,13 @@ export class SongStudio {
       select.onchange = () => this.loadSong(select.value);
     }
 
+    // Transpose (target-key) dropdown
+    const transposeSel = document.getElementById('song-transpose-select') as HTMLSelectElement;
+    if (transposeSel) {
+      this.populateTransposeSelect();
+      transposeSel.onchange = () => this.setTranspose(parseInt(transposeSel.value) || 0);
+    }
+
     // Play Mode buttons
     const notesBtn = document.getElementById('btn-mode-notes');
     const chordsBtn = document.getElementById('btn-mode-chords');
@@ -1102,6 +1136,18 @@ export class SongStudio {
     this.bpm = this.activeSong.bpm || 75;
     this.currentLineIdx = 0;
     this.currentNoteIdx = 0;
+    this.transposeSemis = 0;
+
+    // Detect stub songs (few real lead notes) → play their chord progression instead
+    const lines = this.activeSong.lines || [];
+    const totalNotes = lines.reduce((a: number, l: any) => a + ((l.notes && l.notes.length) || 0), 0);
+    const lineChords: string[] = lines.flatMap((l: any) => (l.chords || []).map((c: any) => c.chord));
+    const hasChords = lineChords.length > 0 || (this.activeSong.chordsUsed || []).length > 0;
+    this.playAsChords = hasChords && totalNotes < 6;
+    // Prefer the per-line chord sequence; if too short, use the song's full chord set
+    this.chordProgression = lineChords.length >= 4 ? lineChords : (this.activeSong.chordsUsed || lineChords);
+
+    this.parseSongKey();
 
     if (this.isPlaying) {
       this.stopPlayback();
@@ -1112,6 +1158,38 @@ export class SongStudio {
       select.value = songId;
     }
 
+    this.populateTransposeSelect();
+    this.updateSongMetadataUI();
+    this.renderChordsPalette();
+    this.renderLyricsScrollView();
+    this.updateActiveStepUI();
+  }
+
+  private parseSongKey(): void {
+    const key = String(this.activeSong?.key || 'C');
+    const m = key.match(/([A-G][#b]?)/);
+    this.keyTonicPc = m && NOTE_TO_PC[m[1]] !== undefined ? NOTE_TO_PC[m[1]] : 0;
+    this.keyIsMinor = /min|minor|\bm\b/i.test(key) || /minor/i.test(key);
+  }
+
+  /** Fill the transpose dropdown with the 12 target keys (same modality). */
+  private populateTransposeSelect(): void {
+    const sel = document.getElementById('song-transpose-select') as HTMLSelectElement | null;
+    if (!sel) return;
+    const mode = this.keyIsMinor ? 'Minor' : 'Major';
+    sel.innerHTML = '';
+    for (let semi = 0; semi < 12; semi++) {
+      const pc = (this.keyTonicPc + semi) % 12;
+      const opt = document.createElement('option');
+      opt.value = String(semi);
+      opt.textContent = `${PC_NAMES[pc]} ${mode}` + (semi === 0 ? ' (original)' : '');
+      sel.appendChild(opt);
+    }
+    sel.value = String(this.transposeSemis);
+  }
+
+  setTranspose(semis: number): void {
+    this.transposeSemis = ((semis % 12) + 12) % 12;
     this.updateSongMetadataUI();
     this.renderChordsPalette();
     this.renderLyricsScrollView();
@@ -1242,45 +1320,67 @@ export class SongStudio {
       return;
     }
 
+    const tempoSlider = document.getElementById('song-tempo-slider') as HTMLInputElement;
+    const bpm = (tempoSlider ? parseInt(tempoSlider.value) : 0) || this.bpm || 75;
+    const beatSec = 60 / bpm;
+
+    // ── Stub songs (few lead notes): play the real chord progression ──
+    if (this.playAsChords && this.chordProgression.length > 0) {
+      const raw = this.chordProgression[this.currentNoteIdx % this.chordProgression.length];
+      if (raw) {
+        const ch = transposeChordName(raw, this.transposeSemis);
+        const hudCh = document.getElementById('hud-chord-name');
+        if (hudCh) hudCh.textContent = ch;
+        if (this.audioContext && this.acousticBus) {
+          const frets = this.getChordFrets(ch);
+          if (frets) {
+            strumChord(this.audioContext, this.acousticBus, {
+              frets, style: this.currentNoteIdx % 2 === 0 ? 'down' : 'up',
+              velocity: 0.85, tuning: this.tuning, model: 'dreadnought',
+            });
+          }
+        }
+      }
+      // Advance through the progression; sync lyric line highlight loosely
+      this.currentNoteIdx++;
+      this.currentLineIdx = song.lines.length
+        ? Math.floor(this.currentNoteIdx / 2) % song.lines.length
+        : 0;
+      this.updateActiveStepUI();
+      this.playTimer = window.setTimeout(this.stepPlaybackLoop, Math.max(350, beatSec * 1000 * 2));
+      return;
+    }
+
     const notes = line.notes || song.leadNotes || [];
     const noteItem = notes[this.currentNoteIdx];
 
     if (this.playMode === 'notes') {
-      // NOTES / TABS MODE: Only pluck the single melody note
+      // NOTES / TABS MODE: pluck the single melody note (transposed)
       if (noteItem && this.audioContext && this.acousticBus) {
-        const strVal = noteItem.str || noteItem.string || 1;
-        const s = Math.max(0, Math.min(5, strVal - 1));
-        const f = noteItem.fret ?? 0;
-        const midi = this.tuning[s].midi + f;
-        const freq = noteItem.freq || (440 * Math.pow(2, (midi - 69) / 12));
-
+        const { s, freq } = this.transposedNote(noteItem);
         playAcousticString(this.audioContext, this.acousticBus, {
           freq,
           startTime: this.audioContext.currentTime + 0.005,
           stringIndex: s,
           velocity: 0.92,
         });
-
-        // Vibrate string wire
         const wire = document.getElementById(`song-string-wire-${s}`);
         if (wire) {
           wire.classList.add('vibrating');
           setTimeout(() => wire?.classList.remove('vibrating'), 300);
         }
       }
-
-      // Update chord text label in HUD without strumming audio
       if (line.chords && line.chords.length > 0) {
         const chordIdx = Math.floor((this.currentNoteIdx / Math.max(1, notes.length)) * line.chords.length);
-        const currentCh = line.chords[chordIdx]?.chord || line.chords[0].chord;
+        const currentCh = transposeChordName(line.chords[chordIdx]?.chord || line.chords[0].chord, this.transposeSemis);
         const hudCh = document.getElementById('hud-chord-name');
         if (hudCh) hudCh.textContent = currentCh;
       }
     } else {
-      // CHORDS MODE: Strum full chord on downbeats/rhythm
+      // CHORDS MODE: strum full chord on downbeats (transposed)
       if (line.chords && line.chords.length > 0 && this.audioContext && this.acousticBus) {
         const chordIdx = Math.floor((this.currentNoteIdx / Math.max(1, notes.length)) * line.chords.length);
-        const currentCh = line.chords[chordIdx]?.chord || line.chords[0].chord;
+        const currentCh = transposeChordName(line.chords[chordIdx]?.chord || line.chords[0].chord, this.transposeSemis);
         const hudCh = document.getElementById('hud-chord-name');
         if (hudCh) hudCh.textContent = currentCh;
 
@@ -1288,11 +1388,7 @@ export class SongStudio {
         if (frets && (this.currentNoteIdx === 0 || this.currentNoteIdx % 2 === 0)) {
           const dir = (this.currentNoteIdx % 4 === 0) ? 'down' : 'up';
           strumChord(this.audioContext, this.acousticBus, {
-            frets,
-            style: dir,
-            velocity: 0.82,
-            tuning: this.tuning,
-            model: 'dreadnought',
+            frets, style: dir, velocity: 0.82, tuning: this.tuning, model: 'dreadnought',
           });
         }
       }
@@ -1300,20 +1396,25 @@ export class SongStudio {
 
     this.updateActiveStepUI();
 
-    // Advance note & line timing based on BPM
-    const tempoSlider = document.getElementById('song-tempo-slider') as HTMLInputElement;
-    const bpm = (tempoSlider ? parseInt(tempoSlider.value) : 0) || this.bpm || 75;
-    const beatSec = 60 / bpm;
     const noteDurationMs = (noteItem ? (noteItem.beats || 0.6) : 0.6) * beatSec * 1000;
-
     this.currentNoteIdx++;
     if (this.currentNoteIdx >= Math.max(1, notes.length)) {
       this.currentNoteIdx = 0;
       this.currentLineIdx = (this.currentLineIdx + 1) % song.lines.length;
     }
-
     this.playTimer = window.setTimeout(this.stepPlaybackLoop, Math.max(250, noteDurationMs));
   };
+
+  /** Apply transpose to a lead note; octave-wraps the fret to stay playable. */
+  private transposedNote(noteItem: any): { s: number; f: number; freq: number } {
+    const strVal = noteItem.str || noteItem.string || 1;
+    const s = Math.max(0, Math.min(5, strVal - 1));
+    let f = (noteItem.fret ?? 0) + this.transposeSemis;
+    while (f > 12) f -= 12;
+    while (f < 0) f += 12;
+    const midi = this.tuning[s].midi + f;
+    return { s, f, freq: 440 * Math.pow(2, (midi - 69) / 12) };
+  }
 
   private updateActiveStepUI(): void {
     const song = this.activeSong;
@@ -1325,12 +1426,11 @@ export class SongStudio {
     const notes = line.notes || song.leadNotes || [];
     const noteItem = notes[this.currentNoteIdx] || notes[0];
 
-    // Update Notes HUD
+    // Update Notes HUD (transposed to match what plays)
     if (noteItem) {
-      const strVal = noteItem.str || noteItem.string || 1;
-      const sIdx = Math.max(0, Math.min(5, strVal - 1));
-      const fretVal = noteItem.fret ?? 0;
-      const freqVal = noteItem.freq || (440 * Math.pow(2, ((this.tuning[sIdx]?.midi || STANDARD_TUNING[sIdx].midi) + fretVal - 69) / 12));
+      const { s: sIdx, f: fretVal, freq: freqVal } = this.transposedNote(noteItem);
+      const midi = this.tuning[sIdx].midi + fretVal;
+      const noteName = NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
 
       const stringNames = ['1st (High E)', '2nd (B)', '3rd (G)', '4th (D)', '5th (A)', '6th (Low E)'];
       const tabStringLabels = ['e', 'B', 'G', 'D', 'A', 'E'];
@@ -1342,7 +1442,7 @@ export class SongStudio {
       const tabEl = document.getElementById('lead-active-tab');
       const counterEl = document.getElementById('song-note-counter');
 
-      if (westernEl) westernEl.textContent = noteItem.note;
+      if (westernEl) westernEl.textContent = noteName;
       if (strEl) strEl.textContent = stringNames[sIdx];
       if (fretEl) fretEl.textContent = fretVal === 0 ? 'Open String' : `${fretVal}th Fret`;
       if (hzEl) hzEl.textContent = `${freqVal.toFixed(1)} Hz`;
@@ -1350,10 +1450,10 @@ export class SongStudio {
       if (counterEl) counterEl.textContent = `${this.currentNoteIdx + 1} / ${notes.length || 1}`;
     }
 
-    // Update Chords HUD
+    // Update Chords HUD (transposed)
     if (line.chords && line.chords.length > 0) {
       const chordIdx = Math.floor((this.currentNoteIdx / Math.max(1, notes.length)) * line.chords.length);
-      const currentCh = line.chords[chordIdx]?.chord || line.chords[0].chord;
+      const currentCh = transposeChordName(line.chords[chordIdx]?.chord || line.chords[0].chord, this.transposeSemis);
       const chNameEl = document.getElementById('hud-chord-name');
       const chFretsEl = document.getElementById('hud-chord-frets');
 
@@ -1400,11 +1500,11 @@ export class SongStudio {
     const notes = line?.notes || song.leadNotes || [];
     const noteItem = notes[this.currentNoteIdx] || notes[0];
 
-    if (this.playMode === 'notes') {
+    if (this.playMode === 'notes' && !this.playAsChords) {
       if (!noteItem) return;
-      const strVal = noteItem.str || noteItem.string || 1;
-      const sIdx = Math.max(0, Math.min(5, strVal - 1));
-      const fIdx = noteItem.fret ?? 0;
+      const { s: sIdx, f: fIdx } = this.transposedNote(noteItem);
+      const midi = this.tuning[sIdx].midi + fIdx;
+      const dotLabel = NOTE_NAMES[((midi % 12) + 12) % 12];
 
       for (let s = 0; s < 6; s++) {
         const statusEl = document.getElementById('song-str-status-' + s);
@@ -1426,14 +1526,15 @@ export class SongStudio {
         dot.style.background = 'linear-gradient(135deg, #00e5ff, #0284c7)';
         dot.style.boxShadow = '0 0 16px rgba(0, 229, 255, 0.9)';
         dot.style.color = '#000';
-        dot.textContent = noteItem.note ? noteItem.note.replace(/[0-9]/g, '') : '';
+        dot.textContent = dotLabel;
         activeCell.appendChild(dot);
       }
     } else {
-      // CHORDS MODE: Show 6-string chord fingering shape
-      const curCh = (line?.chords && line.chords.length > 0)
-        ? line.chords[0].chord
+      // CHORDS MODE (and stub-song chord playback): show the chord fingering shape
+      const rawCh = (line?.chords && line.chords.length > 0)
+        ? (line.chords[this.currentNoteIdx]?.chord || line.chords[0].chord)
         : (song.chordsUsed?.[0] || 'Am');
+      const curCh = transposeChordName(rawCh, this.transposeSemis);
       const frets = this.getChordFrets(curCh);
 
       const chFretsEl = document.getElementById('hud-chord-frets');
@@ -1490,9 +1591,12 @@ export class SongStudio {
     if (titleEl) titleEl.innerHTML = `🎸 ${esc(song.title)}`;
     const artist = song.artist || song.singer || 'Acoustic';
     const album = song.album || song.movie || '';
-    if (metaEl) metaEl.textContent = `Artist: ${artist}${album ? ' • Album: ' + album : ''} • Key: ${song.key}`;
-    if (keyEl) keyEl.textContent = song.key;
-    if (chordsEl) chordsEl.textContent = (song.chordsUsed || []).join(', ');
+    const keyLabel = this.transposeSemis
+      ? `${PC_NAMES[(this.keyTonicPc + this.transposeSemis) % 12]} ${this.keyIsMinor ? 'Minor' : 'Major'} (transposed ${this.transposeSemis > 0 ? '+' : ''}${this.transposeSemis})`
+      : song.key;
+    if (metaEl) metaEl.textContent = `Artist: ${artist}${album ? ' • Album: ' + album : ''} • Key: ${keyLabel}`;
+    if (keyEl) keyEl.textContent = keyLabel;
+    if (chordsEl) chordsEl.textContent = (song.chordsUsed || []).map((c: string) => transposeChordName(c, this.transposeSemis)).join(', ');
     if (strumEl) strumEl.textContent = song.strum;
     if (bpmEl) bpmEl.textContent = `${song.bpm} BPM`;
     if (strumVisual) strumVisual.textContent = song.strumPatternVisual || song.strum;
@@ -1510,13 +1614,14 @@ export class SongStudio {
     palette.innerHTML = '';
     const chords = this.activeSong?.chordsUsed || [];
     chords.forEach((chord: string) => {
+      const t = transposeChordName(chord, this.transposeSemis);
       const chip = document.createElement('button');
       chip.className = 'chord-tag-badge';
       chip.style.cursor = 'pointer';
-      chip.innerHTML = `<span>▶️</span> ${esc(chord)}`;
+      chip.innerHTML = `<span>▶️</span> ${esc(t)}`;
       chip.onclick = () => {
-        this.renderChordOnFretboard(chord);
-        this.strumActiveChordByName(chord);
+        this.renderChordOnFretboard(t);
+        this.strumActiveChordByName(t);
       };
       palette.appendChild(chip);
     });
@@ -1581,7 +1686,8 @@ export class SongStudio {
       let chordsRow = '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px;">';
       if (line.chords) {
         line.chords.forEach((c: any) => {
-          chordsRow += `<span class="chord-tag-badge" id="chord-badge-${idx}-${esc(c.chord)}">${esc(c.chord)} <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">(${esc(c.word)})</span></span>`;
+          const tc = transposeChordName(c.chord, this.transposeSemis);
+          chordsRow += `<span class="chord-tag-badge" id="chord-badge-${idx}-${esc(tc)}">${esc(tc)} <span style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;">(${esc(c.word)})</span></span>`;
         });
       }
       chordsRow += '</div>';
@@ -1638,11 +1744,9 @@ export class SongStudio {
       }
     }
     try {
-      const root = chordSymbol.replace(/[m7#b].*/, '') as NoteName;
-      const quality = chordSymbol.replace(/^[A-G][#b]?/, '') || 'Major';
-      const normalized = quality === 'm' ? 'Minor' : quality === '' ? 'Major' : quality;
-
-      const def = buildChordDefinition(root, normalized as any, this.tuning);
+      const parsed = parseChordSymbol(chordSymbol);
+      if (!parsed) return null;
+      const def = buildChordDefinition(parsed.root, parsed.quality, this.tuning);
       return def.voicings[0]?.frets || null;
     } catch (e) {
       return null;
