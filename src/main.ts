@@ -529,14 +529,16 @@ function handleDetectionResult(result: DetectionResult, spectrum: Float32Array):
     evaluateDrillResult(result);
   }
   
-  // Studio Subsystem Evaluation
+  // Studio Subsystem Evaluation — only route detection to a studio when the
+  // user is on that studio's tab, so a studio (e.g. the ear-trainer) doesn't
+  // react and auto-play its own chords in the background while on the Detector.
   if (result.chord) {
-    appState.trainerStudio?.onChordDetected(result.chord.symbol);
-    appState.songStudio?.evaluatePractice(result.chord.symbol);
+    if (appState.activeTab === 'trainer') appState.trainerStudio?.onChordDetected(result.chord.symbol);
+    if (appState.activeTab === 'songs') appState.songStudio?.evaluatePractice(result.chord.symbol);
   }
   if (result.note) {
-    appState.scalesStudio?.onSingleNoteDetected(result.note.pitch.note);
-    appState.songStudio?.evaluatePractice(result.note.pitch.note);
+    if (appState.activeTab === 'scales') appState.scalesStudio?.onSingleNoteDetected(result.note.pitch.note);
+    if (appState.activeTab === 'songs') appState.songStudio?.evaluatePractice(result.note.pitch.note);
   }
   
   // Update visualizers
