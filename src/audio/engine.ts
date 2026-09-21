@@ -108,6 +108,32 @@ function createWoodenBodyImpulse(
   return buffer;
 }
 
+/**
+ * Generate a smooth room/hall impulse response so notes sit in a real space
+ * instead of sounding dry/synthetic. Exponentially decaying stereo noise with
+ * slightly decorrelated channels for natural width.
+ */
+function createRoomImpulse(
+  ctx: AudioContext,
+  seconds: number = 1.8,
+  model: AcousticModel = 'dreadnought'
+): AudioBuffer {
+  const sampleRate = ctx.sampleRate;
+  const len = Math.max(1, Math.floor(sampleRate * seconds));
+  const buffer = ctx.createBuffer(2, len, sampleRate);
+  const decayPow = model === 'nylon' ? 3.0 : model === 'twelve' ? 2.0 : 2.4;
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      // small pre-delay of near-silence, then decaying diffuse tail
+      const env = i < sampleRate * 0.01 ? t * 100 : Math.pow(1 - t, decayPow);
+      data[i] = (Math.random() * 2 - 1) * env;
+    }
+  }
+  return buffer;
+}
+
 // ============================================================================
 // Master Acoustic Bus (filter chain + convolution)
 // ============================================================================
@@ -123,6 +149,8 @@ export interface AcousticBus {
   dryGain: GainNode;
   wetGain: GainNode;
   convolver: ConvolverNode | null;
+  roomReverb: ConvolverNode | null;
+  reverbGain: GainNode;
   limiter: DynamicsCompressorNode;
   masterOut: GainNode;
 }
@@ -164,6 +192,17 @@ export function createAcousticBus(ctx: AudioContext, config: AcousticEngineConfi
     console.warn('Convolver creation failed:', e);
   }
 
+  // Room ambience reverb (adds real acoustic space vs. dry synthetic tone)
+  let roomReverb: ConvolverNode | null = null;
+  const reverbGain = ctx.createGain();
+  reverbGain.gain.value = 0.14;
+  try {
+    roomReverb = ctx.createConvolver();
+    roomReverb.buffer = createRoomImpulse(ctx, 1.8, config.model);
+  } catch (e) {
+    console.warn('Room reverb creation failed:', e);
+  }
+
   // Master acoustic limiter / compressor
   const limiter = ctx.createDynamicsCompressor();
   limiter.threshold.value = -1.5;
@@ -192,6 +231,13 @@ export function createAcousticBus(ctx: AudioContext, config: AcousticEngineConfi
     wetGain.connect(limiter);
   }
 
+  // Room reverb send (parallel), adds ambient space
+  if (roomReverb) {
+    woodRollOff.connect(roomReverb);
+    roomReverb.connect(reverbGain);
+    reverbGain.connect(limiter);
+  }
+
   limiter.connect(masterOut);
   masterOut.connect(ctx.destination);
 
@@ -206,6 +252,8 @@ export function createAcousticBus(ctx: AudioContext, config: AcousticEngineConfi
     dryGain,
     wetGain,
     convolver,
+    roomReverb,
+    reverbGain,
     limiter,
     masterOut,
   };
@@ -231,6 +279,7 @@ export function updateAcousticBusSettings(bus: AcousticBus, model: AcousticModel
     bus.sparkle.Q.value = 1.8;
     bus.woodRollOff.frequency.value = 4500;
     bus.wetGain.gain.value = 0.22;
+    bus.reverbGain.gain.value = 0.17;
   } else if (model === 'twelve') {
     // 12-string shimmer: bright octave presence, wide airy sparkle
     bus.helmholtz.gain.value = 6.0;
@@ -247,6 +296,7 @@ export function updateAcousticBusSettings(bus: AcousticBus, model: AcousticModel
     bus.sparkle.Q.value = 2.2;
     bus.woodRollOff.frequency.value = 7500;
     bus.wetGain.gain.value = 0.24;
+    bus.reverbGain.gain.value = 0.19;
   } else {
     // Standard steel dreadnought: full punch, deep body bass, crisp bronze chime
     bus.helmholtz.gain.value = 8.0;
@@ -263,6 +313,7 @@ export function updateAcousticBusSettings(bus: AcousticBus, model: AcousticModel
     bus.sparkle.Q.value = 2.0;
     bus.woodRollOff.frequency.value = 6000;
     bus.wetGain.gain.value = 0.18;
+    bus.reverbGain.gain.value = 0.15;
   }
 }
 
@@ -381,6 +432,12 @@ export function playAcousticString(
   // Playback
   const bufferSource = ctx.createBufferSource();
   bufferSource.buffer = audioBuffer;
+
+  // Subtle per-note pitch variation (~±3.5 cents) so notes/strums aren't
+  // machine-identical — real strings and fingers never land perfectly in tune,
+  // and the tiny spread creates natural chorus/beating across a chord.
+  const cents = (Math.random() * 2 - 1) * 3.5;
+  bufferSource.playbackRate.value = Math.pow(2, cents / 1200);
 
   // Dynamic string damping envelope
   const stringGain = ctx.createGain();
