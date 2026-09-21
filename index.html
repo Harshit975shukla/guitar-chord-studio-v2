@@ -922,7 +922,10 @@
               <canvas id="canvas-spectrum" aria-label="Frequency spectrum"></canvas>
             </div>
             <div class="vis-box">
-              <div class="vis-label"><span>🎯</span> 12 Semitone Energy (C to B) <span style="font-size:0.7rem; color:#ff4081;">• Pink = Active Chord Tones</span></div>
+              <div class="vis-label" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                <div><span>🎯</span> 12 Semitone Energy (C to B) <span style="font-size:0.7rem; color:#ff4081;">• Pink = Active Energy</span></div>
+                <span id="chroma-active-note-indicator" style="display:none; font-size:0.78rem; font-weight:800; color:var(--accent-gold); padding:2px 8px; border-radius:6px; background:rgba(255,179,0,0.12); border:1px solid rgba(255,179,0,0.35);"></span>
+              </div>
               <div class="chroma-bars" id="chroma-bars-container" aria-label="12-tone chromagram"></div>
             </div>
           </div>

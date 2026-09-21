@@ -282,12 +282,12 @@ export class DetectionEngine {
       sumSquares += val * val;
     }
     const rms = Math.sqrt(sumSquares / bufLen);
-    if (rms < 0.012) return { freq: -1, confidence: 0, rms };
+    if (rms < 0.010) return { freq: -1, confidence: 0, rms };
 
-    const minPeriod = Math.floor(sampleRate / 850); // ~51 samples (G5)
-    const maxPeriod = Math.floor(sampleRate / 68);  // ~648 samples (Drop D ~73 Hz)
-    const windowLen = 1024;
-    if (windowLen + maxPeriod > bufLen) return { freq: -1, confidence: 0, rms };
+    const minPeriod = Math.floor(sampleRate / 880); // ~50 samples (A5)
+    const maxPeriod = Math.floor(sampleRate / 65);  // ~740 samples (low C2 ~65 Hz)
+    const windowLen = Math.min(1024, bufLen - maxPeriod);
+    if (windowLen <= 0) return { freq: -1, confidence: 0, rms };
 
     let energy0 = 0;
     for (let i = 0; i < windowLen; i++) {
@@ -313,14 +313,16 @@ export class DetectionEngine {
       const r = dot / norm;
       correlations[lag] = r;
 
-      if (!pastZeroDip && r < 0.20) pastZeroDip = true;
+      if (!pastZeroDip && (r < 0.35 || (lag > minPeriod + 2 && correlations[lag] > correlations[lag - 1] && correlations[lag - 1] < correlations[lag - 2]))) {
+        pastZeroDip = true;
+      }
       if (pastZeroDip && r > maxCorr) {
         maxCorr = r;
         bestPeriod = lag;
       }
     }
 
-    if (maxCorr < 0.50 || bestPeriod <= 0) {
+    if (maxCorr < 0.40 || bestPeriod <= 0) {
       return { freq: -1, confidence: maxCorr > 0 ? maxCorr : 0, rms };
     }
 
@@ -329,7 +331,7 @@ export class DetectionEngine {
     for (let lag = minPeriod + 1; lag < bestPeriod - 2; lag++) {
       if (correlations[lag] > correlations[lag - 1] &&
           correlations[lag] > correlations[lag + 1] &&
-          correlations[lag] >= maxCorr * 0.82) {
+          correlations[lag] >= maxCorr * 0.80) {
         chosenPeriod = lag;
         break;
       }
@@ -417,7 +419,8 @@ export class DetectionEngine {
     const rawChroma = new Float32Array(12);
     
     peaks.forEach(pk => {
-      const freqWeight = Math.min(2.5, Math.max(0.65, pk.freq / 240));
+      // Guitar fundamentals (80 - 350 Hz) have full weight; upper harmonics gently roll off so overtones don't overpower the fundamental note
+      const freqWeight = pk.freq <= 350 ? 1.0 : Math.max(0.35, 350 / pk.freq);
       rawChroma[pk.pitchClass] += pk.amp * freqWeight;
     });
     
@@ -426,7 +429,7 @@ export class DetectionEngine {
     for (let i = 0; i < 12; i++) {
       if (rawChroma[i] > maxChroma) maxChroma = rawChroma[i];
     }
-    if (maxChroma >= 0.012) {
+    if (maxChroma >= 0.010) {
       for (let i = 0; i < 12; i++) rawChroma[i] /= maxChroma;
     }
     
@@ -434,8 +437,80 @@ export class DetectionEngine {
   }
 
   // ============================================================================
-  // Single Note Processing
+  // Single Note Detection & Processing
   // ============================================================================
+
+  detectSingleNote(
+    peaks: DetectedPeak[],
+    sampleRate: number,
+    tuning: StringTuning[] = STANDARD_TUNING
+  ): {
+    freq: number;
+    midi: number;
+    pitchClass: number;
+    note: NoteName;
+    octave: number;
+    cents: number;
+    confidence: number;
+    guitarPosition?: GuitarPosition;
+    tunerVerdict: 'in-tune' | 'flat' | 'sharp';
+  } | null {
+    if (!peaks || peaks.length === 0) return null;
+
+    // 1. Try autocorrelation on time-domain buffer
+    const autoCorr = this.timeBuffer ? this.fastAutocorrelate(this.timeBuffer, sampleRate) : { freq: -1, confidence: 0, rms: 0 };
+    const isHum = (Math.abs(autoCorr.freq - 50) < 2 || Math.abs(autoCorr.freq - 60) < 2 || 
+                   Math.abs(autoCorr.freq - 100) < 2 || Math.abs(autoCorr.freq - 120) < 2) && autoCorr.rms < 0.035;
+
+    let f0 = -1;
+    let confidence = 0;
+
+    if (!isHum && autoCorr.freq >= 70 && autoCorr.freq <= 900 && autoCorr.confidence >= 0.40) {
+      f0 = autoCorr.freq;
+      confidence = Math.round(autoCorr.confidence * 100);
+    }
+
+    // 2. If autocorrelation failed or is in doubt, check strongest FFT peaks with subharmonic inspection
+    if (f0 <= 0 && peaks[0] && peaks[0].amp >= 0.005) {
+      const topFreq = peaks[0].freq;
+      // Check for subharmonic fundamentals (e.g. if 2nd harmonic 164Hz or 220Hz was louder than fundamental 82Hz / 110Hz)
+      const subharmonic2 = peaks.find(p => Math.abs(p.freq - topFreq / 2) < 5 && p.amp > 0.12 * peaks[0].amp);
+      const subharmonic3 = peaks.find(p => Math.abs(p.freq - topFreq / 3) < 5 && p.amp > 0.12 * peaks[0].amp);
+
+      if (subharmonic3) {
+        f0 = subharmonic3.freq;
+      } else if (subharmonic2) {
+        f0 = subharmonic2.freq;
+      } else {
+        f0 = topFreq;
+      }
+      confidence = Math.min(95, Math.round(50 + peaks[0].amp * 200));
+    }
+
+    if (f0 <= 0 || f0 < 65 || f0 > 1100) return null;
+
+    const midi = 69 + 12 * Math.log2(f0 / 440);
+    const roundMidi = Math.round(midi);
+    const cents = Math.round((midi - roundMidi) * 100);
+    const pitchClass = ((roundMidi % 12) + 12) % 12;
+    const note = NOTE_NAMES[pitchClass];
+    const octave = Math.floor(roundMidi / 12) - 1;
+    const guitarPosition = this.findGuitarPosition(roundMidi, tuning) || undefined;
+    const tunerVerdict: 'in-tune' | 'flat' | 'sharp' = 
+      Math.abs(cents) <= 4 ? 'in-tune' : (cents < 0 ? 'flat' : 'sharp');
+
+    return {
+      freq: f0,
+      midi,
+      pitchClass,
+      note,
+      octave,
+      cents,
+      confidence,
+      guitarPosition,
+      tunerVerdict,
+    };
+  }
 
   processSingleNote(
     f0: number, 
@@ -447,10 +522,19 @@ export class DetectionEngine {
     const roundMidi = Math.round(midi);
     const pitch = midiToPitch(roundMidi);
     const cents = Math.round((midi - roundMidi) * 100);
+    const pitchClass = ((roundMidi % 12) + 12) % 12;
     
     const guitarPos = this.findGuitarPosition(roundMidi, tuning);
     const tunerVerdict: 'in-tune' | 'flat' | 'sharp' = 
       Math.abs(cents) <= 4 ? 'in-tune' : (cents < 0 ? 'flat' : 'sharp');
+
+    // Build dedicated single-note chroma for 12 Semitone Energy
+    const singleNoteChroma = new Float32Array(12);
+    singleNoteChroma[pitchClass] = 1.0;
+    singleNoteChroma[(pitchClass + 7) % 12] = 0.20; // natural 5th harmonic overtone
+    for (let i = 0; i < 12; i++) {
+      this.smoothedChroma[i] = 0.50 * this.smoothedChroma[i] + 0.50 * singleNoteChroma[i];
+    }
 
     const ringingNotes = this.extractRingingNotes(peaks);
     
@@ -468,7 +552,7 @@ export class DetectionEngine {
       ringingNotes,
       spectrum: new Float32Array(0),
       signalLevelDb: 0,
-      statusMessage: `Plucked Note: ${pitch.note}${pitch.octave} (${pitch.freq.toFixed(1)} Hz) • Listening...`,
+      statusMessage: `🎵 Plucked Note: ${pitch.note}${pitch.octave} (${pitch.freq.toFixed(1)} Hz) • ${tunerVerdict}`,
     };
 
     return result;
@@ -777,51 +861,138 @@ export class DetectionEngine {
 
     const targetMode = this.config.targetMode || 'chords';
 
-    // --------------------------------------------------------------------------
-    // MODE: NOTES & TUNER (100% Monophonic Pitch & Chromatic Tuner)
-    // --------------------------------------------------------------------------
-    if (targetMode === 'notes') {
-      if (!isGatePassed || currentRms < 0.015) {
-        return {
-          mode: 'idle',
-          timestamp: now,
-          chord: undefined,
-          chroma: new Float32Array(this.smoothedChroma),
-          peaks: [],
-          ringingNotes: [],
-          spectrum: freqData,
-          signalLevelDb: maxDb,
-          statusMessage: '🎵 Notes & Tuner Mode • Pluck single string',
-        };
-      }
-      const autoCorr = this.fastAutocorrelate(this.timeBuffer, sampleRate);
-      const peaks = this.extractPeaks(cleanAmps, sampleRate);
-      peaks.sort((a, b) => b.amp - a.amp);
-      const isHum = (Math.abs(autoCorr.freq - 50) < 1.5 || Math.abs(autoCorr.freq - 60) < 1.5 || 
-                     Math.abs(autoCorr.freq - 100) < 1.5 || Math.abs(autoCorr.freq - 120) < 1.5) && autoCorr.rms < 0.035;
-      if (!isHum && autoCorr.freq >= 70 && autoCorr.freq <= 880 && autoCorr.confidence >= 0.65) {
-        return this.processSingleNote(autoCorr.freq, peaks, peaks[0]?.pitchClass, tuning);
-      }
+    if (!isGatePassed) {
+      this.lastLockedChord = null;
+      for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.75;
       return {
         mode: 'idle',
         timestamp: now,
         chord: undefined,
         chroma: new Float32Array(this.smoothedChroma),
-        peaks,
-        ringingNotes: this.extractRingingNotes(peaks),
+        peaks: [],
+        ringingNotes: [],
         spectrum: freqData,
         signalLevelDb: maxDb,
-        statusMessage: '🎵 Notes & Tuner Mode • Pluck a clean single note',
+        statusMessage: this.config.triggerMode === 'guitartuna'
+          ? '🎸 GuitarTuna Mode • Waiting for guitar strum or note...'
+          : 'Ready • Continuous listening active... strum any chord or pluck note',
       };
     }
 
+    // 6. Extract peaks and verify tonal content
+    const peaks = this.extractPeaks(cleanAmps, sampleRate);
+    peaks.sort((a, b) => b.amp - a.amp);
+
+    const numGuitarBins = maxGuitarBin - minGuitarBin + 1;
+    const meanBandAmp = totalGuitarBandEnergy / numGuitarBins;
+    const crestFactor = (peaks[0]?.amp || 0) / (meanBandAmp + 1e-6);
+
+    if (peaks.length === 0 || peaks[0].amp < 0.005 || crestFactor < 2.6) {
+      return {
+        mode: 'idle',
+        timestamp: now,
+        chord: undefined,
+        chroma: new Float32Array(this.smoothedChroma),
+        peaks: [],
+        ringingNotes: [],
+        spectrum: freqData,
+        signalLevelDb: maxDb,
+        statusMessage: 'Ambient noise filtered • Awaiting clear guitar sound',
+      };
+    }
+
+    // 7. Check for Single Note vs Polyphonic Chord (1-2 pitch classes vs >= 3)
+    const activePeakPcs = new Set<number>();
+    const maxAmp = peaks[0].amp;
+    for (const pk of peaks) {
+      if (pk.amp > 0.22 * maxAmp) {
+        activePeakPcs.add(pk.pitchClass);
+      }
+    }
+    const isPolyphonicChord = (activePeakPcs.size >= 3);
+
     // --------------------------------------------------------------------------
-    // TRIGGER MODE: GUITARTUNA (Attack-Triggered Strum Analyzer)
+    // SINGLE NOTE PROCESSING (Accurately lights up in 12 Semitone Energy C to B)
     // --------------------------------------------------------------------------
+    if (!isPolyphonicChord) {
+      const singleNote = this.detectSingleNote(peaks, sampleRate, tuning);
+      if (singleNote) {
+        // Build dedicated single note chroma: 100% on the single note semitone!
+        const singleNoteChroma = new Float32Array(12);
+        singleNoteChroma[singleNote.pitchClass] = 1.0;
+        singleNoteChroma[(singleNote.pitchClass + 7) % 12] = 0.20; // natural 5th overtone
+        for (let i = 0; i < 12; i++) {
+          this.smoothedChroma[i] = 0.50 * this.smoothedChroma[i] + 0.50 * singleNoteChroma[i];
+        }
+
+        const ringingNotes: Array<{ note: NoteName; freq: number; octave: number; amp: number; cents: number }> = [{
+          note: singleNote.note,
+          freq: Math.round(singleNote.freq * 10) / 10,
+          octave: singleNote.octave,
+          amp: peaks[0]?.amp || 0.1,
+          cents: singleNote.cents,
+        }];
+
+        // In Chords Only mode, user requested: "for single note it only shows in 12 Semitone Energy (C to B)"
+        // so chord is undefined, mode is idle (no fake chords guessed)
+        if (targetMode === 'chords') {
+          return {
+            mode: 'idle',
+            timestamp: now,
+            chord: undefined,
+            chroma: new Float32Array(this.smoothedChroma),
+            peaks,
+            ringingNotes,
+            spectrum: freqData,
+            signalLevelDb: maxDb,
+            statusMessage: `🎵 Note: ${singleNote.note}${singleNote.octave} (${singleNote.freq.toFixed(1)} Hz) in 12 Semitone Energy • Strum >= 3 strings for chords`,
+          };
+        }
+
+        // In Notes & Tuner or Auto mode, return single-note with full tuning info
+        return {
+          mode: 'single-note',
+          timestamp: now,
+          chord: undefined,
+          note: {
+            pitch: {
+              note: singleNote.note,
+              octave: singleNote.octave,
+              freq: singleNote.freq,
+              cents: singleNote.cents,
+              midi: singleNote.midi,
+            },
+            guitarPosition: singleNote.guitarPosition,
+            confidence: singleNote.confidence,
+            tunerVerdict: singleNote.tunerVerdict,
+          },
+          chroma: new Float32Array(this.smoothedChroma),
+          peaks,
+          ringingNotes,
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+          statusMessage: `🎵 Plucked: ${singleNote.note}${singleNote.octave} (${singleNote.freq.toFixed(1)} Hz, ${singleNote.cents > 0 ? '+' : ''}${singleNote.cents}¢) • ${singleNote.tunerVerdict}`,
+        };
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // POLYPHONIC CHORD PROCESSING (>= 3 Distinct Active Pitch Classes)
+    // --------------------------------------------------------------------------
+    const rawChroma = this.buildChroma(peaks);
+    for (let i = 0; i < 12; i++) {
+      this.smoothedChroma[i] = 0.55 * this.smoothedChroma[i] + 0.45 * rawChroma[i];
+    }
+
+    if (targetMode === 'notes') {
+      const f0 = peaks[0]?.freq || 0;
+      return this.processSingleNote(f0, peaks, peaks[0]?.pitchClass, tuning);
+    }
+
+    // GuitarTuna Strum Capture State Machine for Chords
     if (this.config.triggerMode === 'guitartuna') {
       if (this.strumState === 'idle') {
         if (!isStrumAttack) {
-          // If a chord was recently locked, display it until the hold expires
           if (this.lockedChordResult && now < this.lockedChordUntil) {
             return {
               ...this.lockedChordResult,
@@ -833,17 +1004,16 @@ export class DetectionEngine {
           }
           this.lockedChordResult = null;
           this.lastLockedChord = null;
-          for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.80;
           return {
             mode: 'idle',
             timestamp: now,
             chord: undefined,
             chroma: new Float32Array(this.smoothedChroma),
-            peaks: [],
-            ringingNotes: [],
+            peaks,
+            ringingNotes: this.extractRingingNotes(peaks),
             spectrum: freqData,
             signalLevelDb: maxDb,
-            statusMessage: '🎸 GuitarTuna Trigger • Waiting for guitar strum...',
+            statusMessage: '🎸 GuitarTuna Trigger • Waiting for guitar strum attack...',
           };
         }
 
@@ -856,23 +1026,16 @@ export class DetectionEngine {
 
       if (this.strumState === 'attack') {
         const elapsed = now - this.strumAttackTimestamp;
-        // If a bigger strum re-attack occurs, reset the capture window
         if (isStrumAttack && energyFlux > 0.045) {
           this.strumAttackTimestamp = now;
           this.strumChromaBuffer = [];
         }
 
-        const peaks = this.extractPeaks(cleanAmps, sampleRate);
-        peaks.sort((a, b) => b.amp - a.amp);
-        const rawChroma = this.buildChroma(peaks);
-
-        // Collect chroma during ringing sustain window (30ms to 320ms post-attack)
         if (elapsed >= 30 && elapsed <= 320) {
           this.strumChromaBuffer.push(rawChroma);
         }
 
         if (this.strumChromaBuffer.length >= 3) {
-          // Average the frames from the ringing sustain phase
           const avgChroma = new Float32Array(12);
           for (const ch of this.strumChromaBuffer) {
             for (let i = 0; i < 12; i++) avgChroma[i] += ch[i];
@@ -883,7 +1046,7 @@ export class DetectionEngine {
           const chordRes = this.processChord(avgChroma, peaks);
           if (chordRes.mode === 'chord' && chordRes.chord) {
             this.lockedChordResult = chordRes;
-            this.lockedChordUntil = now + 2000; // Hold locked chord for 2.0s
+            this.lockedChordUntil = now + 2000;
             this.lastLockedChord = chordRes.chord.symbol;
             this.strumState = 'idle';
             return chordRes;
@@ -917,74 +1080,8 @@ export class DetectionEngine {
       }
     }
 
-    // --------------------------------------------------------------------------
-    // TRIGGER MODE: CONTINUOUS (Active Live Analysis)
-    // --------------------------------------------------------------------------
-    if (!isGatePassed) {
-      this.lastLockedChord = null;
-      for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.75;
-      return {
-        mode: 'idle',
-        timestamp: now,
-        chord: undefined,
-        chroma: new Float32Array(this.smoothedChroma),
-        peaks: [],
-        ringingNotes: [],
-        spectrum: freqData,
-        signalLevelDb: maxDb,
-        statusMessage: 'Ready • Continuous listening active... strum any chord or note',
-      };
-    }
-
-    const peaks = this.extractPeaks(cleanAmps, sampleRate);
-    peaks.sort((a, b) => b.amp - a.amp);
-
-    const numGuitarBins = maxGuitarBin - minGuitarBin + 1;
-    const meanBandAmp = totalGuitarBandEnergy / numGuitarBins;
-    const crestFactor = (peaks[0]?.amp || 0) / (meanBandAmp + 1e-6);
-    if (peaks.length === 0 || peaks[0].amp < 0.006 || crestFactor < 3.2) {
-      return {
-        mode: 'idle',
-        timestamp: now,
-        chord: undefined,
-        chroma: new Float32Array(this.smoothedChroma),
-        peaks: [],
-        ringingNotes: [],
-        spectrum: freqData,
-        signalLevelDb: maxDb,
-        statusMessage: 'Ambient noise filtered • Awaiting clear guitar sound',
-      };
-    }
-
-    const rawChroma = this.buildChroma(peaks);
-    for (let i = 0; i < 12; i++) {
-      this.smoothedChroma[i] = 0.55 * this.smoothedChroma[i] + 0.45 * rawChroma[i];
-    }
-
-    if (targetMode === 'chords') {
-      return this.processChord(this.smoothedChroma, peaks);
-    }
-
-    // Auto Mode Discrimination
-    const autoCorr = this.fastAutocorrelate(this.timeBuffer, sampleRate);
-    const isHum = (Math.abs(autoCorr.freq - 50) < 1.5 || Math.abs(autoCorr.freq - 60) < 1.5 || 
-                   Math.abs(autoCorr.freq - 100) < 1.5 || Math.abs(autoCorr.freq - 120) < 1.5) && autoCorr.rms < 0.035;
-    const activePeakPcs = new Set<number>();
-    for (const pk of peaks) {
-      if (pk.amp > 0.25 * (peaks[0]?.amp || 0.01)) activePeakPcs.add(pk.pitchClass);
-    }
-    const isPolyphonicChord = (activePeakPcs.size >= 3);
-    const hasDominantSinglePeak = peaks.length === 1 || (peaks.length >= 2 && peaks[0].amp > 2.5 * peaks[1].amp);
-    const isSingleNote = !isHum && !isPolyphonicChord && (autoCorr.freq >= 70 && autoCorr.freq <= 850) &&
-                         (autoCorr.confidence >= 0.65 || (autoCorr.confidence >= 0.52 && hasDominantSinglePeak)) &&
-                         (peaks[0]?.amp >= 0.006);
-
-    if (isSingleNote) {
-      const f0 = autoCorr.freq > 0 ? autoCorr.freq : (peaks[0]?.freq || 0);
-      return this.processSingleNote(f0, peaks, peaks[0]?.pitchClass, tuning);
-    } else {
-      return this.processChord(this.smoothedChroma, peaks);
-    }
+    // Continuous Mode for Chords
+    return this.processChord(this.smoothedChroma, peaks);
   }
 
   // ============================================================================

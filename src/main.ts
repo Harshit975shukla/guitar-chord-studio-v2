@@ -1157,7 +1157,7 @@ function updateChordDisplay(result: DetectionResult): void {
   const liveNeedle = document.getElementById('live-note-needle');
   const liveVerdict = document.getElementById('live-tuner-verdict');
   
-  if (result.mode === 'single-note' && result.note) {
+  if (result.mode === 'single-note' && result.note && appState.settings.targetMode !== 'chords') {
     nameEl!.innerHTML = `Note: <span style="color:#38bdf8;">${result.note.pitch.note}${result.note.pitch.octave}</span>`;
     rootEl!.textContent = `${result.note.pitch.note}${result.note.pitch.octave}`;
     qualityEl!.textContent = 'Single Note';
@@ -1355,6 +1355,9 @@ function updateSpectrumVisualizer(freqData: Float32Array): void {
 }
 
 function updateChromaVisualizer(chroma: Float32Array): void {
+  let maxVal = 0;
+  let maxIdx = -1;
+
   for (let i = 0; i < 12; i++) {
     const fill = document.getElementById(`chroma-fill-${i}`);
     const col = document.getElementById(`chroma-col-${i}`);
@@ -1365,6 +1368,22 @@ function updateChromaVisualizer(chroma: Float32Array): void {
     
     if (pct > 50) col.classList.add('highlight');
     else col.classList.remove('highlight');
+
+    if (chroma[i] > maxVal) {
+      maxVal = chroma[i];
+      maxIdx = i;
+    }
+  }
+
+  const indicator = document.getElementById('chroma-active-note-indicator');
+  if (indicator) {
+    if (maxVal >= 0.40 && maxIdx >= 0) {
+      indicator.textContent = `🎵 Active Note: ${NOTE_NAMES[maxIdx]}`;
+      indicator.style.display = 'inline-block';
+    } else {
+      indicator.textContent = '';
+      indicator.style.display = 'none';
+    }
   }
 }
 
