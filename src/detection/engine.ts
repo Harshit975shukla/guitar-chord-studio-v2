@@ -163,7 +163,8 @@ export class DetectionEngine {
   private strumAttackTimestamp = 0;
   private strumChromaBuffer: Float32Array[] = [];
   private lockedChordResult: DetectionResult | null = null;
-  private lockedChordUntil = 0;
+  private lockedNoteResult: DetectionResult | null = null;
+  private lastAudioActivityTimestamp = 0;
 
   constructor(config: Partial<DetectionConfig> = {}) {
     this.config = { ...DEFAULT_DETECTION_CONFIG, ...config };
@@ -326,14 +327,25 @@ export class DetectionEngine {
       return { freq: -1, confidence: maxCorr > 0 ? maxCorr : 0, rms };
     }
 
-    // First-peak selection to eliminate subharmonic octave doubling (preventing 2*T trap)
+    // Safe octave-doubling check: ONLY check around bestPeriod / 2 (an exact octave, same note!)
+    // Never jump to bestPeriod / 3 (which is a 12th / perfect 5th, corrupting notes of the B string)
     let chosenPeriod = bestPeriod;
-    for (let lag = minPeriod + 1; lag < bestPeriod - 2; lag++) {
-      if (correlations[lag] > correlations[lag - 1] &&
-          correlations[lag] > correlations[lag + 1] &&
-          correlations[lag] >= maxCorr * 0.80) {
-        chosenPeriod = lag;
-        break;
+    const halfPeriod = Math.round(bestPeriod / 2);
+    if (halfPeriod >= minPeriod) {
+      let maxHalfCorr = -1;
+      let halfLag = halfPeriod;
+      for (let d = -2; d <= 2; d++) {
+        const lagIdx = halfPeriod + d;
+        if (lagIdx >= minPeriod && lagIdx <= maxPeriod) {
+          const c = correlations[lagIdx] || 0;
+          if (c > maxHalfCorr) {
+            maxHalfCorr = c;
+            halfLag = lagIdx;
+          }
+        }
+      }
+      if (maxHalfCorr >= maxCorr * 0.88) {
+        chosenPeriod = halfLag;
       }
     }
 
@@ -473,14 +485,14 @@ export class DetectionEngine {
     // 2. If autocorrelation failed or is in doubt, check strongest FFT peaks with subharmonic inspection
     if (f0 <= 0 && peaks[0] && peaks[0].amp >= 0.005) {
       const topFreq = peaks[0].freq;
-      // Check for subharmonic fundamentals (e.g. if 2nd harmonic 164Hz or 220Hz was louder than fundamental 82Hz / 110Hz)
-      const subharmonic2 = peaks.find(p => Math.abs(p.freq - topFreq / 2) < 5 && p.amp > 0.12 * peaks[0].amp);
-      const subharmonic3 = peaks.find(p => Math.abs(p.freq - topFreq / 3) < 5 && p.amp > 0.12 * peaks[0].amp);
+      // Check for subharmonic fundamentals (e.g. if 2nd harmonic was louder than fundamental)
+      const subharmonic2 = peaks.find(p => Math.abs(p.freq - topFreq / 2) < Math.max(8, (topFreq / 2) * 0.06) && p.amp > 0.15 * peaks[0].amp);
+      const subharmonic3 = (topFreq / 3 >= 70) ? peaks.find(p => Math.abs(p.freq - topFreq / 3) < Math.max(8, (topFreq / 3) * 0.06) && p.amp > 0.18 * peaks[0].amp) : undefined;
 
-      if (subharmonic3) {
-        f0 = subharmonic3.freq;
-      } else if (subharmonic2) {
+      if (subharmonic2) {
         f0 = subharmonic2.freq;
+      } else if (subharmonic3) {
+        f0 = subharmonic3.freq;
       } else {
         f0 = topFreq;
       }
@@ -861,9 +873,51 @@ export class DetectionEngine {
 
     const targetMode = this.config.targetMode || 'chords';
 
+    const silenceDuration = now - this.lastAudioActivityTimestamp;
     if (!isGatePassed) {
-      this.lastLockedChord = null;
-      for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.75;
+      // If sustained silence for > 5 seconds, clear the held chord/note
+      if (this.lastAudioActivityTimestamp > 0 && silenceDuration > 5000) {
+        this.lockedChordResult = null;
+        this.lockedNoteResult = null;
+        this.lastLockedChord = null;
+        this.strumState = 'idle';
+        for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.50;
+        return {
+          mode: 'idle',
+          timestamp: now,
+          chord: undefined,
+          chroma: new Float32Array(this.smoothedChroma),
+          peaks: [],
+          ringingNotes: [],
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+          statusMessage: this.config.triggerMode === 'guitartuna'
+            ? '🎸 Ready • Strum any guitar chord or pluck note'
+            : 'Ready • Continuous listening active...',
+        };
+      }
+
+      // Within 5 seconds, hold the previously identified chord or note!
+      if (this.lockedChordResult) {
+        return {
+          ...this.lockedChordResult,
+          timestamp: now,
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+          statusMessage: `🎸 Captured Chord: ${this.lockedChordResult.chord?.symbol} • Strum next chord to update`,
+        };
+      }
+      if (this.lockedNoteResult && targetMode !== 'chords') {
+        return {
+          ...this.lockedNoteResult,
+          timestamp: now,
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+          statusMessage: `🎵 Plucked: ${this.lockedNoteResult.note?.pitch.note}${this.lockedNoteResult.note?.pitch.octave} • Pluck next note to update`,
+        };
+      }
+
+      for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.85;
       return {
         mode: 'idle',
         timestamp: now,
@@ -879,6 +933,9 @@ export class DetectionEngine {
       };
     }
 
+    // Audio is present! Update activity timestamp
+    this.lastAudioActivityTimestamp = now;
+
     // 6. Extract peaks and verify tonal content
     const peaks = this.extractPeaks(cleanAmps, sampleRate);
     peaks.sort((a, b) => b.amp - a.amp);
@@ -888,6 +945,23 @@ export class DetectionEngine {
     const crestFactor = (peaks[0]?.amp || 0) / (meanBandAmp + 1e-6);
 
     if (peaks.length === 0 || peaks[0].amp < 0.005 || crestFactor < 2.6) {
+      if (this.lockedChordResult) {
+        return {
+          ...this.lockedChordResult,
+          timestamp: now,
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+          statusMessage: `🎸 Captured Chord: ${this.lockedChordResult.chord?.symbol} • Strum next chord to update`,
+        };
+      }
+      if (this.lockedNoteResult && targetMode !== 'chords') {
+        return {
+          ...this.lockedNoteResult,
+          timestamp: now,
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+        };
+      }
       return {
         mode: 'idle',
         timestamp: now,
@@ -914,7 +988,7 @@ export class DetectionEngine {
     // --------------------------------------------------------------------------
     // SINGLE NOTE PROCESSING (Accurately lights up in 12 Semitone Energy C to B)
     // --------------------------------------------------------------------------
-    if (!isPolyphonicChord) {
+    if (!isPolyphonicChord || targetMode === 'notes') {
       const singleNote = this.detectSingleNote(peaks, sampleRate, tuning);
       if (singleNote) {
         // Build dedicated single note chroma: 100% on the single note semitone!
@@ -922,7 +996,7 @@ export class DetectionEngine {
         singleNoteChroma[singleNote.pitchClass] = 1.0;
         singleNoteChroma[(singleNote.pitchClass + 7) % 12] = 0.20; // natural 5th overtone
         for (let i = 0; i < 12; i++) {
-          this.smoothedChroma[i] = 0.50 * this.smoothedChroma[i] + 0.50 * singleNoteChroma[i];
+          this.smoothedChroma[i] = 0.40 * this.smoothedChroma[i] + 0.60 * singleNoteChroma[i];
         }
 
         const ringingNotes: Array<{ note: NoteName; freq: number; octave: number; amp: number; cents: number }> = [{
@@ -950,7 +1024,7 @@ export class DetectionEngine {
         }
 
         // In Notes & Tuner or Auto mode, return single-note with full tuning info
-        return {
+        const noteRes: DetectionResult = {
           mode: 'single-note',
           timestamp: now,
           chord: undefined,
@@ -973,6 +1047,19 @@ export class DetectionEngine {
           signalLevelDb: maxDb,
           statusMessage: `🎵 Plucked: ${singleNote.note}${singleNote.octave} (${singleNote.freq.toFixed(1)} Hz, ${singleNote.cents > 0 ? '+' : ''}${singleNote.cents}¢) • ${singleNote.tunerVerdict}`,
         };
+
+        this.lockedNoteResult = noteRes;
+        this.lockedChordResult = null; // Plucking a single note clears chord lock
+        this.lastLockedChord = null;
+        return noteRes;
+      } else if (this.lockedNoteResult && targetMode !== 'chords') {
+        // Hold the locked note if current frame pitch dips slightly
+        return {
+          ...this.lockedNoteResult,
+          timestamp: now,
+          spectrum: freqData,
+          signalLevelDb: maxDb,
+        };
       }
     }
 
@@ -993,7 +1080,7 @@ export class DetectionEngine {
     if (this.config.triggerMode === 'guitartuna') {
       if (this.strumState === 'idle') {
         if (!isStrumAttack) {
-          if (this.lockedChordResult && now < this.lockedChordUntil) {
+          if (this.lockedChordResult) {
             return {
               ...this.lockedChordResult,
               timestamp: now,
@@ -1002,8 +1089,6 @@ export class DetectionEngine {
               statusMessage: `🎸 Captured Chord: ${this.lockedChordResult.chord?.symbol} • Strum next chord to update`,
             };
           }
-          this.lockedChordResult = null;
-          this.lastLockedChord = null;
           return {
             mode: 'idle',
             timestamp: now,
@@ -1022,6 +1107,7 @@ export class DetectionEngine {
         this.strumAttackTimestamp = now;
         this.strumChromaBuffer = [];
         this.candidateVoteHistory = [];
+        this.lockedNoteResult = null;
       }
 
       if (this.strumState === 'attack') {
@@ -1046,12 +1132,20 @@ export class DetectionEngine {
           const chordRes = this.processChord(avgChroma, peaks);
           if (chordRes.mode === 'chord' && chordRes.chord) {
             this.lockedChordResult = chordRes;
-            this.lockedChordUntil = now + 2000;
             this.lastLockedChord = chordRes.chord.symbol;
             this.strumState = 'idle';
             return chordRes;
           } else if (elapsed > 350) {
             this.strumState = 'idle';
+            if (this.lockedChordResult) {
+              return {
+                ...this.lockedChordResult,
+                timestamp: now,
+                spectrum: freqData,
+                signalLevelDb: maxDb,
+                statusMessage: `🎸 Captured Chord: ${this.lockedChordResult.chord?.symbol} • Strum next chord to update`,
+              };
+            }
             return {
               mode: 'idle',
               timestamp: now,
@@ -1067,7 +1161,7 @@ export class DetectionEngine {
         }
 
         return {
-          mode: 'idle',
+          mode: this.lockedChordResult ? 'chord' : 'idle',
           timestamp: now,
           chord: this.lockedChordResult?.chord,
           chroma: new Float32Array(this.smoothedChroma),
@@ -1081,7 +1175,21 @@ export class DetectionEngine {
     }
 
     // Continuous Mode for Chords
-    return this.processChord(this.smoothedChroma, peaks);
+    const continuousRes = this.processChord(this.smoothedChroma, peaks);
+    if (continuousRes.mode === 'chord' && continuousRes.chord) {
+      this.lockedChordResult = continuousRes;
+      this.lastLockedChord = continuousRes.chord.symbol;
+      return continuousRes;
+    } else if (this.lockedChordResult) {
+      return {
+        ...this.lockedChordResult,
+        timestamp: now,
+        spectrum: freqData,
+        signalLevelDb: maxDb,
+        statusMessage: `Confirmed Chord: ${this.lockedChordResult.chord?.symbol} • Listening for next change...`,
+      };
+    }
+    return continuousRes;
   }
 
   // ============================================================================
@@ -1133,6 +1241,7 @@ export class DetectionEngine {
     this.strumAttackTimestamp = 0;
     this.strumChromaBuffer = [];
     this.lockedChordResult = null;
-    this.lockedChordUntil = 0;
+    this.lockedNoteResult = null;
+    this.lastAudioActivityTimestamp = 0;
   }
 }

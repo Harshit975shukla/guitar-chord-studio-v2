@@ -13,10 +13,12 @@ import {
   DetectionResult,
   DetectionTargetMode,
   ChordVoicing,
+  ChordQuality,
   PracticeSession,
   DrillConfig,
   DrillResult,
   NOTE_NAMES,
+  NoteName,
   SARGAM_NAMES,
   AudioEngineConfig,
   AcousticModel,
@@ -775,7 +777,7 @@ export function getChordVoicings(root: string, quality: string): ChordVoicing[] 
   return def.voicings;
 }
 
-export function loadChordPreset(chordSymbol: string): void {
+export async function loadChordPreset(chordSymbol: string, autoPlay: boolean = false): Promise<void> {
   const parsed = parseChordSymbol(chordSymbol);
   if (!parsed) return;
 
@@ -787,6 +789,41 @@ export function loadChordPreset(chordSymbol: string): void {
     voicings.find(v => v.frets.every(f => f === null || (f >= 0 && f <= 12))) ??
     voicings[0];
   setFretboardState(playable.frets);
+
+  appState.currentChord = chordSymbol;
+
+  // If manually triggered (autoPlay), update chord display card & strum acoustic audio
+  if (autoPlay) {
+    const activeNotes: NoteName[] = playable.frets
+      .map((f, s) => (f !== null ? NOTE_NAMES[((appState.effectiveTuning[s].midi + f) % 12 + 12) % 12] : null))
+      .filter((n): n is NoteName => n !== null);
+    const uniqueNotes = Array.from(new Set(activeNotes));
+
+    updateChordDisplay({
+      mode: 'chord',
+      timestamp: Date.now(),
+      chord: {
+        symbol: chordSymbol,
+        root: parsed.root as NoteName,
+        quality: parsed.quality as ChordQuality,
+        confidence: 100,
+        activeNotes: uniqueNotes.length > 0 ? uniqueNotes : [parsed.root as NoteName],
+        intervals: '',
+        formula: '',
+        sargam: '',
+        candidates: [{ symbol: chordSymbol, confidence: 100, name: chordSymbol }],
+      },
+      chroma: new Float32Array(12),
+      peaks: [],
+      ringingNotes: [],
+      spectrum: new Float32Array(0),
+      signalLevelDb: 0,
+      statusMessage: `🎸 Preset Chord: ${chordSymbol} loaded`,
+    });
+
+    await ensureAudioContext();
+    await strumCurrentChord('down');
+  }
 }
 
 // ============================================================================
@@ -1513,7 +1550,7 @@ function initTabButtons(): void {
     chip.addEventListener('click', () => {
       const element = chip as HTMLElement;
       const chord = element.textContent?.trim();
-      if (chord) loadChordPreset(chord);
+      if (chord) loadChordPreset(chord, true);
     });
   });
   
@@ -1547,8 +1584,8 @@ function initTabButtons(): void {
   // Compare buttons
   const amBtn = document.getElementById('btn-preset-am');
   const am7Btn = document.getElementById('btn-preset-am7');
-  if (amBtn) amBtn.addEventListener('click', () => loadChordPreset('Am'));
-  if (am7Btn) am7Btn.addEventListener('click', () => loadChordPreset('Am7'));
+  if (amBtn) amBtn.addEventListener('click', () => loadChordPreset('Am', true));
+  if (am7Btn) am7Btn.addEventListener('click', () => loadChordPreset('Am7', true));
   
   // Control buttons
   const toggleMic = document.getElementById('btn-toggle-mic');
@@ -1711,7 +1748,7 @@ function renderPresetChips(): void {
       const chip = document.createElement('div');
       chip.className = 'preset-chip';
       chip.textContent = chord;
-      chip.addEventListener('click', () => loadChordPreset(chord));
+      chip.addEventListener('click', () => loadChordPreset(chord, true));
       standardGrid.appendChild(chip);
     });
   }
@@ -1722,7 +1759,7 @@ function renderPresetChips(): void {
       const chip = document.createElement('div');
       chip.className = 'preset-chip';
       chip.textContent = chord;
-      chip.addEventListener('click', () => loadChordPreset(chord));
+      chip.addEventListener('click', () => loadChordPreset(chord, true));
       bollywoodGrid.appendChild(chip);
     });
   }
@@ -2168,7 +2205,7 @@ declare global {
     initializeApp: () => Promise<void>;
     switchTab: (tabId: string) => void;
     strumCurrentChord: (style?: StrumStyle) => Promise<void>;
-    loadChordPreset: (chord: string) => void;
+    loadChordPreset: (chord: string, autoPlay?: boolean) => Promise<void>;
     inspectChordPreset: (chord: string) => void;
     strumChordPreset: (chord: string) => void;
     selectSongFromSearch: (songId: string) => void;
@@ -2186,18 +2223,17 @@ if (typeof window !== 'undefined') {
   window.initializeApp = initializeApp;
   window.switchTab = switchTab;
   window.strumCurrentChord = strumCurrentChord;
-  window.loadChordPreset = loadChordPreset;
+  window.loadChordPreset = (chord: string, autoPlay: boolean = true) => loadChordPreset(chord, autoPlay);
   window.setTargetMode = setTargetMode;
   window.setTriggerMode = setTriggerMode;
-  // Inspect loads the chord onto the detector fretboard and switches to it so it's visible
+  // Inspect loads the chord onto the detector fretboard, strums it, and switches to it
   window.inspectChordPreset = (chord: string) => {
-    loadChordPreset(chord);
+    loadChordPreset(chord, true);
     switchTab('detector');
   };
   // Strum loads the chord's voicing, then strums it
   window.strumChordPreset = (chord: string) => {
-    loadChordPreset(chord);
-    strumCurrentChord('down');
+    loadChordPreset(chord, true);
   };
   window.selectSongFromSearch = (songId: string) => {
     switchTab('songs');
