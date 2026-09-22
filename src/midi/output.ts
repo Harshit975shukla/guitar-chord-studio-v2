@@ -39,10 +39,11 @@ export class MidiManager {
       this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
       this.isSupported = true;
       
-      // Auto-select first output if none selected
-      if (this.config.outputDeviceId === 'virtual' || !this.config.outputDeviceId) {
-        this.enableVirtualSynth(true);
-      } else {
+      // Only select a real hardware MIDI device if one is explicitly configured.
+      // The virtual synth is opt-in only — never auto-enabled — so the live
+      // detector never synthesizes tones on detection (including on false
+      // detections of room noise while the user isn't playing).
+      if (this.config.outputDeviceId && this.config.outputDeviceId !== 'virtual') {
         this.selectOutput(this.config.outputDeviceId);
       }
       
@@ -69,9 +70,8 @@ export class MidiManager {
       const outputs: any[] = Array.from(this.midiAccess.outputs.values());
       if (outputs.length > 0) {
         this.selectOutput(outputs[0].id);
-      } else {
-        this.enableVirtualSynth(true);
       }
+      // No device: stay silent (do not auto-enable the virtual synth)
     }
   }
 
