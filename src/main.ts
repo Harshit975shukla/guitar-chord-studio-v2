@@ -14,6 +14,7 @@ import {
   DetectionTargetMode,
   ChordVoicing,
   ChordQuality,
+  ChordDefinition,
   PracticeSession,
   DrillConfig,
   DrillResult,
@@ -62,6 +63,7 @@ import {
   playTestChord,
   playInTuneChime,
   playMetronomeClick,
+  playAcousticString,
   AcousticBus,
 } from './audio/engine';
 
@@ -79,6 +81,7 @@ import { BUILTIN_SONGS, SongStudio } from './tabs/songs';
 import { RHYTHM_PRESETS } from './tabs/rhythm';
 import { ScalesStudio } from './tabs/scales';
 import { TrainerStudio } from './tabs/trainer';
+import { prepareStudio, NeckController } from './ui/studio';
 
 // ============================================================================
 // Global State
@@ -165,6 +168,12 @@ let appState: AppState = {
   songStudio: new SongStudio(),
 };
 
+let neckController: NeckController | null = null;
+let liveNeckMidi: number | null = null;
+let neckCaption = 'Explore the fretboard';
+let microphonePending = false;
+let theoryChord = '';
+
 export async function initializeApp(): Promise<void> {
   // 1. Load settings
   appState.settings = loadSettings();
@@ -178,13 +187,9 @@ export async function initializeApp(): Promise<void> {
   document.addEventListener('keydown', ensureAudioContext, { once: true });
   document.addEventListener('touchstart', ensureAudioContext, { once: true });
   
-  // 4. Initialize MIDI (graceful fallback if unsupported/denied)
-  try {
-    const midiConfig = loadMidiConfig();
-    appState.midiManager = await createMidiManager(midiConfig, appState.audioContext || undefined);
-  } catch (err) {
-    console.warn('Web MIDI non-fatal init error:', err);
-  }
+  // MIDI is opt-in; a permissions prompt must not block the practice UI.
+  const midiStatus = document.getElementById('top-midi-status');
+  if (midiStatus) midiStatus.textContent = 'requestMIDIAccess' in navigator ? 'Not connected' : 'Unavailable';
   
   // 5. Create Profile Modal and append to body if not already in DOM
   if (!document.getElementById('user-profile-modal')) {
@@ -210,7 +215,10 @@ export async function initializeApp(): Promise<void> {
   }
   
   // 8. Initialize UI
+  prepareStudio();
+  neckController = new NeckController(onFretCellClick, chord => { void loadChordPreset(chord, true); });
   initializeUI();
+  updateMicUI(false);
   
   // Wire Song Studio practice mic auto-start & pre-build fretboard
   appState.songStudio.onMicStartRequested = () => {
@@ -331,10 +339,15 @@ async function ensureAudioContext(): Promise<void> {
 // ============================================================================
 
 export async function startMicrophone(): Promise<boolean> {
-  await ensureAudioContext();
-  if (!appState.audioContext) return false;
-  
+  if (appState.isListening || microphonePending) return appState.isListening;
+  microphonePending = true;
+  const button = document.getElementById('btn-toggle-mic') as HTMLButtonElement | null;
+  if (button) button.disabled = true;
+  const label = document.getElementById('mic-btn-text');
+  if (label) label.textContent = 'Allow microphone…';
   try {
+    await ensureAudioContext();
+    if (!appState.audioContext) return false;
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: false,
@@ -409,6 +422,7 @@ export async function startMicrophone(): Promise<boolean> {
     } else {
       msg = '🎤 Could not access the microphone. Check browser permissions and try again.';
     }
+    updateMicUI(false);
     const substatus = document.getElementById('live-detector-substatus');
     if (substatus) {
       substatus.textContent = msg;
@@ -416,8 +430,10 @@ export async function startMicrophone(): Promise<boolean> {
     } else {
       alert(msg);
     }
-    updateMicUI(false);
     return false;
+  } finally {
+    microphonePending = false;
+    if (button) button.disabled = false;
   }
 }
 
@@ -437,6 +453,8 @@ export function stopMicrophone(): void {
   appState.isListening = false;
   appState.detectionEngine.reset();
   updateMicUI(false);
+  liveNeckMidi = null;
+  renderFretboard();
 }
 
 let lastDspTimestamp = 0;
@@ -508,6 +526,11 @@ function handleDetectionResult(result: DetectionResult, spectrum: Float32Array):
 
   // Update chord display
   updateChordDisplay(result);
+  const nextLiveMidi = result.mode === 'single-note' && result.note ? result.note.pitch.midi : null;
+  if (nextLiveMidi !== liveNeckMidi) {
+    liveNeckMidi = nextLiveMidi;
+    renderFretboard();
+  }
   
   // Send to MIDI
     if (appState.midiManager && appState.settings.midiConfig.sendChords && result.chord) {
@@ -522,6 +545,13 @@ function handleDetectionResult(result: DetectionResult, spectrum: Float32Array):
     logChordDetection(result.chord);
     appState.currentChord = result.chord.symbol;
     loadChordPreset(result.chord.symbol);
+  }
+  if (result.mode === 'chord' && result.chord) {
+    neckCaption = `${result.chord.symbol} · suggested voicing`;
+    syncNeck();
+  } else if (result.mode === 'single-note' && result.note) {
+    neckCaption = `${result.note.pitch.note}${result.note.pitch.octave} · possible positions`;
+    syncNeck();
   }
   
   // Drill mode evaluation
@@ -683,16 +713,20 @@ export function setTargetMode(mode: DetectionTargetMode): void {
   const substatusEl = document.getElementById('live-detector-substatus');
   if (substatusEl) {
     if (mode === 'chords') {
-      substatusEl.textContent = '🎸 Chords Mode Active • Strum full chord cleanly (strict certainty lock)';
+      substatusEl.textContent = appState.isListening ? 'Chord mode · Strum one chord and let it ring.' : 'Chord mode · Start listening, or choose a chord to explore.';
     } else if (mode === 'notes') {
-      substatusEl.textContent = '🎵 Notes & Tuner Mode Active • Pluck single string for pitch & tuning';
+      substatusEl.textContent = appState.isListening ? 'Notes mode · Pluck one string for pitch and tuning.' : 'Notes mode · Start listening to tune a string.';
     } else {
-      substatusEl.textContent = '👂 Auto Smart Mode Active • Strum any chord or pluck any string';
+      substatusEl.textContent = appState.isListening ? 'Auto mode · Strum a chord or pluck a string.' : 'Auto mode · Start listening to recognise chords and notes.';
     }
   }
 }
 
 export function startNoiseCalibration(): void {
+  if (!appState.isListening) {
+    document.getElementById('live-detector-substatus')!.textContent = 'Start listening first; room calibration begins automatically.';
+    return;
+  }
   appState.detectionEngine.startNoiseCalibration();
   updateCalibrationUI(true);
 }
@@ -730,13 +764,22 @@ export function setFretboardState(frets: (number | null)[]): void {
 }
 
 export function clearFretboard(): void {
+  appState.currentChord = null;
+  liveNeckMidi = null;
+  neckCaption = 'Explore the fretboard';
   appState.currentFretboardState = [null, null, null, null, null, null];
   renderFretboard();
   updateChordDisplay({ mode: 'idle', timestamp: Date.now(), chroma: new Float32Array(12), peaks: [], spectrum: new Float32Array(0), signalLevelDb: -120 });
 }
 
-function updateChordFromFretboard(chord: any): void {
-  appState.currentChord = chord.symbol;
+function fretboardChordName(chord: ChordDefinition): string {
+  return chord.symbol.root + CHORD_QUALITY_DISPLAY[chord.symbol.quality];
+}
+
+function updateChordFromFretboard(chord: ChordDefinition): void {
+  appState.currentChord = fretboardChordName(chord);
+  neckCaption = `${appState.currentChord} · selected voicing`;
+  syncNeck();
 }
 
 // ============================================================================
@@ -812,6 +855,9 @@ export async function loadChordPreset(chordSymbol: string, autoPlay: boolean = f
   setFretboardState(playable.frets);
 
   appState.currentChord = chordSymbol;
+  neckCaption = `${chordSymbol} · ${autoPlay ? 'selected' : 'suggested'} voicing`;
+  liveNeckMidi = null;
+  renderFretboard();
 
   // If manually triggered (autoPlay), update chord display card & strum acoustic audio
   if (autoPlay) {
@@ -841,6 +887,12 @@ export async function loadChordPreset(chordSymbol: string, autoPlay: boolean = f
       signalLevelDb: 0,
       statusMessage: `🎸 Preset Chord: ${chordSymbol} loaded`,
     });
+    const confidence = document.getElementById('info-confidence');
+    if (confidence) confidence.textContent = 'Preview';
+    document.getElementById('cand-1')!.textContent = chordSymbol;
+    document.getElementById('cand-2')!.textContent = '—';
+    document.getElementById('cand-3')!.textContent = '—';
+    document.getElementById('status-text')!.textContent = appState.isListening ? 'Microphone on · chord preview' : 'Chord preview · microphone off';
 
     await ensureAudioContext();
     await strumCurrentChord('down');
@@ -1076,7 +1128,9 @@ export function switchTab(tabId: string): void {
   document.querySelectorAll('.studio-tab-btn').forEach(btn => {
     const button = btn as HTMLElement;
     button.classList.toggle('active', button.dataset.tab === tabId);
+    if (button.dataset.tab) button.setAttribute('aria-current', button.dataset.tab === tabId ? 'page' : 'false');
   });
+  neckController?.setActive(tabId === 'detector');
   
   // Update tab panes
   document.querySelectorAll('.studio-tab-pane').forEach(pane => {
@@ -1141,10 +1195,17 @@ function updateMicUI(listening: boolean): void {
   if (btn) {
     btn.classList.toggle('btn-listen-active', listening);
     const textEl = btn.querySelector('#mic-btn-text');
-    if (textEl) textEl.textContent = listening ? 'Listening... (Click to Stop)' : 'Start Listening (Microphone)';
+    if (textEl) textEl.textContent = listening ? 'Stop listening' : 'Start listening';
+    btn.setAttribute('aria-label', listening ? 'Stop microphone listening' : 'Start microphone listening');
+    btn.setAttribute('aria-pressed', String(listening));
   }
-  if (status) status.textContent = listening ? 'Microphone Active • Strum Guitar' : 'Ready • Click "Start Listening"';
+  if (status) status.textContent = listening ? 'Microphone on · listening' : 'Your microphone is off';
   if (indicator) indicator.className = `status-dot ${listening ? 'listening' : ''}`;
+  const substatus = document.getElementById('live-detector-substatus');
+  if (substatus) {
+    substatus.style.removeProperty('color');
+    substatus.textContent = listening ? 'Stay quiet for room calibration, then strum one chord.' : 'Start listening to hear your guitar, or explore a chord without a microphone.';
+  }
 }
 
 function updateCalibrationUI(calibrating: boolean): void {
@@ -1496,10 +1557,14 @@ function initFretboard(): void {
     const header = document.createElement('div');
     header.className = 'string-header';
     header.innerHTML = `
-      <div class="mute-btn" id="mute-btn-${s}" title="Mute String">X</div>
+      <button type="button" class="mute-btn" id="mute-btn-${s}" aria-label="Mute string ${s + 1}">×</button>
       <span>${strInfo.note}</span>
     `;
     row.appendChild(header);
+    header.querySelector('button')!.addEventListener('click', () => {
+      appState.currentFretboardState[s] = null;
+      updateEditedChord();
+    });
     
     const cellsContainer = document.createElement('div');
     cellsContainer.className = 'fret-cells-container';
@@ -1509,7 +1574,8 @@ function initFretboard(): void {
     cellsContainer.appendChild(wire);
     
     for (let f = 0; f <= 12; f++) {
-      const cell = document.createElement('div');
+      const cell = document.createElement('button');
+      cell.type = 'button';
       cell.className = 'fret-cell';
       cell.id = `fret-cell-${s}-${f}`;
       cell.title = `String ${s+1}, Fret ${f}`;
@@ -1529,12 +1595,61 @@ function onFretCellClick(stringIndex: number, fretIndex: number): void {
   } else {
     appState.currentFretboardState[stringIndex] = fretIndex;
   }
-  renderFretboard();
-  
+  liveNeckMidi = null;
+  updateEditedChord();
+  if (appState.currentFretboardState[stringIndex] !== null) {
+    void ensureAudioContext().then(() => {
+      if (!appState.audioContext || !appState.acousticBus) return;
+      playAcousticString(appState.audioContext, appState.acousticBus, {
+        freq: 440 * Math.pow(2, (appState.effectiveTuning[stringIndex].midi + fretIndex - 69) / 12),
+        startTime: appState.audioContext.currentTime,
+        stringIndex,
+        velocity: 0.75,
+        model: appState.settings.acousticModel,
+      });
+    }).catch(error => console.warn('Note playback unavailable:', error));
+  }
+}
+
+function updateEditedChord(): void {
   const chord = identifyChordFromFrets(appState.currentFretboardState, appState.effectiveTuning);
+  appState.currentChord = chord ? fretboardChordName(chord) : null;
+  neckCaption = chord ? `${appState.currentChord} · selected voicing` : 'Your custom voicing';
   if (chord) {
-    updateChordFromFretboard(chord);
-    strumCurrentChord('down');
+    document.getElementById('display-chord-name')!.textContent = fretboardChordName(chord);
+    document.getElementById('info-root')!.textContent = chord.symbol.root;
+    document.getElementById('info-quality')!.textContent = chord.symbol.quality;
+  } else {
+    document.getElementById('display-chord-name')!.textContent = appState.currentFretboardState.every(f => f === null) ? 'Let’s play' : 'Explore';
+    document.getElementById('info-root')!.textContent = '—';
+    document.getElementById('info-quality')!.textContent = 'Custom';
+  }
+  document.getElementById('info-confidence')!.textContent = 'Preview';
+  document.getElementById('cand-1')!.textContent = appState.currentChord || '—';
+  document.getElementById('cand-2')!.textContent = '—';
+  document.getElementById('cand-3')!.textContent = '—';
+  document.getElementById('info-notes')!.textContent = appState.currentFretboardState.map((f, s) => f === null ? null : NOTE_NAMES[(appState.effectiveTuning[s].midi + f) % 12]).filter(Boolean).join(' · ') || '—';
+  renderFretboard();
+}
+
+function syncNeck(): void {
+  neckController?.update({
+    frets: appState.currentFretboardState,
+    tuning: appState.effectiveTuning,
+    liveMidi: liveNeckMidi,
+    root: appState.currentChord ? parseChordSymbol(appState.currentChord)?.root || null : null,
+  }, neckCaption);
+  const symbol = appState.currentChord || '';
+  if (symbol !== theoryChord) {
+    theoryChord = symbol;
+    const parsed = parseChordSymbol(symbol);
+    const chord = parsed ? buildChordDefinition(parsed.root, parsed.quality, appState.effectiveTuning) : null;
+    const formula = document.getElementById('theory-formula');
+    const intervals = document.getElementById('theory-intervals');
+    const degrees = document.getElementById('theory-degrees');
+    if (formula) formula.textContent = chord?.formula || '—';
+    if (intervals) intervals.textContent = chord ? `${chord.intervals.join(' · ')} semitones` : '—';
+    if (degrees) degrees.textContent = chord?.notes.join(' · ') || '—';
   }
 }
 
@@ -1545,6 +1660,9 @@ function renderFretboard(): void {
     
     if (muteBtn) {
       muteBtn.classList.toggle('muted', fret === null);
+      muteBtn.setAttribute('aria-pressed', String(fret === null));
+      const label = muteBtn.nextElementSibling;
+      if (label) label.textContent = appState.effectiveTuning[s].note;
     }
     
     for (let f = 0; f <= 12; f++) {
@@ -1552,6 +1670,11 @@ function renderFretboard(): void {
       if (!cell) continue;
       
       cell.innerHTML = '';
+      const midi = appState.effectiveTuning[s].midi + f;
+      const note = NOTE_NAMES[midi % 12];
+      cell.setAttribute('aria-label', `String ${s + 1}, ${f === 0 ? 'open' : `fret ${f}`}, ${note}${Math.floor(midi / 12) - 1}`);
+      cell.setAttribute('aria-pressed', String(fret === f));
+      cell.classList.toggle('live-note', liveNeckMidi === midi);
       
       if (fret === f && fret !== null) {
         const dot = document.createElement('div');
@@ -1559,9 +1682,11 @@ function renderFretboard(): void {
         const midi = appState.effectiveTuning[s].midi + f;
         const noteIdx = ((midi % 12) + 12) % 12;
         dot.textContent = NOTE_NAMES[noteIdx];
+        dot.classList.toggle('root-note', appState.currentChord ? parseChordSymbol(appState.currentChord)?.root === note : false);
         cell.appendChild(dot);
       }
     }
+    syncNeck();
   }
 }
 
@@ -1727,8 +1852,17 @@ function initTabButtons(): void {
   
   // MIDI modal
   const midiBtn = document.getElementById('btn-open-midi-modal');
-  if (midiBtn) midiBtn.addEventListener('click', () => {
+  if (midiBtn) midiBtn.addEventListener('click', async () => {
     document.getElementById('midi-modal')!.style.display = 'flex';
+    if (!appState.midiManager) {
+      document.getElementById('top-midi-status')!.textContent = 'Connecting…';
+      try {
+        appState.midiManager = await createMidiManager(loadMidiConfig(), appState.audioContext || undefined);
+        document.getElementById('top-midi-status')!.textContent = appState.midiManager.isMidiSupported() ? 'Available' : 'Unavailable';
+      } catch {
+        document.getElementById('top-midi-status')!.textContent = 'Unavailable';
+      }
+    }
     populateMidiDevices();
   });
   
