@@ -948,6 +948,7 @@ export class SongStudio {
   private activeSong: any = SONG_CATALOG[0];
   private isPlaying = false;
   private playTimer: number | null = null;
+  private nextNoteTime = 0; // AudioContext-clock target for the next step (stable tempo)
   private evalTimeout: number | null = null;
   private currentLineIdx = 0;
   private currentNoteIdx = 0;
@@ -1252,6 +1253,8 @@ export class SongStudio {
     if (icon) icon.textContent = '⏸';
     if (text) text.textContent = 'Pause Song';
 
+    // Anchor the audio-clock schedule a little ahead of now for stable timing
+    this.nextNoteTime = this.audioContext ? this.audioContext.currentTime + 0.12 : 0;
     this.stepPlaybackLoop();
   }
 
@@ -1324,6 +1327,14 @@ export class SongStudio {
     const bpm = (tempoSlider ? parseInt(tempoSlider.value) : 0) || this.bpm || 75;
     const beatSec = 60 / bpm;
 
+    const ctx = this.audioContext;
+    // If the schedule fell behind real time (long main-thread stall, e.g. 3D
+    // init), re-anchor instead of rushing to catch up ("fast burst").
+    if (ctx && this.nextNoteTime < ctx.currentTime) this.nextNoteTime = ctx.currentTime + 0.05;
+    const at = ctx ? this.nextNoteTime : 0; // precise audio start time for this step
+
+    let stepDurationSec: number;
+
     // ── Stub songs (few lead notes): play the real chord progression ──
     if (this.playAsChords && this.chordProgression.length > 0) {
       const raw = this.chordProgression[this.currentNoteIdx % this.chordProgression.length];
@@ -1331,23 +1342,23 @@ export class SongStudio {
         const ch = transposeChordName(raw, this.transposeSemis);
         const hudCh = document.getElementById('hud-chord-name');
         if (hudCh) hudCh.textContent = ch;
-        if (this.audioContext && this.acousticBus) {
+        if (ctx && this.acousticBus) {
           const frets = this.getChordFrets(ch);
           if (frets) {
-            strumChord(this.audioContext, this.acousticBus, {
+            strumChord(ctx, this.acousticBus, {
               frets, style: this.currentNoteIdx % 2 === 0 ? 'down' : 'up',
-              velocity: 0.85, tuning: this.tuning, model: 'dreadnought',
+              velocity: 0.85, tuning: this.tuning, model: 'dreadnought', startTime: at,
             });
           }
         }
       }
-      // Advance through the progression; sync lyric line highlight loosely
       this.currentNoteIdx++;
       this.currentLineIdx = song.lines.length
         ? Math.floor(this.currentNoteIdx / 2) % song.lines.length
         : 0;
       this.updateActiveStepUI();
-      this.playTimer = window.setTimeout(this.stepPlaybackLoop, Math.max(350, beatSec * 1000 * 2));
+      stepDurationSec = Math.max(0.3, beatSec * 2);
+      this.scheduleNextStep(stepDurationSec);
       return;
     }
 
@@ -1356,11 +1367,11 @@ export class SongStudio {
 
     if (this.playMode === 'notes') {
       // NOTES / TABS MODE: pluck the single melody note (transposed)
-      if (noteItem && this.audioContext && this.acousticBus) {
+      if (noteItem && ctx && this.acousticBus) {
         const { s, freq } = this.transposedNote(noteItem);
-        playAcousticString(this.audioContext, this.acousticBus, {
+        playAcousticString(ctx, this.acousticBus, {
           freq,
-          startTime: this.audioContext.currentTime + 0.005,
+          startTime: at,
           stringIndex: s,
           velocity: 0.92,
         });
@@ -1378,7 +1389,7 @@ export class SongStudio {
       }
     } else {
       // CHORDS MODE: strum full chord on downbeats (transposed)
-      if (line.chords && line.chords.length > 0 && this.audioContext && this.acousticBus) {
+      if (line.chords && line.chords.length > 0 && ctx && this.acousticBus) {
         const chordIdx = Math.floor((this.currentNoteIdx / Math.max(1, notes.length)) * line.chords.length);
         const currentCh = transposeChordName(line.chords[chordIdx]?.chord || line.chords[0].chord, this.transposeSemis);
         const hudCh = document.getElementById('hud-chord-name');
@@ -1387,8 +1398,8 @@ export class SongStudio {
         const frets = this.getChordFrets(currentCh);
         if (frets && (this.currentNoteIdx === 0 || this.currentNoteIdx % 2 === 0)) {
           const dir = (this.currentNoteIdx % 4 === 0) ? 'down' : 'up';
-          strumChord(this.audioContext, this.acousticBus, {
-            frets, style: dir, velocity: 0.82, tuning: this.tuning, model: 'dreadnought',
+          strumChord(ctx, this.acousticBus, {
+            frets, style: dir, velocity: 0.82, tuning: this.tuning, model: 'dreadnought', startTime: at,
           });
         }
       }
@@ -1396,14 +1407,31 @@ export class SongStudio {
 
     this.updateActiveStepUI();
 
-    const noteDurationMs = (noteItem ? (noteItem.beats || 0.6) : 0.6) * beatSec * 1000;
+    stepDurationSec = Math.max(0.2, (noteItem ? (noteItem.beats || 0.6) : 0.6) * beatSec);
     this.currentNoteIdx++;
     if (this.currentNoteIdx >= Math.max(1, notes.length)) {
       this.currentNoteIdx = 0;
       this.currentLineIdx = (this.currentLineIdx + 1) % song.lines.length;
     }
-    this.playTimer = window.setTimeout(this.stepPlaybackLoop, Math.max(250, noteDurationMs));
+    this.scheduleNextStep(stepDurationSec);
   };
+
+  /**
+   * Advance the audio-clock target by the step duration and schedule the next
+   * step to fire ~50ms before it. Timing is driven by the AudioContext clock,
+   * so notes stay evenly spaced even when the main thread is busy (DOM/3D),
+   * instead of drifting fast/slow with setTimeout jitter.
+   */
+  private scheduleNextStep(durationSec: number): void {
+    const ctx = this.audioContext;
+    if (ctx) {
+      this.nextNoteTime += durationSec;
+      const delayMs = Math.max(0, (this.nextNoteTime - ctx.currentTime) * 1000 - 50);
+      this.playTimer = window.setTimeout(this.stepPlaybackLoop, delayMs);
+    } else {
+      this.playTimer = window.setTimeout(this.stepPlaybackLoop, durationSec * 1000);
+    }
+  }
 
   /** Apply transpose to a lead note; octave-wraps the fret to stay playable. */
   private transposedNote(noteItem: any): { s: number; f: number; freq: number } {
