@@ -1332,7 +1332,15 @@
             <button id="song-neck-view-3d" aria-pressed="false" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">3D</button>
             <button id="song-neck-view-2d" aria-pressed="true" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">2D</button>
           </div>
-          <div id="song-neck-3d" hidden style="width:100%; height:300px; margin-top:12px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.35);"></div>
+          <div style="position:relative; margin-top:12px;">
+            <div id="song-neck-3d" hidden style="width:100%; height:340px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.35);"></div>
+            <div id="song-neck-camera" hidden role="group" aria-label="3D camera" style="position:absolute; top:8px; right:8px; display:flex; gap:6px;">
+              <button id="song-neck-zoom-in" class="btn btn-secondary" aria-label="Zoom in" style="padding:4px 10px;">+</button>
+              <button id="song-neck-zoom-out" class="btn btn-secondary" aria-label="Zoom out" style="padding:4px 10px;">−</button>
+              <button id="song-neck-reset" class="btn btn-secondary" aria-label="Reset camera" style="padding:4px 10px;">⟲</button>
+            </div>
+            <div id="song-neck-help" hidden style="font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:6px;">Drag to rotate · Click a string to play · + / − to zoom · R to reset</div>
+          </div>
 
           <!-- Visual Guitar Fretboard (2D) -->
           <div id="song-neck-2d" class="fretboard-container" style="margin-top:12px; border:2px solid #5c3818; box-shadow:0 10px 30px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.9);">
@@ -1593,7 +1601,15 @@
         <button id="scale-neck-view-3d" aria-pressed="false" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">3D</button>
         <button id="scale-neck-view-2d" aria-pressed="true" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">2D</button>
       </div>
-      <div id="scale-neck-3d" hidden style="width:100%; height:300px; margin-bottom:12px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.35);"></div>
+      <div style="position:relative; margin-bottom:12px;">
+        <div id="scale-neck-3d" hidden style="width:100%; height:340px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.35);"></div>
+        <div id="scale-neck-camera" hidden role="group" aria-label="3D camera" style="position:absolute; top:8px; right:8px; display:flex; gap:6px;">
+          <button id="scale-neck-zoom-in" class="btn btn-secondary" aria-label="Zoom in" style="padding:4px 10px;">+</button>
+          <button id="scale-neck-zoom-out" class="btn btn-secondary" aria-label="Zoom out" style="padding:4px 10px;">−</button>
+          <button id="scale-neck-reset" class="btn btn-secondary" aria-label="Reset camera" style="padding:4px 10px;">⟲</button>
+        </div>
+        <div id="scale-neck-help" hidden style="font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:6px;">Drag to rotate · Click a note to play · + / − to zoom · R to reset</div>
+      </div>
 
       <!-- ROSEWOOD FRETBOARD CONTAINER (2D) -->
       <div id="scale-neck-2d" class="fretboard-container" style="padding:20px 14px;">

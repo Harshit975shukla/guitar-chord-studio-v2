@@ -999,9 +999,16 @@ export class SongStudio {
     if (!host || this.neck3d) return;
     this.neck3d = new PaneNeck3D(
       host,
-      document.getElementById('song-neck-view-3d'),
-      document.getElementById('song-neck-view-2d'),
-      document.getElementById('song-neck-2d'),
+      {
+        toggle3d: document.getElementById('song-neck-view-3d'),
+        toggle2d: document.getElementById('song-neck-view-2d'),
+        twoD: document.getElementById('song-neck-2d'),
+        camera: document.getElementById('song-neck-camera'),
+        zoomIn: document.getElementById('song-neck-zoom-in'),
+        zoomOut: document.getElementById('song-neck-zoom-out'),
+        reset: document.getElementById('song-neck-reset'),
+        help: document.getElementById('song-neck-help'),
+      },
       (s, f) => {
         if (!this.audioContext || !this.acousticBus) return;
         const midi = this.tuning[s].midi + f;

@@ -123,9 +123,16 @@ export class ScalesStudio {
     if (!host || this.neck3d) return;
     this.neck3d = new PaneNeck3D(
       host,
-      document.getElementById('scale-neck-view-3d'),
-      document.getElementById('scale-neck-view-2d'),
-      document.getElementById('scale-neck-2d'),
+      {
+        toggle3d: document.getElementById('scale-neck-view-3d'),
+        toggle2d: document.getElementById('scale-neck-view-2d'),
+        twoD: document.getElementById('scale-neck-2d'),
+        camera: document.getElementById('scale-neck-camera'),
+        zoomIn: document.getElementById('scale-neck-zoom-in'),
+        zoomOut: document.getElementById('scale-neck-zoom-out'),
+        reset: document.getElementById('scale-neck-reset'),
+        help: document.getElementById('scale-neck-help'),
+      },
       (s, f) => this.pluckNote(s, f),
     );
   }
