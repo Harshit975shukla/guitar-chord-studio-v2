@@ -1327,8 +1327,15 @@
             </div>
           </div>
 
-          <!-- Visual 3D Guitar Fretboard -->
-          <div class="fretboard-container" style="margin-top:12px; border:2px solid #5c3818; box-shadow:0 10px 30px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.9);">
+          <!-- Fretboard view switch (2D default, optional 3D) -->
+          <div class="neck-view-switch" role="group" aria-label="Fretboard view" style="display:flex; gap:6px; justify-content:flex-end; margin-top:10px;">
+            <button id="song-neck-view-3d" aria-pressed="false" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">3D</button>
+            <button id="song-neck-view-2d" aria-pressed="true" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">2D</button>
+          </div>
+          <div id="song-neck-3d" hidden style="width:100%; height:300px; margin-top:12px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.35);"></div>
+
+          <!-- Visual Guitar Fretboard (2D) -->
+          <div id="song-neck-2d" class="fretboard-container" style="margin-top:12px; border:2px solid #5c3818; box-shadow:0 10px 30px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.9);">
             <div class="fret-numbers">
               <div class="fret-num">0 (Open)</div>
               <div class="fret-num">1</div>
@@ -1581,8 +1588,15 @@
         </div>
       </div>
 
-      <!-- 3D ROSEWOOD FRETBOARD CONTAINER -->
-      <div class="fretboard-container" style="padding:20px 14px;">
+      <!-- Fretboard view switch (2D default, optional 3D) -->
+      <div class="neck-view-switch" role="group" aria-label="Fretboard view" style="display:flex; gap:6px; justify-content:flex-end; margin-bottom:8px;">
+        <button id="scale-neck-view-3d" aria-pressed="false" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">3D</button>
+        <button id="scale-neck-view-2d" aria-pressed="true" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">2D</button>
+      </div>
+      <div id="scale-neck-3d" hidden style="width:100%; height:300px; margin-bottom:12px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.35);"></div>
+
+      <!-- ROSEWOOD FRETBOARD CONTAINER (2D) -->
+      <div id="scale-neck-2d" class="fretboard-container" style="padding:20px 14px;">
         <div class="fretboard-board" id="scale-fretboard-board">
           <div class="fret-numbers">
             <div class="fret-num">0 (Open)</div>

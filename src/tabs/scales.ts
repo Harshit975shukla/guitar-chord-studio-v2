@@ -6,6 +6,7 @@
 
 import { NOTE_NAMES, STANDARD_TUNING, StringTuning } from '../types';
 import { playAcousticString, AcousticBus } from '../audio/engine';
+import { PaneNeck3D } from '../ui/paneNeck3d';
 
 export interface ScaleDefinition {
   name: string;
@@ -93,6 +94,7 @@ export class ScalesStudio {
   private audioRunTimer: number | null = null;
   private tuning: StringTuning[] = STANDARD_TUNING;
   private audioContext: AudioContext | null = null;
+  private neck3d: PaneNeck3D | null = null;
   private acousticBus: AcousticBus | null = null;
   private isMicActive = false;
 
@@ -111,8 +113,37 @@ export class ScalesStudio {
   init(): void {
     this.initRootButtons();
     this.initControls();
+    this.setupNeck3D();
     this.updateInfoRibbon();
     this.renderFretboard();
+  }
+
+  private setupNeck3D(): void {
+    const host = document.getElementById('scale-neck-3d');
+    if (!host || this.neck3d) return;
+    this.neck3d = new PaneNeck3D(
+      host,
+      document.getElementById('scale-neck-view-3d'),
+      document.getElementById('scale-neck-view-2d'),
+      document.getElementById('scale-neck-2d'),
+      (s, f) => this.pluckNote(s, f),
+    );
+  }
+
+  /** Push the scale pattern (+ optional live note) to the optional 3D neck. */
+  private updateNeck3D(liveMidi: number | null = null): void {
+    if (!this.neck3d) return;
+    const scale = WESTERN_SCALES[this.activeKey] || WESTERN_SCALES.pentatonic_minor;
+    const rootIdx = NOTE_NAMES.indexOf(this.activeRoot as any);
+    const scalePcs = scale.intervals.map(semi => (rootIdx + semi) % 12);
+    this.neck3d.update({
+      frets: [null, null, null, null, null, null],
+      tuning: this.tuning,
+      liveMidi,
+      root: this.activeRoot,
+      scalePcs,
+      rootPc: rootIdx,
+    });
   }
 
   private initRootButtons(): void {
@@ -296,6 +327,9 @@ export class ScalesStudio {
       row.appendChild(cellsContainer);
       container.appendChild(row);
     }
+
+    // Keep the optional 3D neck in sync with the current scale pattern
+    this.updateNeck3D(null);
   }
 
   pluckNote(s: number, f: number, _noteName?: string, _octave?: number, _degree?: string): void {
@@ -324,6 +358,10 @@ export class ScalesStudio {
       dot.classList.add('active-pluck');
       setTimeout(() => dot.classList.remove('active-pluck'), 350);
     }
+
+    // Light the played note on the 3D neck, then revert to the static pattern
+    this.updateNeck3D(midi);
+    setTimeout(() => this.updateNeck3D(null), 350);
   }
 
   toggleScaleAudioRun(): void {

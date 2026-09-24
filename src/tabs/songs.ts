@@ -4,6 +4,7 @@
 import { Song, StringTuning, STANDARD_TUNING, NOTE_NAMES, parseChordSymbol } from '../types';
 import { playAcousticString, strumChord, AcousticBus } from '../audio/engine';
 import { buildChordDefinition, CHORD_PRESETS } from '../chords/definitions';
+import { PaneNeck3D } from '../ui/paneNeck3d';
 
 const PC_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const NOTE_TO_PC: Record<string, number> = {
@@ -967,6 +968,7 @@ export class SongStudio {
   // When a song has too few lead notes (stub data), play its chord progression instead
   private playAsChords = false;
   private chordProgression: string[] = [];
+  private neck3d: PaneNeck3D | null = null;
   public onMicStartRequested?: () => void;
   public onPlayRequested?: () => Promise<void>;
 
@@ -986,9 +988,47 @@ export class SongStudio {
     this.buildSongFretboardUI();
     if (!this.isControlsInitialized) {
       this.initControls();
+      this.setupNeck3D();
       this.isControlsInitialized = true;
     }
     this.loadSong(this.activeSongId);
+  }
+
+  private setupNeck3D(): void {
+    const host = document.getElementById('song-neck-3d');
+    if (!host || this.neck3d) return;
+    this.neck3d = new PaneNeck3D(
+      host,
+      document.getElementById('song-neck-view-3d'),
+      document.getElementById('song-neck-view-2d'),
+      document.getElementById('song-neck-2d'),
+      (s, f) => {
+        if (!this.audioContext || !this.acousticBus) return;
+        const midi = this.tuning[s].midi + f;
+        playAcousticString(this.audioContext, this.acousticBus, {
+          freq: 440 * Math.pow(2, (midi - 69) / 12),
+          startTime: this.audioContext.currentTime + 0.01,
+          stringIndex: s, velocity: 0.9,
+        });
+      },
+    );
+  }
+
+  /** Push the current chord voicing (or live lead note) to the optional 3D neck. */
+  private updateNeck3D(noteItem: any, chordName: string | null): void {
+    if (!this.neck3d) return;
+    const tuning = this.tuning;
+    const empty: (number | null)[] = [null, null, null, null, null, null];
+    if (this.playMode === 'notes' && !this.playAsChords && noteItem) {
+      const { s, f } = this.transposedNote(noteItem);
+      this.neck3d.update({ frets: empty, tuning, liveMidi: tuning[s].midi + f, root: null });
+    } else if (chordName) {
+      const frets = this.getChordFrets(chordName) || empty;
+      const parsed = parseChordSymbol(chordName);
+      this.neck3d.update({ frets, tuning, liveMidi: null, root: parsed ? parsed.root : null });
+    } else {
+      this.neck3d.update({ frets: empty, tuning, liveMidi: null, root: null });
+    }
   }
 
   buildSongFretboardUI(): void {
@@ -1505,6 +1545,17 @@ export class SongStudio {
     const box = document.getElementById('lyrics-scroll-box');
     if (activeEl && box) {
       box.scrollTop = activeEl.offsetTop - box.clientHeight / 2 + activeEl.clientHeight / 2;
+    }
+
+    // Mirror the current chord/note onto the optional 3D neck
+    if (this.neck3d) {
+      const neckChord = line.chords && line.chords.length > 0
+        ? transposeChordName(
+            line.chords[Math.floor((this.currentNoteIdx / Math.max(1, notes.length)) * line.chords.length)]?.chord
+              || line.chords[0].chord,
+            this.transposeSemis)
+        : null;
+      this.updateNeck3D(noteItem, neckChord);
     }
   }
 
