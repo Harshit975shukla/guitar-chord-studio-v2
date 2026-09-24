@@ -1,8 +1,8 @@
 // Service Worker for Guitar Chord Studio v2
 // Provides offline support, subpath compatibility, and instant updates
 
-// PmPIR8L_ is replaced at build time with the bundle hash (scripts/stamp-sw.mjs)
-const CACHE_NAME = 'guitar-studio-PmPIR8L_';
+// BKcCe0yl is replaced at build time with the bundle hash (scripts/stamp-sw.mjs)
+const CACHE_NAME = 'guitar-studio-BKcCe0yl';
 
 const getBasePath = () => {
   const path = self.location.pathname;
