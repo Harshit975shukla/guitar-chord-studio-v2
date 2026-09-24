@@ -376,9 +376,11 @@ export async function startMicrophone(): Promise<boolean> {
     appState.micGainNode.gain.value = appState.settings.micGain || 4.0;
     
     appState.analyser = appState.audioContext.createAnalyser();
-    appState.analyser.fftSize = 4096; // 4096 matches V1 for fast 93ms response
+    // 8192 halves bin width (~5.4 Hz) for far better low-string resolution
+    // (low E ≈ 82 Hz, semitone spacing ~4.9 Hz). Still ~185ms window — fine.
+    appState.analyser.fftSize = 8192;
     appState.analyser.smoothingTimeConstant = 0.10;
-    
+
     appState.detectionEngine.setAnalyser(appState.analyser);
     appState.detectionEngine.setConfig({
       noiseGateDb: appState.settings.noiseGateDb,
@@ -386,7 +388,7 @@ export async function startMicrophone(): Promise<boolean> {
       triggerMode: appState.settings.triggerMode,
       targetMode: appState.settings.targetMode || 'chords',
       micGainMultiplier: appState.settings.micGain,
-      fftSize: 4096,
+      fftSize: 8192,
     });
     
     // Connect: source -> highpass -> lowpass -> gain -> analyser

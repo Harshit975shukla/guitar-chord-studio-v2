@@ -12,7 +12,7 @@
 import { DetectionEngine, DEFAULT_DETECTION_CONFIG } from '../src/detection/engine.ts';
 import { STANDARD_TUNING } from '../src/types/index.ts';
 
-const SR = 44100, N = 4096, BINS = N / 2, bw = SR / N;
+const SR = 44100, N = 8192, BINS = N / 2, bw = SR / N; // match the app's analyser fftSize
 
 function makeAnalyser() {
   return {
