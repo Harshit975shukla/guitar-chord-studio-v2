@@ -2582,6 +2582,48 @@ function populateMidiDevices(): void {
   }
 }
 
+/** Is this bracket token a real chord (vs a section tag like "Chorus")? */
+function isChordToken(t: string): boolean {
+  return /^[A-G][#b]?(?:maj|min|m|dim|aug|sus|add|M|\+|°)?\d{0,2}(?:sus[24])?(?:add\d{1,2})?(?:[#b]\d{1,2})?(?:\/[A-G][#b]?)?$/.test(t.trim());
+}
+
+const SECTION_RE = /^\s*[\[(]?\s*(intro|verse|chorus|bridge|outro|pre[\s-]?chorus|hook|solo|interlude|refrain|coda)\b[\s\d]*[\])]?\s*:?\s*$/i;
+
+/**
+ * Parse a pasted chord sheet (ChordPro / inline [C]lyric) into the app's
+ * playable line structure: [{ sec, text, chords:[{chord, word}] }].
+ */
+function parseSongText(raw: string): { lines: any[]; chordsUsed: string[] } {
+  const chordRe = /\[([^\]]+)\]/g;
+  const lines: any[] = [];
+  const chordSet = new Set<string>();
+  let section = 'Verse';
+
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const line = rawLine.replace(/\s+$/, '');
+    if (!line.trim()) continue;
+    const secM = line.match(SECTION_RE);
+    if (secM) { section = secM[1].replace(/\b\w/g, c => c.toUpperCase()); continue; }
+
+    const matches = [...line.matchAll(chordRe)];
+    const chords: { chord: string; word: string }[] = [];
+    for (let i = 0; i < matches.length; i++) {
+      const tok = matches[i][1].trim();
+      if (!isChordToken(tok)) continue; // skip [Verse]-style tags inline
+      chordSet.add(tok);
+      const start = (matches[i].index || 0) + matches[i][0].length;
+      const end = i + 1 < matches.length ? (matches[i + 1].index || line.length) : line.length;
+      const word = line.slice(start, end).replace(chordRe, '').trim().split(/\s+/)[0] || '';
+      chords.push({ chord: tok, word });
+    }
+    // strip only real-chord tags from the visible lyric text
+    const text = line.replace(chordRe, (full, tok) => (isChordToken(String(tok).trim()) ? '' : full)).replace(/\s+/g, ' ').trim();
+    if (!text && chords.length === 0) continue;
+    lines.push({ sec: section, section, text, chords });
+  }
+  return { lines, chordsUsed: [...chordSet] };
+}
+
 function saveCustomSongHandler(): void {
   const title = (document.getElementById('custom-song-title-input') as HTMLInputElement).value.trim();
   const artist = (document.getElementById('custom-song-artist-input') as HTMLInputElement).value.trim() || 'Custom Artist';
@@ -2589,14 +2631,16 @@ function saveCustomSongHandler(): void {
   const bpm = parseInt((document.getElementById('custom-song-bpm') as HTMLInputElement).value) || 80;
   const strum = (document.getElementById('custom-song-strum') as HTMLSelectElement).value;
   const lyrics = (document.getElementById('custom-song-lyrics') as HTMLTextAreaElement).value.trim();
-  
+
   if (!title) { alert('Please enter a Song Title.'); return; }
-  if (!lyrics) { alert('Please enter lyrics with [Chord] tags.'); return; }
-  
-  const chordMatches = lyrics.match(/\[([A-G][#b]?[a-zA-Z0-9]*)\]/g) || [];
-  const extractedChords = Array.from(new Set(chordMatches.map(c => c.replace(/[\[\]]/g, ''))));
-  const chordsToUse = extractedChords.length > 0 ? extractedChords : ['C', 'G', 'Am', 'F'];
-  
+  if (!lyrics) { alert('Please paste the song with [Chord] tags, e.g. [G]Amazing [C]grace.'); return; }
+
+  const { lines, chordsUsed } = parseSongText(lyrics);
+  if (chordsUsed.length === 0) {
+    alert('No chords found. Put chords in brackets before the words, e.g. [Am] or [G]. Section names like [Chorus] are ignored.');
+    return;
+  }
+
   const customSong: Song = {
     id: 'custom_' + Date.now(),
     title,
@@ -2606,26 +2650,25 @@ function saveCustomSongHandler(): void {
     bpm,
     strum,
     strumPatternVisual: '↓ - ↓ ↑ - ↑ ↓ -',
-    chordsUsed: chordsToUse,
-    westernHook: 'C4 D4 E4 F4 G4 | F4 E4 D4 C4',
-    lines: [],
+    chordsUsed,
+    lines,
     lyrics,
     isCustom: true,
   };
-  
+
   saveCustomSong(customSong);
-  
-  // Add to dropdown
+
+  // Surface immediately: dropdown + load into play-along
   const dropdown = document.getElementById('song-selector-select') as HTMLSelectElement;
-  if (dropdown) {
+  if (dropdown && !dropdown.querySelector(`option[value="${customSong.id}"]`)) {
     const opt = document.createElement('option');
     opt.value = customSong.id;
     opt.textContent = '⭐ ' + customSong.title + ' (My Song)';
     dropdown.insertBefore(opt, dropdown.firstChild);
   }
-  
   document.getElementById('custom-song-modal')!.style.display = 'none';
-  alert('Song "' + title + '" saved to your personal library!');
+  try { appState.songStudio.loadSong(customSong.id); switchTab('songs'); } catch { /* ignore */ }
+  alert(`Saved "${title}" — ${chordsUsed.length} chords across ${lines.length} lines. Open the Songs tab to play along.`);
 }
 
 function searchNormalize(s: string): string {
