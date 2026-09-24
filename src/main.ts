@@ -2626,37 +2626,104 @@ function saveCustomSongHandler(): void {
   alert('Song "' + title + '" saved to your personal library!');
 }
 
+function searchNormalize(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip diacritics
+    .replace(/[^a-z0-9#\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+/** All searchable songs, preferring rich catalog data, deduped by id. */
+function allSearchableSongs(): any[] {
+  const map = new Map<string, any>();
+  for (const s of BUILTIN_SONGS as any[]) if (s && s.id) map.set(s.id, s);
+  const win = (window as any).SONG_CATALOG;
+  if (win) for (const k of Object.keys(win)) { const s = win[k]; map.set(s.id || k, s); }
+  try {
+    const c = JSON.parse(localStorage.getItem('guitar_custom_songs') || '[]');
+    if (Array.isArray(c)) for (const s of c) if (s && s.id) map.set(s.id, s);
+  } catch { /* ignore */ }
+  return [...map.values()];
+}
+
+function songArtist(s: any): string {
+  return s.artist || s.singer || s.movie || s.music || 'Acoustic';
+}
+
+function scoreSong(song: any, qNorm: string, qTokens: string[]): number {
+  const title = searchNormalize(song.title);
+  const artist = searchNormalize(songArtist(song));
+  const key = searchNormalize(song.key || '');
+  const chords = (song.chordsUsed || []).map((c: string) => c.toLowerCase());
+  const titleTokens = title.split(' ');
+  let score = 0;
+
+  if (title === qNorm) score += 120;
+  else if (title.startsWith(qNorm)) score += 70;
+  else if (title.includes(qNorm)) score += 45;
+  if (artist.includes(qNorm) && qNorm.length > 1) score += 25;
+
+  for (const t of qTokens) {
+    if (!t) continue;
+    if (title.includes(t)) score += 12;
+    else if (t.length >= 4 && titleTokens.some(tk => tk.length >= 4 && levenshtein(tk, t) <= 1)) score += 7; // typo tolerance
+    if (artist.includes(t)) score += 6;
+    if (chords.includes(t)) score += 8; // e.g. search "am" or "g"
+    if (key.includes(t)) score += 4;
+  }
+  return score;
+}
+
 function initSearchTab(): void {
   const input = document.getElementById('search-song-input') as HTMLInputElement;
   const btn = document.getElementById('btn-search-song');
   const resultsDiv = document.getElementById('search-results');
   if (!input || !btn || !resultsDiv) return;
 
-  const performSearch = () => {
-    const q = input.value.trim().toLowerCase();
-    if (!q) return;
+  const esc = (v: string) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-    const matches = BUILTIN_SONGS.filter(s => 
-      s.title.toLowerCase().includes(q) || 
-      (s.movie && s.movie.toLowerCase().includes(q)) ||
-      (s.singer && s.singer.toLowerCase().includes(q)) ||
-      (s.chordsUsed && s.chordsUsed.some(c => c.toLowerCase() === q))
-    );
+  const performSearch = () => {
+    const raw = input.value.trim();
+    if (!raw) { resultsDiv.style.display = 'none'; resultsDiv.innerHTML = ''; return; }
+    const qNorm = searchNormalize(raw);
+    const qTokens = qNorm.split(' ').filter(Boolean);
+
+    const ranked = allSearchableSongs()
+      .map(song => ({ song, score: scoreSong(song, qNorm, qTokens) }))
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 30);
 
     resultsDiv.style.display = 'block';
-    if (matches.length === 0) {
-      resultsDiv.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:0.9rem;">No songs found matching "<strong>${input.value}</strong>". Try searching "Hotel California", "Kesariya", or "C".</div>`;
+    if (ranked.length === 0) {
+      resultsDiv.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:0.9rem;">No songs found matching "<strong>${esc(raw)}</strong>". Try a title, artist, key, or a chord like "Am".</div>`;
       return;
     }
 
     resultsDiv.innerHTML = `
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:16px;">
-        ${matches.map(song => `
-          <div class="card" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-light); padding:16px; border-radius:14px; cursor:pointer;" onclick="selectSongFromSearch('${song.id}')">
-            <h4 style="font-size:1.1rem; color:var(--accent-gold); font-weight:800; margin-bottom:4px;">🎸 ${song.title}</h4>
-            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">${song.movie || song.singer || 'Acoustic'} • Key: ${song.key} • ${song.bpm} BPM</div>
+        ${ranked.map(({ song }) => `
+          <div class="card" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-light); padding:16px; border-radius:14px; cursor:pointer;" onclick="selectSongFromSearch('${esc(song.id)}')">
+            <h4 style="font-size:1.1rem; color:var(--accent-gold); font-weight:800; margin-bottom:4px;">🎸 ${esc(song.title)}</h4>
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">${esc(songArtist(song))} • Key: ${esc(song.key || '—')} • ${esc(String(song.bpm || '—'))} BPM</div>
             <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
-              ${song.chordsUsed.map(c => `<span class="badge" style="background:rgba(255,179,0,0.15); border:1px solid rgba(255,179,0,0.3); color:#ffd54f; font-size:0.75rem; padding:2px 8px;">${c}</span>`).join('')}
+              ${(song.chordsUsed || []).map((c: string) => `<span class="badge" style="background:rgba(255,179,0,0.15); border:1px solid rgba(255,179,0,0.3); color:#ffd54f; font-size:0.75rem; padding:2px 8px;">${esc(c)}</span>`).join('')}
             </div>
             <button class="btn btn-primary" style="padding:6px 14px; font-size:0.8rem; width:100%; justify-content:center;">Play This Song ➔</button>
           </div>
@@ -2665,6 +2732,11 @@ function initSearchTab(): void {
     `;
   };
 
+  let debounce: number | null = null;
+  input.oninput = () => {
+    if (debounce) clearTimeout(debounce);
+    debounce = window.setTimeout(performSearch, 120);
+  };
   btn.onclick = performSearch;
   input.onkeydown = (e) => { if (e.key === 'Enter') performSearch(); };
 }
