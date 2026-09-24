@@ -1,8 +1,8 @@
 // Service Worker for Guitar Chord Studio v2
 // Provides offline support, subpath compatibility, and instant updates
 
-// DMciJnZQ is replaced at build time with the bundle hash (scripts/stamp-sw.mjs)
-const CACHE_NAME = 'guitar-studio-DMciJnZQ';
+// CUmVX3x1 is replaced at build time with the bundle hash (scripts/stamp-sw.mjs)
+const CACHE_NAME = 'guitar-studio-CUmVX3x1';
 
 const getBasePath = () => {
   const path = self.location.pathname;
