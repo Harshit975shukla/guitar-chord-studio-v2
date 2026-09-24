@@ -1628,16 +1628,21 @@
     <div style="padding: var(--space-xl);">
       <div class="card" style="max-width: 800px; margin: 0 auto;">
         <div class="card-header"><div class="card-title"><span>🎯</span> Chord Change Drill</div></div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-md); margin-bottom: var(--space-lg);">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-md); margin-bottom: var(--space-lg);">
           <div>
-            <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Progression Type</label>
-            <select class="rhythm-select-pill" id="drill-progression-type" style="width:100%;">
-              <option value="random">Random</option>
-              <option value="I-V-vi-IV">I - V - vi - IV (Pop)</option>
-              <option value="ii-V-I">ii - V - I (Jazz)</option>
-              <option value="blues">12-Bar Blues</option>
-              <option value="custom">Custom</option>
+            <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Key</label>
+            <select class="rhythm-select-pill" id="drill-key" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Scale</label>
+            <select class="rhythm-select-pill" id="drill-mode" style="width:100%;">
+              <option value="major">Major</option>
+              <option value="minor">Minor</option>
             </select>
+          </div>
+          <div>
+            <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Progression</label>
+            <select class="rhythm-select-pill" id="drill-progression-type" style="width:100%;"></select>
           </div>
           <div>
             <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">BPM</label>
@@ -1656,6 +1661,13 @@
             <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Total Changes</label>
             <input type="number" id="drill-total-chords" min="4" max="64" value="16" style="width:100%; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border-light); border-radius:8px; color:#fff;">
           </div>
+        </div>
+        <!-- Live preview of the realized progression + diatonic chords for the selected key -->
+        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border-light); border-radius:var(--radius-md); padding:var(--space-md); margin-bottom:var(--space-lg);">
+          <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--accent-gold); font-weight:700; margin-bottom:6px;">Progression <span id="drill-preview-key" style="color:var(--text-muted);"></span></div>
+          <div id="drill-progression-preview" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;"></div>
+          <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); font-weight:700; margin-bottom:6px;">Diatonic chords in this key</div>
+          <div id="drill-diatonic-preview" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
         </div>
         <div style="display:flex; gap:var(--space-sm); flex-wrap:wrap; margin-bottom:var(--space-lg);">
           <button class="btn btn-primary" id="btn-start-drill"><span>▶️</span> Start Drill</button>

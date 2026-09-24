@@ -953,21 +953,86 @@ export async function startDrill(config: DrillConfig): Promise<void> {
   showNextDrillChord();
 }
 
-function generateDrillProgression(config: DrillConfig): string[] {
-  const progressions: Record<string, string[]> = {
-    'I-V-vi-IV': ['C', 'G', 'Am', 'F'],
-    'ii-V-I': ['Dm', 'G', 'C'],
-    'blues': ['A7', 'D7', 'E7'],
-    'random': ['C', 'Am', 'F', 'G', 'Dm', 'Em', 'Am', 'G'],
-  };
-  
-  const base = progressions[config.progressionType] || progressions['random'];
-  const result: string[] = [];
-  
-  for (let i = 0; i < config.totalChords; i++) {
-    result.push(base[i % base.length]);
+// ── Diatonic harmony engine (drill progressions in any key/mode) ─────────────
+const NOTE_NAMES_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
+const MAJOR_QUAL = ['', 'm', 'm', '', '', 'm', 'dim'];
+const MINOR_STEPS = [0, 2, 3, 5, 7, 8, 10];
+const MINOR_QUAL = ['m', 'dim', '', 'm', 'm', '', ''];
+
+interface ProgDef { id: string; label: string; mode: 'major' | 'minor'; degrees: number[]; seventh?: 'blues' | 'jazz'; }
+
+export const DRILL_PROGRESSIONS: ProgDef[] = [
+  // Major
+  { id: 'I-IV-V',       label: 'I – IV – V (Classic)',      mode: 'major', degrees: [0, 3, 4] },
+  { id: 'I-V-vi-IV',    label: 'I – V – vi – IV (Pop)',     mode: 'major', degrees: [0, 4, 5, 3] },
+  { id: 'I-vi-IV-V',    label: 'I – vi – IV – V (50s)',     mode: 'major', degrees: [0, 5, 3, 4] },
+  { id: 'vi-IV-I-V',    label: 'vi – IV – I – V',           mode: 'major', degrees: [5, 3, 0, 4] },
+  { id: 'I-IV-V-IV',    label: 'I – IV – V – IV',           mode: 'major', degrees: [0, 3, 4, 3] },
+  { id: 'ii-V-I',       label: 'ii – V – I (Jazz 7ths)',    mode: 'major', degrees: [1, 4, 0], seventh: 'jazz' },
+  { id: 'blues-major',  label: '12-Bar Blues (dom 7ths)',   mode: 'major', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 4], seventh: 'blues' },
+  // Minor
+  { id: 'i-iv-v',       label: 'i – iv – v',                mode: 'minor', degrees: [0, 3, 4] },
+  { id: 'i-VI-VII',     label: 'i – VI – VII',              mode: 'minor', degrees: [0, 5, 6] },
+  { id: 'i-VI-III-VII', label: 'i – VI – III – VII (Epic)', mode: 'minor', degrees: [0, 5, 2, 6] },
+  { id: 'i-iv-VII-III', label: 'i – iv – VII – III',        mode: 'minor', degrees: [0, 3, 6, 2] },
+  { id: 'ii-v-i',       label: 'ii° – v – i',               mode: 'minor', degrees: [1, 4, 0] },
+  { id: 'i-VII-VI-VII', label: 'i – VII – VI – VII',        mode: 'minor', degrees: [0, 6, 5, 6] },
+];
+
+export function diatonicChord(rootPc: number, mode: 'major' | 'minor', degIdx: number): string {
+  const steps = mode === 'minor' ? MINOR_STEPS : MAJOR_STEPS;
+  const quals = mode === 'minor' ? MINOR_QUAL : MAJOR_QUAL;
+  return NOTE_NAMES_SHARP[(rootPc + steps[degIdx]) % 12] + quals[degIdx];
+}
+
+/** All 7 diatonic chords of a key (I..vii°). */
+export function diatonicChords(rootPc: number, mode: 'major' | 'minor'): string[] {
+  return [0, 1, 2, 3, 4, 5, 6].map(d => diatonicChord(rootPc, mode, d));
+}
+
+function realizeProgression(rootPc: number, mode: 'major' | 'minor', prog: ProgDef): string[] {
+  const steps = mode === 'minor' ? MINOR_STEPS : MAJOR_STEPS;
+  const quals = mode === 'minor' ? MINOR_QUAL : MAJOR_QUAL;
+  return prog.degrees.map(d => {
+    const note = NOTE_NAMES_SHARP[(rootPc + steps[d]) % 12];
+    if (prog.seventh === 'blues') return note + '7';
+    if (prog.seventh === 'jazz') {
+      if (d === 4) return note + '7';              // V → dominant 7
+      if (quals[d] === '') return note + 'maj7';   // major → maj7
+      if (quals[d] === 'm') return note + 'm7';    // minor → m7
+      return note + quals[d];                      // dim etc.
+    }
+    return note + quals[d];
+  });
+}
+
+/** Realized chord list for the currently-selected drill key/mode/progression (preview). */
+export function drillProgressionChords(config: DrillConfig): string[] {
+  const rootPc = Math.max(0, NOTE_NAMES_SHARP.indexOf(config.key || 'C'));
+  const mode = config.mode || 'major';
+  if (config.progressionType === 'all-diatonic') return diatonicChords(rootPc, mode);
+  if (config.progressionType === 'random') {
+    // Random walk over diatonic chords (skip the diminished for playability)
+    const pool = diatonicChords(rootPc, mode).filter(c => !c.endsWith('dim'));
+    const out: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      let next = pool[Math.floor(Math.random() * pool.length)];
+      if (i > 0 && next === out[i - 1] && pool.length > 1) next = pool[(pool.indexOf(next) + 1) % pool.length];
+      out.push(next);
+    }
+    return out;
   }
-  
+  const prog = DRILL_PROGRESSIONS.find(p => p.id === config.progressionType);
+  if (prog) return realizeProgression(rootPc, mode, prog);
+  return diatonicChords(rootPc, mode).slice(0, 4);
+}
+
+function generateDrillProgression(config: DrillConfig): string[] {
+  const base = drillProgressionChords(config);
+  if (base.length === 0) return [];
+  const result: string[] = [];
+  for (let i = 0; i < config.totalChords; i++) result.push(base[i % base.length]);
   return result;
 }
 
@@ -2141,48 +2206,90 @@ function renderMetronome(): void {
   };
 }
 
+function currentDrillConfig(): DrillConfig {
+  const key = ((document.getElementById('drill-key') as HTMLSelectElement)?.value || 'C') as NoteName;
+  const mode = ((document.getElementById('drill-mode') as HTMLSelectElement)?.value || 'major') as 'major' | 'minor';
+  const progressionType = (document.getElementById('drill-progression-type') as HTMLSelectElement)?.value || 'I-IV-V';
+  const bpm = parseInt((document.getElementById('drill-bpm') as HTMLInputElement)?.value || '80');
+  const barsPerChord = parseInt((document.getElementById('drill-bars-per-chord') as HTMLSelectElement)?.value || '2');
+  const totalChords = parseInt((document.getElementById('drill-total-chords') as HTMLInputElement)?.value || '16');
+  return { progressionType, bpm, barsPerChord, countInBars: 1, totalChords, key, mode };
+}
+
+function chip(text: string): string {
+  return `<span style="background:rgba(255,179,0,0.15); border:1px solid rgba(255,179,0,0.35); color:#ffd54f; font-size:0.85rem; font-weight:700; padding:4px 10px; border-radius:8px;">${text}</span>`;
+}
+
+function populateDrillProgressions(mode: 'major' | 'minor'): void {
+  const sel = document.getElementById('drill-progression-type') as HTMLSelectElement | null;
+  if (!sel) return;
+  const prev = sel.value;
+  const opts = DRILL_PROGRESSIONS.filter(p => p.mode === mode)
+    .map(p => `<option value="${p.id}">${p.label}</option>`).join('');
+  sel.innerHTML = opts +
+    `<option value="random">Random (diatonic)</option>` +
+    `<option value="all-diatonic">All diatonic chords</option>`;
+  // keep selection if still valid for this mode
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
+function updateDrillPreview(): void {
+  const cfg = currentDrillConfig();
+  const rootPc = Math.max(0, NOTE_NAMES_SHARP.indexOf(cfg.key || 'C'));
+  const progEl = document.getElementById('drill-progression-preview');
+  const diatEl = document.getElementById('drill-diatonic-preview');
+  const keyEl = document.getElementById('drill-preview-key');
+  if (keyEl) keyEl.textContent = `— ${cfg.key} ${cfg.mode === 'minor' ? 'Minor' : 'Major'}`;
+  if (progEl) progEl.innerHTML = drillProgressionChords(cfg).map(chip).join('');
+  if (diatEl) {
+    const romans = cfg.mode === 'minor' ? ['i', 'ii°', 'III', 'iv', 'v', 'VI', 'VII'] : ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
+    diatEl.innerHTML = diatonicChords(rootPc, cfg.mode || 'major')
+      .map((c, i) => chip(`${romans[i]} · ${c}`)).join('');
+  }
+}
+
 function renderDrillUI(): void {
-  const progressionSelect = document.getElementById('drill-progression-type') as HTMLSelectElement;
-  if (progressionSelect) {
-    progressionSelect.addEventListener('change', () => {
-      // Update UI
-    });
+  // Populate Key dropdown once
+  const keySel = document.getElementById('drill-key') as HTMLSelectElement | null;
+  if (keySel && keySel.children.length === 0) {
+    keySel.innerHTML = NOTE_NAMES_SHARP.map(n => `<option value="${n}"${n === 'C' ? ' selected' : ''}>${n}</option>`).join('');
   }
-  
-  const bpmSlider = document.getElementById('drill-bpm') as HTMLInputElement;
-  if (bpmSlider) {
-    bpmSlider.addEventListener('input', (e) => {
-      document.getElementById('drill-bpm-val')!.textContent = (e.target as HTMLInputElement).value + ' BPM';
-    });
-  }
-  
+
+  const modeSel = document.getElementById('drill-mode') as HTMLSelectElement | null;
+  populateDrillProgressions((modeSel?.value as 'major' | 'minor') || 'major');
+  updateDrillPreview();
+
+  if (keySel) keySel.onchange = updateDrillPreview;
+  if (modeSel) modeSel.onchange = () => { populateDrillProgressions(modeSel.value as 'major' | 'minor'); updateDrillPreview(); };
+  const progSel = document.getElementById('drill-progression-type') as HTMLSelectElement | null;
+  if (progSel) progSel.onchange = updateDrillPreview;
+
+  const bpmSlider = document.getElementById('drill-bpm') as HTMLInputElement | null;
+  if (bpmSlider) bpmSlider.oninput = (e) => {
+    document.getElementById('drill-bpm-val')!.textContent = (e.target as HTMLInputElement).value + ' BPM';
+  };
+
   const startBtn = document.getElementById('btn-start-drill') as HTMLButtonElement | null;
-  if (startBtn) startBtn.addEventListener('click', () => {
-    const progressionType = (document.getElementById('drill-progression-type') as HTMLSelectElement).value as any;
-    const bpm = parseInt((document.getElementById('drill-bpm') as HTMLInputElement).value);
-    const barsPerChord = parseInt((document.getElementById('drill-bars-per-chord') as HTMLSelectElement).value);
-    const totalChords = parseInt((document.getElementById('drill-total-chords') as HTMLInputElement).value);
-    
-    startDrill({ progressionType, bpm, barsPerChord, countInBars: 1, totalChords });
-    
+  if (startBtn) startBtn.onclick = () => {
+    startDrill(currentDrillConfig());
     startBtn.disabled = true;
     (document.getElementById('btn-stop-drill') as HTMLButtonElement).disabled = false;
     (document.getElementById('btn-next-drill-chord') as HTMLButtonElement).disabled = false;
-  });
-  
+  };
+
   const stopBtn = document.getElementById('btn-stop-drill') as HTMLButtonElement | null;
-  if (stopBtn) stopBtn.addEventListener('click', () => {
+  if (stopBtn) stopBtn.onclick = () => {
     stopDrill();
     (document.getElementById('btn-start-drill') as HTMLButtonElement).disabled = false;
     stopBtn.disabled = true;
     (document.getElementById('btn-next-drill-chord') as HTMLButtonElement).disabled = true;
-  });
-  
+  };
+
   const nextBtn = document.getElementById('btn-next-drill-chord');
-  if (nextBtn) nextBtn.addEventListener('click', () => {
+  if (nextBtn) nextBtn.onclick = () => {
     appState.drillCurrentIndex++;
     showNextDrillChord();
-  });
+  };
 }
 
 function renderRhythmPresets(): void {

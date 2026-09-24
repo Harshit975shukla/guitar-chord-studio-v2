@@ -271,13 +271,14 @@ export interface ChordStat {
 }
 
 export interface DrillConfig {
-  progressionType: 'random' | 'I-V-vi-IV' | 'ii-V-I' | 'blues' | 'custom';
+  progressionType: string; // id from PROGRESSIONS, or 'random' | 'all-diatonic' | 'custom'
   customProgression?: string[]; // chord symbols
   bpm: number;
   barsPerChord: number;
   countInBars: number;
   totalChords: number;
   key?: NoteName;
+  mode?: 'major' | 'minor';
 }
 
 export interface DrillResult {
