@@ -429,23 +429,39 @@ export class DetectionEngine {
 
   buildChroma(peaks: DetectedPeak[]): Float32Array {
     const rawChroma = new Float32Array(12);
-    
+
     peaks.forEach(pk => {
       // Guitar fundamentals (80 - 350 Hz) have full weight; upper harmonics gently roll off so overtones don't overpower the fundamental note
       const freqWeight = pk.freq <= 350 ? 1.0 : Math.max(0.35, 350 / pk.freq);
       rawChroma[pk.pitchClass] += pk.amp * freqWeight;
     });
-    
+
+    // Harmonic whitening: a note's 3rd/6th harmonics add phantom energy a
+    // perfect-5th above it (+7 semitones) and its 5th harmonic a major-3rd
+    // above (+4). Subtract a small fraction so overtones don't fake fifths /
+    // major-thirds and push the matcher toward wrong (usually major) chords.
+    const whitened = new Float32Array(rawChroma);
+    for (let i = 0; i < 12; i++) {
+      const e = rawChroma[i];
+      if (e <= 0) continue;
+      // Major-third phantom (5th harmonic) is the main cause of minor→major
+      // errors, so subtract it more; the fifth phantom (3rd harmonic) overlaps
+      // the genuine perfect fifth present in almost every chord, so touch it
+      // only lightly to avoid turning minor triads into diminished.
+      whitened[(i + 4) % 12] = Math.max(0, whitened[(i + 4) % 12] - e * 0.14);
+      whitened[(i + 7) % 12] = Math.max(0, whitened[(i + 7) % 12] - e * 0.05);
+    }
+
     // Normalize only if the peak energy is substantial (not background hiss)
     let maxChroma = 0;
     for (let i = 0; i < 12; i++) {
-      if (rawChroma[i] > maxChroma) maxChroma = rawChroma[i];
+      if (whitened[i] > maxChroma) maxChroma = whitened[i];
     }
     if (maxChroma >= 0.010) {
-      for (let i = 0; i < 12; i++) rawChroma[i] /= maxChroma;
+      for (let i = 0; i < 12; i++) whitened[i] /= maxChroma;
     }
-    
-    return rawChroma;
+
+    return whitened;
   }
 
   // ============================================================================
@@ -677,9 +693,10 @@ export class DetectionEngine {
       }
     }
 
-    // Consensus voting buffer (3 frames)
+    // Consensus voting buffer (5 frames — a little more temporal smoothing to
+    // outvote brief single-frame misfires without slowing real changes much)
     this.candidateVoteHistory.push(best.short);
-    if (this.candidateVoteHistory.length > 3) this.candidateVoteHistory.shift();
+    if (this.candidateVoteHistory.length > 5) this.candidateVoteHistory.shift();
     
     const voteCount = this.candidateVoteHistory.filter(c => c === best.short).length;
     const isIncumbent = (this.lastLockedChord === best.short);
