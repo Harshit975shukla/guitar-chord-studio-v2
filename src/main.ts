@@ -2216,8 +2216,11 @@ function currentDrillConfig(): DrillConfig {
   return { progressionType, bpm, barsPerChord, countInBars: 1, totalChords, key, mode };
 }
 
-function chip(text: string): string {
-  return `<span style="background:rgba(255,179,0,0.15); border:1px solid rgba(255,179,0,0.35); color:#ffd54f; font-size:0.85rem; font-weight:700; padding:4px 10px; border-radius:8px;">${text}</span>`;
+function chip(text: string, playChord?: string): string {
+  const base = 'background:rgba(255,179,0,0.15); border:1px solid rgba(255,179,0,0.35); color:#ffd54f; font-size:0.85rem; font-weight:700; padding:4px 10px; border-radius:8px;';
+  if (!playChord) return `<span style="${base}">${text}</span>`;
+  const safe = playChord.replace(/'/g, '');
+  return `<button type="button" style="${base} cursor:pointer;" onclick="window.strumChordPreset && window.strumChordPreset('${safe}')" title="Click to hear ${safe}">${text}</button>`;
 }
 
 function populateDrillProgressions(mode: 'major' | 'minor'): void {
@@ -2240,11 +2243,11 @@ function updateDrillPreview(): void {
   const diatEl = document.getElementById('drill-diatonic-preview');
   const keyEl = document.getElementById('drill-preview-key');
   if (keyEl) keyEl.textContent = `— ${cfg.key} ${cfg.mode === 'minor' ? 'Minor' : 'Major'}`;
-  if (progEl) progEl.innerHTML = drillProgressionChords(cfg).map(chip).join('');
+  if (progEl) progEl.innerHTML = drillProgressionChords(cfg).map(c => chip(c, c)).join('');
   if (diatEl) {
     const romans = cfg.mode === 'minor' ? ['i', 'ii°', 'III', 'iv', 'v', 'VI', 'VII'] : ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
     diatEl.innerHTML = diatonicChords(rootPc, cfg.mode || 'major')
-      .map((c, i) => chip(`${romans[i]} · ${c}`)).join('');
+      .map((c, i) => chip(`${romans[i]} · ${c}`, c)).join('');
   }
 }
 
