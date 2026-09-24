@@ -427,41 +427,69 @@ export class DetectionEngine {
   // Build Chroma Vector
   // ============================================================================
 
+  /**
+   * Harmonic whitening: a note's 5th harmonic adds phantom energy a major-3rd
+   * above it (+4 semitones) — the main cause of minor→major errors — and its
+   * 3rd/6th harmonics add a phantom perfect-5th (+7). Subtract the major-third
+   * phantom more; touch the fifth only lightly (it overlaps the genuine fifth
+   * present in almost every chord, so heavy subtraction turns minor into dim).
+   */
+  private whitenChroma(chroma: Float32Array): Float32Array {
+    const out = new Float32Array(chroma);
+    for (let i = 0; i < 12; i++) {
+      const e = chroma[i];
+      if (e <= 0) continue;
+      out[(i + 4) % 12] = Math.max(0, out[(i + 4) % 12] - e * 0.14);
+      out[(i + 7) % 12] = Math.max(0, out[(i + 7) % 12] - e * 0.05);
+    }
+    return out;
+  }
+
+  private normalizeChroma(chroma: Float32Array): Float32Array {
+    let max = 0;
+    for (let i = 0; i < 12; i++) if (chroma[i] > max) max = chroma[i];
+    if (max >= 0.010) for (let i = 0; i < 12; i++) chroma[i] /= max;
+    return chroma;
+  }
+
   buildChroma(peaks: DetectedPeak[]): Float32Array {
     const rawChroma = new Float32Array(12);
-
     peaks.forEach(pk => {
-      // Guitar fundamentals (80 - 350 Hz) have full weight; upper harmonics gently roll off so overtones don't overpower the fundamental note
       const freqWeight = pk.freq <= 350 ? 1.0 : Math.max(0.35, 350 / pk.freq);
       rawChroma[pk.pitchClass] += pk.amp * freqWeight;
     });
+    return this.normalizeChroma(this.whitenChroma(rawChroma));
+  }
 
-    // Harmonic whitening: a note's 3rd/6th harmonics add phantom energy a
-    // perfect-5th above it (+7 semitones) and its 5th harmonic a major-3rd
-    // above (+4). Subtract a small fraction so overtones don't fake fifths /
-    // major-thirds and push the matcher toward wrong (usually major) chords.
-    const whitened = new Float32Array(rawChroma);
-    for (let i = 0; i < 12; i++) {
-      const e = rawChroma[i];
-      if (e <= 0) continue;
-      // Major-third phantom (5th harmonic) is the main cause of minor→major
-      // errors, so subtract it more; the fifth phantom (3rd harmonic) overlaps
-      // the genuine perfect fifth present in almost every chord, so touch it
-      // only lightly to avoid turning minor triads into diminished.
-      whitened[(i + 4) % 12] = Math.max(0, whitened[(i + 4) % 12] - e * 0.14);
-      whitened[(i + 7) % 12] = Math.max(0, whitened[(i + 7) % 12] - e * 0.05);
+  /**
+   * Constant-Q chroma computed directly from the magnitude spectrum: for each
+   * semitone across the guitar range (+ a couple harmonic octaves) sum spectral
+   * energy in a ±half-semitone log-frequency window (triangular weighted) and
+   * fold into 12 pitch classes. Log-frequency binning gives uniform pitch
+   * resolution — far better than linear FFT bins, especially for low strings —
+   * so chord matching sees cleaner pitch-class energy.
+   */
+  buildChromaCQT(cleanAmps: Float32Array, sampleRate: number): Float32Array {
+    const bw = sampleRate / this.config.fftSize; // Hz per bin
+    const nyquist = sampleRate / 2;
+    const chroma = new Float32Array(12);
+    for (let midi = 40; midi <= 91; midi++) {          // E2 (~82Hz) .. G6 (~1568Hz)
+      const f = 440 * Math.pow(2, (midi - 69) / 12);
+      if (f >= nyquist) break;
+      const fLo = f * Math.pow(2, -0.5 / 12);
+      const fHi = f * Math.pow(2, 0.5 / 12);
+      const binLo = Math.max(1, Math.floor(fLo / bw));
+      const binHi = Math.min(cleanAmps.length - 1, Math.ceil(fHi / bw));
+      let energy = 0;
+      for (let b = binLo; b <= binHi; b++) {
+        const cents = 1200 * Math.log2((b * bw) / f);
+        if (Math.abs(cents) <= 50) energy += cleanAmps[b] * (1 - Math.abs(cents) / 50);
+      }
+      // Emphasize fundamentals; roll off higher octaves so overtones don't dominate
+      const octaveWeight = f <= 350 ? 1.0 : Math.max(0.35, 350 / f);
+      chroma[((midi % 12) + 12) % 12] += energy * octaveWeight;
     }
-
-    // Normalize only if the peak energy is substantial (not background hiss)
-    let maxChroma = 0;
-    for (let i = 0; i < 12; i++) {
-      if (whitened[i] > maxChroma) maxChroma = whitened[i];
-    }
-    if (maxChroma >= 0.010) {
-      for (let i = 0; i < 12; i++) whitened[i] /= maxChroma;
-    }
-
-    return whitened;
+    return this.normalizeChroma(this.whitenChroma(chroma));
   }
 
   // ============================================================================
@@ -1083,7 +1111,9 @@ export class DetectionEngine {
     // --------------------------------------------------------------------------
     // POLYPHONIC CHORD PROCESSING (>= 3 Distinct Active Pitch Classes)
     // --------------------------------------------------------------------------
-    const rawChroma = this.buildChroma(peaks);
+    // Constant-Q chroma from the full spectrum (log-frequency) — cleaner pitch
+    // resolution than peak-picking, especially for low strings.
+    const rawChroma = this.buildChromaCQT(cleanAmps, sampleRate);
     for (let i = 0; i < 12; i++) {
       this.smoothedChroma[i] = 0.55 * this.smoothedChroma[i] + 0.45 * rawChroma[i];
     }
