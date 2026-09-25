@@ -31,7 +31,6 @@ import {
   saveSettings, 
   savePracticeSession,
   loadCustomSongs,
-  saveCustomSong,
   loadMidiConfig,
   saveCurrentSession,
   loadCurrentSession,
@@ -82,6 +81,9 @@ import { RHYTHM_PRESETS } from './tabs/rhythm';
 import { ScalesStudio } from './tabs/scales';
 import { TrainerStudio } from './tabs/trainer';
 import { prepareStudio, NeckController } from './ui/studio';
+import { LibraryNeck } from './ui/libraryNeck';
+import { buildSongCatalog } from './songs/catalog';
+import { initSongTools } from './ui/songTools';
 
 // ============================================================================
 // Global State
@@ -165,10 +167,11 @@ let appState: AppState = {
   drillCurrentIndex: 0,
   scalesStudio: new ScalesStudio(),
   trainerStudio: new TrainerStudio(),
-  songStudio: new SongStudio(),
+  songStudio: new SongStudio(getSongCatalog),
 };
 
 let neckController: NeckController | null = null;
+let libraryNeck: LibraryNeck | null = null;
 let liveNeckMidi: number | null = null;
 let neckCaption = 'Explore the fretboard';
 let microphonePending = false;
@@ -221,13 +224,19 @@ export async function initializeApp(): Promise<void> {
   updateMicUI(false);
   
   // Wire Song Studio practice mic auto-start & pre-build fretboard
-  appState.songStudio.onMicStartRequested = () => {
-    if (!appState.isListening) {
-      startMicrophone();
-    }
+  appState.songStudio.onMicStartRequested = async () => {
+    const started = appState.isListening || await startMicrophone();
+    if (started && appState.activeTab === 'songs') setTargetMode('auto');
+    return started;
   };
   appState.songStudio.onPlayRequested = async () => {
     await ensureAudioContext();
+  };
+  appState.scalesStudio.onPlayRequested = ensureAudioContext;
+  appState.scalesStudio.onMicStartRequested = async () => {
+    const started = appState.isListening || await startMicrophone();
+    if (started) setTargetMode('notes');
+    return started;
   };
   try {
     appState.songStudio.buildSongFretboardUI();
@@ -279,7 +288,8 @@ function updateEffectiveTuning(): void {
   appState.effectiveTuning = tuning;
   if (appState.scalesStudio) appState.scalesStudio.setTuning(tuning);
   if (appState.trainerStudio) appState.trainerStudio.setTuning(tuning);
-  if (appState.songStudio) appState.songStudio.setTuning(tuning);
+  if (appState.songStudio) appState.songStudio.setTuning(tuning, appState.capoState.enabled ? appState.capoState.fret : 0);
+  libraryNeck?.setTuning(tuning);
 }
 
 function restoreSession(session: any): void {
@@ -359,6 +369,9 @@ export async function startMicrophone(): Promise<boolean> {
     });
     
     appState.micStream = stream;
+    stream.getAudioTracks().forEach(track => track.addEventListener('ended', () => {
+      if (appState.micStream === stream) stopMicrophone();
+    }, { once: true }));
     const source = appState.audioContext.createMediaStreamSource(stream);
     
     // Hardware filters (matches v1 proven audio pipeline)
@@ -453,6 +466,8 @@ export function stopMicrophone(): void {
   }
   
   appState.isListening = false;
+  appState.scalesStudio.setMicPracticeActive(false);
+  appState.songStudio.onMicrophoneStopped();
   appState.detectionEngine.reset();
   updateMicUI(false);
   liveNeckMidi = null;
@@ -501,7 +516,9 @@ function startDetectionLoop(): void {
   appState.animationFrameId = requestAnimationFrame(loop);
 }
 
-function handleDetectionResult(result: DetectionResult, spectrum: Float32Array): void {
+export function handleDetectionResult(result: DetectionResult, spectrum: Float32Array): void {
+  // Wait mode also needs current gate/release metadata on held and idle frames.
+  if (appState.activeTab === 'songs') appState.songStudio.evaluatePractice(result);
   // Handle room noise calibration progress and completion
   if (result.isCalibrating) {
     const nameEl = document.getElementById('display-chord-name');
@@ -528,13 +545,17 @@ function handleDetectionResult(result: DetectionResult, spectrum: Float32Array):
 
   // Update chord display
   updateChordDisplay(result);
-  const nextLiveMidi = result.mode === 'single-note' && result.note ? result.note.pitch.midi : null;
+  const isFresh = result.freshness === 'fresh';
+  const nextLiveMidi = isFresh && result.mode === 'single-note' && result.note ? result.note.pitch.midi : null;
   if (nextLiveMidi !== liveNeckMidi) {
     liveNeckMidi = nextLiveMidi;
     renderFretboard();
   }
   
-  // Send to MIDI
+  // Only supported evidence drives side effects. Repeated fresh frames still
+  // reach practice; freshness is not note/chord event deduplication.
+  if (isFresh) {
+    // Send to MIDI
     if (appState.midiManager && appState.settings.midiConfig.sendChords && result.chord) {
       appState.midiManager.sendChord({ root: result.chord.root, quality: result.chord.quality }, appState.settings.midiConfig.noteVelocity);
     }
@@ -542,40 +563,37 @@ function handleDetectionResult(result: DetectionResult, spectrum: Float32Array):
       appState.midiManager.sendNoteOn(result.note.pitch.midi, appState.settings.midiConfig.noteVelocity);
     }
   
-  // Log chord for session and update interactive fretboard
-  if (result.mode === 'chord' && result.chord && result.chord.symbol !== appState.currentChord) {
-    logChordDetection(result.chord);
-    appState.currentChord = result.chord.symbol;
-    loadChordPreset(result.chord.symbol);
+    // Log chord for session and update interactive fretboard
+    if (result.mode === 'chord' && result.chord && result.chord.symbol !== appState.currentChord) {
+      logChordDetection(result.chord);
+      appState.currentChord = result.chord.symbol;
+      loadChordPreset(result.chord.symbol);
+    }
+
+    if (appState.isDrillActive && appState.drillConfig) {
+      evaluateDrillResult(result);
+    }
+
+    // Route only to the active studio; background practice must not react.
+    if (result.chord) {
+      if (appState.activeTab === 'trainer') appState.trainerStudio?.onChordDetected(result.chord.symbol);
+    }
+    if (result.note) {
+      if (appState.activeTab === 'scales') appState.scalesStudio?.onSingleNoteDetected(result.note.pitch.note);
+    }
   }
+
   if (result.mode === 'chord' && result.chord) {
-    neckCaption = `${result.chord.symbol} · suggested voicing`;
+    neckCaption = `${result.chord.symbol} · ${isFresh ? 'suggested voicing' : 'last confirmed · held'}`;
     syncNeck();
   } else if (result.mode === 'single-note' && result.note) {
-    neckCaption = `${result.note.pitch.note}${result.note.pitch.octave} · possible positions`;
+    neckCaption = `${result.note.pitch.note}${result.note.pitch.octave} · ${isFresh ? 'possible positions' : 'last confirmed · held'}`;
     syncNeck();
-  }
-  
-  // Drill mode evaluation
-  if (appState.isDrillActive && appState.drillConfig) {
-    evaluateDrillResult(result);
-  }
-  
-  // Studio Subsystem Evaluation — only route detection to a studio when the
-  // user is on that studio's tab, so a studio (e.g. the ear-trainer) doesn't
-  // react and auto-play its own chords in the background while on the Detector.
-  if (result.chord) {
-    if (appState.activeTab === 'trainer') appState.trainerStudio?.onChordDetected(result.chord.symbol);
-    if (appState.activeTab === 'songs') appState.songStudio?.evaluatePractice(result.chord.symbol);
-  }
-  if (result.note) {
-    if (appState.activeTab === 'scales') appState.scalesStudio?.onSingleNoteDetected(result.note.pitch.note);
-    if (appState.activeTab === 'songs') appState.songStudio?.evaluatePractice(result.note.pitch.note);
   }
   
   // Update visualizers
   updateSpectrumVisualizer(spectrum);
-  updateChromaVisualizer(result.chroma);
+  updateChromaVisualizer(result.chroma, result.freshness === 'held');
 }
 
 function logChordDetection(chord: any): void {
@@ -771,7 +789,7 @@ export function clearFretboard(): void {
   neckCaption = 'Explore the fretboard';
   appState.currentFretboardState = [null, null, null, null, null, null];
   renderFretboard();
-  updateChordDisplay({ mode: 'idle', timestamp: Date.now(), chroma: new Float32Array(12), peaks: [], spectrum: new Float32Array(0), signalLevelDb: -120 });
+  updateChordDisplay({ mode: 'idle', freshness: 'none', timestamp: Date.now(), chroma: new Float32Array(12), peaks: [], spectrum: new Float32Array(0), signalLevelDb: -120 });
 }
 
 function fretboardChordName(chord: ChordDefinition): string {
@@ -870,6 +888,7 @@ export async function loadChordPreset(chordSymbol: string, autoPlay: boolean = f
 
     updateChordDisplay({
       mode: 'chord',
+      freshness: 'none',
       timestamp: Date.now(),
       chord: {
         symbol: chordSymbol,
@@ -906,10 +925,12 @@ export async function loadChordPreset(chordSymbol: string, autoPlay: boolean = f
 // ============================================================================
 
 export function getAllSongs(): Song[] {
-  const customSongs = loadCustomSongs();
-  return [...customSongs, ...BUILTIN_SONGS];
+  return getSongCatalog();
 }
 
+function getSongCatalog() {
+  return buildSongCatalog(BUILTIN_SONGS, window.SONG_CATALOG, loadCustomSongs());
+}
 export function getSong(id: string): Song | undefined {
   return getAllSongs().find(s => s.id === id);
 }
@@ -1057,6 +1078,7 @@ function showNextDrillChord(): void {
 }
 
 function evaluateDrillResult(result: DetectionResult): void {
+  if (result.freshness !== 'fresh') return;
   if (!appState.isDrillActive || !appState.drillConfig || !appState.drillResults || drillMatchedThisChord) return;
   
   const targetChord = appState.drillProgression[appState.drillCurrentIndex];
@@ -1198,6 +1220,9 @@ export function switchTab(tabId: string): void {
     if (button.dataset.tab) button.setAttribute('aria-current', button.dataset.tab === tabId ? 'page' : 'false');
   });
   neckController?.setActive(tabId === 'detector');
+  libraryNeck?.setActive(tabId === 'chords');
+  appState.songStudio.setActive(tabId === 'songs');
+  appState.scalesStudio.setActive(tabId === 'scales');
   
   // Update tab panes
   document.querySelectorAll('.studio-tab-pane').forEach(pane => {
@@ -1349,6 +1374,7 @@ function updateChordDisplay(result: DetectionResult): void {
   const tuningGauge = document.getElementById('live-note-tuning-gauge');
   const liveNeedle = document.getElementById('live-note-needle');
   const liveVerdict = document.getElementById('live-tuner-verdict');
+  const held = result.freshness === 'held';
   
   if (result.mode === 'single-note' && result.note && appState.settings.targetMode !== 'chords') {
     nameEl!.innerHTML = `Note: <span style="color:#38bdf8;">${result.note.pitch.note}${result.note.pitch.octave}</span>`;
@@ -1434,9 +1460,29 @@ function updateChordDisplay(result: DetectionResult): void {
       }
     }
   }
-  
+
+  if (held) {
+    if (confidenceEl) confidenceEl.textContent = `Held · last confidence ${result.chord?.confidence ?? result.note?.confidence}%`;
+    if (tuningGauge) tuningGauge.style.display = 'none';
+  }
+  if (result.freshness !== 'fresh') {
+    const tunerStatus = document.getElementById('tuner-status-badge');
+    const tunerNeedle = document.getElementById('tuner-gauge-needle');
+    const tunerFreq = document.getElementById('tuner-center-freq');
+    if (tunerStatus) {
+      tunerStatus.textContent = held && result.note ? 'Last note held · Pluck again to tune' : 'Waiting for a fresh note';
+      tunerStatus.style.color = 'var(--text-muted)';
+    }
+    if (tunerNeedle) tunerNeedle.style.left = '50%';
+    if (tunerFreq) tunerFreq.textContent = held && result.note
+      ? `Last measured: ${result.note.pitch.freq.toFixed(1)} Hz`
+      : 'No current pitch';
+  }
+
   // Update ringing notes chips with frequencies and octaves
-  if (ringingChipsEl && result.ringingNotes && result.ringingNotes.length > 0) {
+  if (ringingChipsEl && held) {
+    ringingChipsEl.textContent = 'Last confirmed result · waiting for fresh evidence';
+  } else if (ringingChipsEl && result.ringingNotes && result.ringingNotes.length > 0) {
     ringingChipsEl.innerHTML = result.ringingNotes.map(n =>
       `<span class="badge" style="background:rgba(56,189,248,0.18); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; font-size:0.82rem; padding:3px 8px; border-radius:6px; font-weight:700;">${n.note}${n.octave} <span style="font-size:0.7rem; color:var(--text-muted);">(${Math.round(n.freq)}Hz)</span></span>`
     ).join('');
@@ -1547,7 +1593,7 @@ function updateSpectrumVisualizer(freqData: Float32Array): void {
   ctx.stroke();
 }
 
-function updateChromaVisualizer(chroma: Float32Array): void {
+function updateChromaVisualizer(chroma: Float32Array, held = false): void {
   let maxVal = 0;
   let maxIdx = -1;
 
@@ -1570,7 +1616,7 @@ function updateChromaVisualizer(chroma: Float32Array): void {
 
   const indicator = document.getElementById('chroma-active-note-indicator');
   if (indicator) {
-    if (maxVal >= 0.40 && maxIdx >= 0) {
+    if (!held && maxVal >= 0.40 && maxIdx >= 0) {
       indicator.textContent = `🎵 Active Note: ${NOTE_NAMES[maxIdx]}`;
       indicator.style.display = 'inline-block';
     } else {
@@ -1934,8 +1980,6 @@ function initTabButtons(): void {
   });
   
   // Custom song modal
-  const saveCustomSong = document.getElementById('btn-save-custom-song');
-  if (saveCustomSong) saveCustomSong.addEventListener('click', saveCustomSongHandler);
 }
 
 function updateTuningUI(): void {
@@ -2000,6 +2044,27 @@ function renderChordLibrary(): void {
   const grid = document.getElementById('library-cards-grid');
   
   if (!grid) return;
+  if (!libraryNeck) {
+    libraryNeck = new LibraryNeck(document.getElementById('library-neck')!, appState.effectiveTuning,
+      async (frets, style) => {
+        await ensureAudioContext();
+        if (appState.audioContext && appState.acousticBus) {
+          strumChord(appState.audioContext, appState.acousticBus, {
+            frets, style, velocity: 0.85, tuning: appState.effectiveTuning, model: appState.settings.acousticModel,
+          });
+        }
+      },
+      async (s, f) => {
+        await ensureAudioContext();
+        if (appState.audioContext && appState.acousticBus) {
+          playAcousticString(appState.audioContext, appState.acousticBus, {
+            freq: 440 * Math.pow(2, (appState.effectiveTuning[s].midi + f - 69) / 12),
+            startTime: appState.audioContext.currentTime + 0.005, stringIndex: s, velocity: 0.9,
+          });
+        }
+      });
+  }
+  libraryNeck.setActive(true);
   
   if (rootContainer && rootContainer.children.length === 0) {
     const roots = ['All', 'C', 'D', 'E', 'F', 'F#', 'G', 'A', 'B'];
@@ -2072,11 +2137,20 @@ function renderChordLibraryGrid(): void {
       <div style="font-family:monospace; font-size:0.8rem; background:rgba(0,0,0,0.3); padding:6px 10px; border-radius:6px; color:var(--accent-gold);">
         Frets: ${fretsStr}
       </div>
-      <div style="display:flex; gap:8px; margin-top:4px;">
-        <button class="lib-chord-strum-btn" onclick="strumChordPreset('${symbol}')">🔊 Strum</button>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">
+        <button class="lib-chord-strum-btn" data-library-strum>🔊 Strum</button>
+        <button class="btn btn-secondary" data-library-select>Show</button>
         <button class="btn btn-secondary" style="padding:6px 10px; font-size:0.75rem;" onclick="inspectChordPreset('${symbol}')">🔍 Inspect</button>
       </div>
     `;
+    card.querySelector('[data-library-select]')!.addEventListener('click', () => {
+      libraryNeck?.select(chord);
+      document.getElementById('library-neck')!.scrollIntoView({ block: 'start' });
+    });
+    card.querySelector('[data-library-strum]')!.addEventListener('click', () => {
+      libraryNeck?.select(chord);
+      void libraryNeck?.strum();
+    });
     grid.appendChild(card);
   });
 }
@@ -2582,208 +2656,13 @@ function populateMidiDevices(): void {
   }
 }
 
-/** Is this bracket token a real chord (vs a section tag like "Chorus")? */
-function isChordToken(t: string): boolean {
-  return /^[A-G][#b]?(?:maj|min|m|dim|aug|sus|add|M|\+|°)?\d{0,2}(?:sus[24])?(?:add\d{1,2})?(?:[#b]\d{1,2})?(?:\/[A-G][#b]?)?$/.test(t.trim());
-}
-
-const SECTION_RE = /^\s*[\[(]?\s*(intro|verse|chorus|bridge|outro|pre[\s-]?chorus|hook|solo|interlude|refrain|coda)\b[\s\d]*[\])]?\s*:?\s*$/i;
-
-/**
- * Parse a pasted chord sheet (ChordPro / inline [C]lyric) into the app's
- * playable line structure: [{ sec, text, chords:[{chord, word}] }].
- */
-function parseSongText(raw: string): { lines: any[]; chordsUsed: string[] } {
-  const chordRe = /\[([^\]]+)\]/g;
-  const lines: any[] = [];
-  const chordSet = new Set<string>();
-  let section = 'Verse';
-
-  for (const rawLine of raw.split(/\r?\n/)) {
-    const line = rawLine.replace(/\s+$/, '');
-    if (!line.trim()) continue;
-    const secM = line.match(SECTION_RE);
-    if (secM) { section = secM[1].replace(/\b\w/g, c => c.toUpperCase()); continue; }
-
-    const matches = [...line.matchAll(chordRe)];
-    const chords: { chord: string; word: string }[] = [];
-    for (let i = 0; i < matches.length; i++) {
-      const tok = matches[i][1].trim();
-      if (!isChordToken(tok)) continue; // skip [Verse]-style tags inline
-      chordSet.add(tok);
-      const start = (matches[i].index || 0) + matches[i][0].length;
-      const end = i + 1 < matches.length ? (matches[i + 1].index || line.length) : line.length;
-      const word = line.slice(start, end).replace(chordRe, '').trim().split(/\s+/)[0] || '';
-      chords.push({ chord: tok, word });
-    }
-    // strip only real-chord tags from the visible lyric text
-    const text = line.replace(chordRe, (full, tok) => (isChordToken(String(tok).trim()) ? '' : full)).replace(/\s+/g, ' ').trim();
-    if (!text && chords.length === 0) continue;
-    lines.push({ sec: section, section, text, chords });
-  }
-  return { lines, chordsUsed: [...chordSet] };
-}
-
-function saveCustomSongHandler(): void {
-  const title = (document.getElementById('custom-song-title-input') as HTMLInputElement).value.trim();
-  const artist = (document.getElementById('custom-song-artist-input') as HTMLInputElement).value.trim() || 'Custom Artist';
-  const key = (document.getElementById('custom-song-key') as HTMLSelectElement).value;
-  const bpm = parseInt((document.getElementById('custom-song-bpm') as HTMLInputElement).value) || 80;
-  const strum = (document.getElementById('custom-song-strum') as HTMLSelectElement).value;
-  const lyrics = (document.getElementById('custom-song-lyrics') as HTMLTextAreaElement).value.trim();
-
-  if (!title) { alert('Please enter a Song Title.'); return; }
-  if (!lyrics) { alert('Please paste the song with [Chord] tags, e.g. [G]Amazing [C]grace.'); return; }
-
-  const { lines, chordsUsed } = parseSongText(lyrics);
-  if (chordsUsed.length === 0) {
-    alert('No chords found. Put chords in brackets before the words, e.g. [Am] or [G]. Section names like [Chorus] are ignored.');
-    return;
-  }
-
-  const customSong: Song = {
-    id: 'custom_' + Date.now(),
-    title,
-    movie: artist,
-    singer: 'My Song / Acoustic',
-    key,
-    bpm,
-    strum,
-    strumPatternVisual: '↓ - ↓ ↑ - ↑ ↓ -',
-    chordsUsed,
-    lines,
-    lyrics,
-    isCustom: true,
-  };
-
-  saveCustomSong(customSong);
-
-  // Surface immediately: dropdown + load into play-along
-  const dropdown = document.getElementById('song-selector-select') as HTMLSelectElement;
-  if (dropdown && !dropdown.querySelector(`option[value="${customSong.id}"]`)) {
-    const opt = document.createElement('option');
-    opt.value = customSong.id;
-    opt.textContent = '⭐ ' + customSong.title + ' (My Song)';
-    dropdown.insertBefore(opt, dropdown.firstChild);
-  }
-  document.getElementById('custom-song-modal')!.style.display = 'none';
-  try { appState.songStudio.loadSong(customSong.id); switchTab('songs'); } catch { /* ignore */ }
-  alert(`Saved "${title}" — ${chordsUsed.length} chords across ${lines.length} lines. Open the Songs tab to play along.`);
-}
-
-function searchNormalize(s: string): string {
-  return (s || '')
-    .toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip diacritics
-    .replace(/[^a-z0-9#\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function levenshtein(a: string, b: string): number {
-  const m = a.length, n = b.length;
-  if (!m) return n; if (!n) return m;
-  let prev = Array.from({ length: n + 1 }, (_, i) => i);
-  for (let i = 1; i <= m; i++) {
-    const cur = [i];
-    for (let j = 1; j <= n; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = cur;
-  }
-  return prev[n];
-}
-
-/** All searchable songs, preferring rich catalog data, deduped by id. */
-function allSearchableSongs(): any[] {
-  const map = new Map<string, any>();
-  for (const s of BUILTIN_SONGS as any[]) if (s && s.id) map.set(s.id, s);
-  const win = (window as any).SONG_CATALOG;
-  if (win) for (const k of Object.keys(win)) { const s = win[k]; map.set(s.id || k, s); }
-  try {
-    const c = JSON.parse(localStorage.getItem('guitar_custom_songs') || '[]');
-    if (Array.isArray(c)) for (const s of c) if (s && s.id) map.set(s.id, s);
-  } catch { /* ignore */ }
-  return [...map.values()];
-}
-
-function songArtist(s: any): string {
-  return s.artist || s.singer || s.movie || s.music || 'Acoustic';
-}
-
-function scoreSong(song: any, qNorm: string, qTokens: string[]): number {
-  const title = searchNormalize(song.title);
-  const artist = searchNormalize(songArtist(song));
-  const key = searchNormalize(song.key || '');
-  const chords = (song.chordsUsed || []).map((c: string) => c.toLowerCase());
-  const titleTokens = title.split(' ');
-  let score = 0;
-
-  if (title === qNorm) score += 120;
-  else if (title.startsWith(qNorm)) score += 70;
-  else if (title.includes(qNorm)) score += 45;
-  if (artist.includes(qNorm) && qNorm.length > 1) score += 25;
-
-  for (const t of qTokens) {
-    if (!t) continue;
-    if (title.includes(t)) score += 12;
-    else if (t.length >= 4 && titleTokens.some(tk => tk.length >= 4 && levenshtein(tk, t) <= 1)) score += 7; // typo tolerance
-    if (artist.includes(t)) score += 6;
-    if (chords.includes(t)) score += 8; // e.g. search "am" or "g"
-    if (key.includes(t)) score += 4;
-  }
-  return score;
-}
-
 function initSearchTab(): void {
-  const input = document.getElementById('search-song-input') as HTMLInputElement;
-  const btn = document.getElementById('btn-search-song');
-  const resultsDiv = document.getElementById('search-results');
-  if (!input || !btn || !resultsDiv) return;
-
-  const esc = (v: string) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-  const performSearch = () => {
-    const raw = input.value.trim();
-    if (!raw) { resultsDiv.style.display = 'none'; resultsDiv.innerHTML = ''; return; }
-    const qNorm = searchNormalize(raw);
-    const qTokens = qNorm.split(' ').filter(Boolean);
-
-    const ranked = allSearchableSongs()
-      .map(song => ({ song, score: scoreSong(song, qNorm, qTokens) }))
-      .filter(r => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 30);
-
-    resultsDiv.style.display = 'block';
-    if (ranked.length === 0) {
-      resultsDiv.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:0.9rem;">No songs found matching "<strong>${esc(raw)}</strong>". Try a title, artist, key, or a chord like "Am".</div>`;
-      return;
-    }
-
-    resultsDiv.innerHTML = `
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:16px;">
-        ${ranked.map(({ song }) => `
-          <div class="card" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-light); padding:16px; border-radius:14px; cursor:pointer;" onclick="selectSongFromSearch('${esc(song.id)}')">
-            <h4 style="font-size:1.1rem; color:var(--accent-gold); font-weight:800; margin-bottom:4px;">🎸 ${esc(song.title)}</h4>
-            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">${esc(songArtist(song))} • Key: ${esc(song.key || '—')} • ${esc(String(song.bpm || '—'))} BPM</div>
-            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
-              ${(song.chordsUsed || []).map((c: string) => `<span class="badge" style="background:rgba(255,179,0,0.15); border:1px solid rgba(255,179,0,0.3); color:#ffd54f; font-size:0.75rem; padding:2px 8px;">${esc(c)}</span>`).join('')}
-            </div>
-            <button class="btn btn-primary" style="padding:6px 14px; font-size:0.8rem; width:100%; justify-content:center;">Play This Song ➔</button>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  };
-
-  let debounce: number | null = null;
-  input.oninput = () => {
-    if (debounce) clearTimeout(debounce);
-    debounce = window.setTimeout(performSearch, 120);
-  };
-  btn.onclick = performSearch;
-  input.onkeydown = (e) => { if (e.key === 'Enter') performSearch(); };
+  initSongTools({
+    catalog: getSongCatalog,
+    open: (id, part) => { switchTab('songs'); appState.songStudio.loadSong(id, part); },
+    editing: () => appState.songStudio.getSongForEditing(),
+    pause: () => appState.songStudio.stopPlayback(),
+  });
 }
 
 function initVideoTab(): void {
@@ -2831,6 +2710,7 @@ declare global {
     setTargetMode: (mode: DetectionTargetMode) => void;
     setTriggerMode: (mode: 'guitartuna' | 'continuous') => void;
     appState: AppState;
+    SONG_CATALOG?: unknown;
   }
 }
 

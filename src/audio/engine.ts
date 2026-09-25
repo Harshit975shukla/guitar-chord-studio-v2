@@ -425,6 +425,8 @@ export interface StrumParams {
   tuning: StringTuning[];
   model: AcousticModel;
   startTime?: number;
+  endTime?: number;
+  humanize?: boolean;
 }
 
 export function strumChord(
@@ -463,13 +465,16 @@ export function strumChord(
   }
 
   const sources: AudioBufferSourceNode[] = [];
+  if (params.endTime !== undefined && order.length > 1) {
+    baseStagger = Math.min(baseStagger, Math.max(0, params.endTime - now) * 0.5 / (order.length - 1));
+  }
 
   order.forEach(({ index: s, fret }, idx) => {
     const midi = tuning[s].midi + fret;
     const freq = 440 * Math.pow(2, (midi - 69) / 12);
 
     // Natural strum timing humanization
-    const delay = idx * baseStagger + (Math.random() * 0.003);
+    const delay = idx * baseStagger + (params.humanize === false ? 0 : Math.random() * 0.003);
     const strVel = velocity * (0.85 + (5 - s) * 0.03); // lower strings slightly louder
 
     const source = playAcousticString(ctx, bus, {

@@ -165,12 +165,19 @@ export class DetectionEngine {
   private lockedChordResult: DetectionResult | null = null;
   private lockedNoteResult: DetectionResult | null = null;
   private lastAudioActivityTimestamp = 0;
+  private performanceId = 0;
+  private performanceAttackAt = 0;
+  private frameSignalPresent = false;
 
   constructor(config: Partial<DetectionConfig> = {}) {
     this.config = { ...DEFAULT_DETECTION_CONFIG, ...config };
   }
 
   setConfig(config: Partial<DetectionConfig>): void {
+    if ((config.triggerMode && config.triggerMode !== this.config.triggerMode) ||
+        (config.targetMode && config.targetMode !== this.config.targetMode)) {
+      this.clearStrumAttempt();
+    }
     this.config = { ...this.config, ...config };
   }
 
@@ -185,6 +192,7 @@ export class DetectionEngine {
 
   startNoiseCalibration(): void {
     if (!this.analyser) return;
+    this.clearStrumAttempt();
     this.isCalibrating = true;
     this.calibrationFrames = 0;
     const bufferLength = this.analyser.frequencyBinCount;
@@ -596,6 +604,7 @@ export class DetectionEngine {
     
     const result: DetectionResult = {
       mode: 'single-note',
+      freshness: 'fresh',
       timestamp: Date.now(),
       note: {
         pitch,
@@ -638,6 +647,7 @@ export class DetectionEngine {
     if (stdChroma < 0.18) {
       return {
         mode: 'idle',
+        freshness: 'none',
         timestamp: Date.now(),
         chord: undefined,
         chroma: new Float32Array(smoothedChroma),
@@ -749,6 +759,7 @@ export class DetectionEngine {
     if (best.corr < minRequiredCorr || !isConsensusWinner) {
       return {
         mode: 'idle',
+        freshness: 'none',
         timestamp: Date.now(),
         chord: undefined,
         chroma: new Float32Array(smoothedChroma),
@@ -778,6 +789,7 @@ export class DetectionEngine {
     if (!isPowerChord && (activeNotes.length < 2 || smoothedChroma[rootIdx2] < 0.25 || !hasThirdOrFifth)) {
       return {
         mode: 'idle',
+        freshness: 'none',
         timestamp: Date.now(),
         chord: undefined,
         chroma: new Float32Array(smoothedChroma),
@@ -801,6 +813,7 @@ export class DetectionEngine {
 
     const result: DetectionResult = {
       mode: 'chord',
+      freshness: 'fresh',
       timestamp: Date.now(),
       chord: {
         symbol: best.short,
@@ -828,13 +841,53 @@ export class DetectionEngine {
   // Main Processing Loop
   // ============================================================================
 
+  private clearStrumAttempt(): void {
+    this.strumState = 'idle';
+    this.strumAttackTimestamp = 0;
+    this.strumChromaBuffer = [];
+    this.candidateVoteHistory = [];
+  }
+
+  private holdResult(result: DetectionResult, spectrum: Float32Array, signalLevelDb: number): DetectionResult {
+    const label = result.chord?.symbol ?? `${result.note?.pitch.note}${result.note?.pitch.octave}`;
+    return {
+      ...result,
+      freshness: 'held',
+      spectrum,
+      signalLevelDb,
+      chroma: new Float32Array(this.smoothedChroma),
+      peaks: [],
+      ringingNotes: [],
+      statusMessage: `Last confirmed: ${label} • Held, not a new detection • Play again to update`,
+    };
+  }
+
   processFrame(
+    freqData: Float32Array,
+    sampleRate: number,
+    tuning: StringTuning[] = STANDARD_TUNING
+  ): DetectionResult | null {
+    this.frameSignalPresent = false;
+    const result = this.processFrameResult(freqData, sampleRate, tuning);
+    if (result) result.performance = {
+      id: this.performanceId, attackAt: this.performanceAttackAt,
+      frameAt: Date.now(), signalPresent: this.frameSignalPresent,
+    };
+    return result;
+  }
+
+  private processFrameResult(
     freqData: Float32Array, 
     sampleRate: number,
     tuning: StringTuning[] = STANDARD_TUNING
   ): DetectionResult | null {
     if (!this.analyser) return null;
     const now = Date.now();
+    // Expire before every gate/early return, even if fewer than three usable
+    // frames arrived. A later attempt must start with a new attack.
+    if (this.strumState === 'attack' && now - this.strumAttackTimestamp > 350) {
+      this.clearStrumAttempt();
+    }
 
     // 1. Calculate signal level & true time-domain RMS
     let maxDb = -120;
@@ -859,6 +912,7 @@ export class DetectionEngine {
       if (calRes && calRes.complete) {
         return {
           mode: 'idle',
+          freshness: 'none',
           timestamp: now,
           chroma: new Float32Array(12),
           peaks: [],
@@ -874,6 +928,7 @@ export class DetectionEngine {
         const pct = calRes ? calRes.progress : 0;
         return {
           mode: 'idle',
+          freshness: 'none',
           timestamp: now,
           chroma: new Float32Array(12),
           peaks: [],
@@ -915,6 +970,11 @@ export class DetectionEngine {
     const isGatePassed = (maxDb > minDbThreshold) && (currentRms > 0.018);
     const isStrumAttack = (energyFlux > 0.028 || (totalGuitarBandEnergy > 0.08 && energyFlux > 0.014)) && 
                           isGatePassed && (currentRms > 0.024);
+    this.frameSignalPresent = isGatePassed;
+    if (isStrumAttack) {
+      this.performanceId++;
+      this.performanceAttackAt = now;
+    }
 
     const targetMode = this.config.targetMode || 'chords';
 
@@ -925,10 +985,11 @@ export class DetectionEngine {
         this.lockedChordResult = null;
         this.lockedNoteResult = null;
         this.lastLockedChord = null;
-        this.strumState = 'idle';
+        this.clearStrumAttempt();
         for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.50;
         return {
           mode: 'idle',
+          freshness: 'none',
           timestamp: now,
           chord: undefined,
           chroma: new Float32Array(this.smoothedChroma),
@@ -944,27 +1005,16 @@ export class DetectionEngine {
 
       // Within 5 seconds, hold the previously identified chord or note!
       if (this.lockedChordResult) {
-        return {
-          ...this.lockedChordResult,
-          timestamp: now,
-          spectrum: freqData,
-          signalLevelDb: maxDb,
-          statusMessage: `🎸 Captured Chord: ${this.lockedChordResult.chord?.symbol} • Strum next chord to update`,
-        };
+        return this.holdResult(this.lockedChordResult, freqData, maxDb);
       }
       if (this.lockedNoteResult && targetMode !== 'chords') {
-        return {
-          ...this.lockedNoteResult,
-          timestamp: now,
-          spectrum: freqData,
-          signalLevelDb: maxDb,
-          statusMessage: `🎵 Plucked: ${this.lockedNoteResult.note?.pitch.note}${this.lockedNoteResult.note?.pitch.octave} • Pluck next note to update`,
-        };
+        return this.holdResult(this.lockedNoteResult, freqData, maxDb);
       }
 
       for (let i = 0; i < 12; i++) this.smoothedChroma[i] *= 0.85;
       return {
         mode: 'idle',
+        freshness: 'none',
         timestamp: now,
         chord: undefined,
         chroma: new Float32Array(this.smoothedChroma),
@@ -991,24 +1041,14 @@ export class DetectionEngine {
 
     if (peaks.length === 0 || peaks[0].amp < 0.005 || crestFactor < 2.6) {
       if (this.lockedChordResult) {
-        return {
-          ...this.lockedChordResult,
-          timestamp: now,
-          spectrum: freqData,
-          signalLevelDb: maxDb,
-          statusMessage: `🎸 Captured Chord: ${this.lockedChordResult.chord?.symbol} • Strum next chord to update`,
-        };
+        return this.holdResult(this.lockedChordResult, freqData, maxDb);
       }
       if (this.lockedNoteResult && targetMode !== 'chords') {
-        return {
-          ...this.lockedNoteResult,
-          timestamp: now,
-          spectrum: freqData,
-          signalLevelDb: maxDb,
-        };
+        return this.holdResult(this.lockedNoteResult, freqData, maxDb);
       }
       return {
         mode: 'idle',
+        freshness: 'none',
         timestamp: now,
         chord: undefined,
         chroma: new Float32Array(this.smoothedChroma),
@@ -1052,11 +1092,13 @@ export class DetectionEngine {
           cents: singleNote.cents,
         }];
 
-        // In Chords Only mode, user requested: "for single note it only shows in 12 Semitone Energy (C to B)"
-        // so chord is undefined, mode is idle (no fake chords guessed)
+        // Chords-only mode visualizes single-note energy without guessing a
+        // chord. An earlier confirmed chord may remain as display-only history.
         if (targetMode === 'chords') {
+          if (this.lockedChordResult) return this.holdResult(this.lockedChordResult, freqData, maxDb);
           return {
             mode: 'idle',
+            freshness: 'none',
             timestamp: now,
             chord: undefined,
             chroma: new Float32Array(this.smoothedChroma),
@@ -1071,6 +1113,7 @@ export class DetectionEngine {
         // In Notes & Tuner or Auto mode, return single-note with full tuning info
         const noteRes: DetectionResult = {
           mode: 'single-note',
+          freshness: 'fresh',
           timestamp: now,
           chord: undefined,
           note: {
@@ -1096,15 +1139,11 @@ export class DetectionEngine {
         this.lockedNoteResult = noteRes;
         this.lockedChordResult = null; // Plucking a single note clears chord lock
         this.lastLockedChord = null;
+        this.clearStrumAttempt();
         return noteRes;
       } else if (this.lockedNoteResult && targetMode !== 'chords') {
         // Hold the locked note if current frame pitch dips slightly
-        return {
-          ...this.lockedNoteResult,
-          timestamp: now,
-          spectrum: freqData,
-          signalLevelDb: maxDb,
-        };
+        return this.holdResult(this.lockedNoteResult, freqData, maxDb);
       }
     }
 
@@ -1128,16 +1167,11 @@ export class DetectionEngine {
       if (this.strumState === 'idle') {
         if (!isStrumAttack) {
           if (this.lockedChordResult) {
-            return {
-              ...this.lockedChordResult,
-              timestamp: now,
-              spectrum: freqData,
-              signalLevelDb: maxDb,
-              statusMessage: `🎸 Captured Chord: ${this.lockedChordResult.chord?.symbol} • Strum next chord to update`,
-            };
+            return this.holdResult(this.lockedChordResult, freqData, maxDb);
           }
           return {
             mode: 'idle',
+            freshness: 'none',
             timestamp: now,
             chord: undefined,
             chroma: new Float32Array(this.smoothedChroma),
@@ -1158,11 +1192,12 @@ export class DetectionEngine {
       }
 
       if (this.strumState === 'attack') {
-        const elapsed = now - this.strumAttackTimestamp;
         if (isStrumAttack && energyFlux > 0.045) {
           this.strumAttackTimestamp = now;
           this.strumChromaBuffer = [];
+          this.candidateVoteHistory = [];
         }
+        const elapsed = now - this.strumAttackTimestamp;
 
         if (elapsed >= 30 && elapsed <= 320) {
           this.strumChromaBuffer.push(rawChroma);
@@ -1180,37 +1215,20 @@ export class DetectionEngine {
           if (chordRes.mode === 'chord' && chordRes.chord) {
             this.lockedChordResult = chordRes;
             this.lastLockedChord = chordRes.chord.symbol;
-            this.strumState = 'idle';
+            this.clearStrumAttempt();
             return chordRes;
-          } else if (elapsed > 350) {
-            this.strumState = 'idle';
-            if (this.lockedChordResult) {
-              return {
-                ...this.lockedChordResult,
-                timestamp: now,
-                spectrum: freqData,
-                signalLevelDb: maxDb,
-                statusMessage: `🎸 Captured Chord: ${this.lockedChordResult.chord?.symbol} • Strum next chord to update`,
-              };
-            }
-            return {
-              mode: 'idle',
-              timestamp: now,
-              chord: undefined,
-              chroma: new Float32Array(this.smoothedChroma),
-              peaks,
-              ringingNotes: this.extractRingingNotes(peaks),
-              spectrum: freqData,
-              signalLevelDb: maxDb,
-              statusMessage: 'Listening • Strum all chord strings cleanly...',
-            };
           }
         }
 
+        if (this.lockedChordResult) {
+          const held = this.holdResult(this.lockedChordResult, freqData, maxDb);
+          held.statusMessage += ' • Analyzing new strum...';
+          return held;
+        }
         return {
-          mode: this.lockedChordResult ? 'chord' : 'idle',
+          mode: 'idle',
+          freshness: 'none',
           timestamp: now,
-          chord: this.lockedChordResult?.chord,
           chroma: new Float32Array(this.smoothedChroma),
           peaks,
           ringingNotes: this.extractRingingNotes(peaks),
@@ -1228,13 +1246,7 @@ export class DetectionEngine {
       this.lastLockedChord = continuousRes.chord.symbol;
       return continuousRes;
     } else if (this.lockedChordResult) {
-      return {
-        ...this.lockedChordResult,
-        timestamp: now,
-        spectrum: freqData,
-        signalLevelDb: maxDb,
-        statusMessage: `Confirmed Chord: ${this.lockedChordResult.chord?.symbol} • Listening for next change...`,
-      };
+      return this.holdResult(this.lockedChordResult, freqData, maxDb);
     }
     return continuousRes;
   }
@@ -1284,9 +1296,7 @@ export class DetectionEngine {
     this.prevFrameBandEnergy = 0;
     this.candidateVoteHistory = [];
     this.lastLockedChord = null;
-    this.strumState = 'idle';
-    this.strumAttackTimestamp = 0;
-    this.strumChromaBuffer = [];
+    this.clearStrumAttempt();
     this.lockedChordResult = null;
     this.lockedNoteResult = null;
     this.lastAudioActivityTimestamp = 0;

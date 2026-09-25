@@ -1218,9 +1218,9 @@
 
         <!-- MODE SWITCH: NOTES (LEAD MELODY) VS CHORDS (RHYTHM STRUM) -->
         <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.4); padding:10px 16px; border-radius:14px; border:1px solid rgba(255,255,255,0.08); margin:14px 0;">
-          <div style="display:flex; align-items:center; gap:8px;">
+          <div id="song-part-selector" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0;">
             <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); font-weight:700;">Guitar Mode:</span>
-            <div style="display:inline-flex; background:rgba(255,255,255,0.06); padding:3px; border-radius:10px; border:1px solid var(--border-light);">
+            <div style="display:flex; flex-wrap:wrap; background:rgba(255,255,255,0.06); padding:3px; border-radius:10px; border:1px solid var(--border-light);">
               <button id="btn-mode-notes" class="song-mode-btn active">
                 🎼 Notes Mode (Lead Melody)
               </button>
@@ -1235,6 +1235,21 @@
         </div>
 
         <!-- Song Playback Controls Bar -->
+        <div class="song-timing-controls">
+          <label for="song-timing-mode">Practice timing</label>
+          <select id="song-timing-mode">
+            <option value="song">Song timing (authored tempo changes)</option>
+            <option value="fixed">Fixed tempo (rhythm practice)</option>
+            <option value="wait">Wait for me (new performance per target)</option>
+          </select>
+          <label><input type="checkbox" id="song-reference-audio" checked> Reference audio (timed modes; scoring off)</label>
+          <label><input type="checkbox" id="song-loop"> Loop chart</label>
+          <button class="btn btn-secondary" id="song-edit-timing">Edit / export timing</button>
+          <button class="btn btn-secondary" data-open-song-import>Import chart or timing</button>
+        </div>
+        <p id="song-timing-status" class="song-data-status">Choose a local chart. Timing is approximate unless explicitly authored.</p>
+        <p id="song-transport-status" class="song-data-status" role="status">Ready</p>
+        <p id="song-current-target" class="song-current-target" aria-live="polite">Choose an event</p>
         <div class="song-playback-bar">
           <div class="playback-main-btns">
             <button class="btn-song-play" id="btn-song-play">
@@ -1252,7 +1267,7 @@
           </div>
 
           <div class="tempo-speed-control">
-            <span>Tempo:</span>
+            <span>Practice rate:</span>
             <input type="range" id="song-tempo-slider" min="45" max="140" value="75">
             <strong id="song-tempo-readout" style="color:var(--accent-gold); width:54px;">75 BPM</strong>
           </div>
@@ -1265,8 +1280,9 @@
           </div>
 
           <div class="playback-main-btns">
-            <button class="practice-mic-toggle active" id="btn-toggle-song-mic">
-              <span>🎙️</span> Practice Mic: <strong id="song-mic-status-label">ON</strong>
+            <button class="btn btn-secondary" id="btn-song-audition">Audition target</button>
+            <button class="practice-mic-toggle" id="btn-toggle-song-mic">
+              <span>🎙️</span> Practice Mic: <strong id="song-mic-status-label">OFF</strong>
             </button>
           </div>
         </div>
@@ -1327,23 +1343,19 @@
             </div>
           </div>
 
-          <!-- Fretboard view switch (2D default, optional 3D) -->
-          <div class="neck-view-switch" role="group" aria-label="Fretboard view" style="display:flex; gap:6px; justify-content:flex-end; margin-top:10px;">
-            <button id="song-neck-view-3d" aria-pressed="false" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">3D</button>
-            <button id="song-neck-view-2d" aria-pressed="true" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">2D</button>
-          </div>
-          <div style="position:relative; margin-top:12px;">
-            <div id="song-neck-3d" hidden style="width:100%; height:340px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.35);"></div>
-            <div id="song-neck-camera" hidden role="group" aria-label="3D camera" style="position:absolute; top:8px; right:8px; display:flex; gap:6px;">
-              <button id="song-neck-zoom-in" class="btn btn-secondary" aria-label="Zoom in" style="padding:4px 10px;">+</button>
-              <button id="song-neck-zoom-out" class="btn btn-secondary" aria-label="Zoom out" style="padding:4px 10px;">−</button>
-              <button id="song-neck-reset" class="btn btn-secondary" aria-label="Reset camera" style="padding:4px 10px;">⟲</button>
+          <div class="pane-neck-toolbar">
+            <h3>Play-along fretboard</h3>
+            <div class="neck-view-switch" role="group" aria-label="Play-along fretboard view">
+              <button id="song-neck-view-3d" aria-pressed="false">3D</button>
+              <button id="song-neck-view-2d" aria-pressed="true">2D</button>
             </div>
-            <div id="song-neck-help" hidden style="font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:6px;">Drag to rotate · Click a string to play · + / − to zoom · R to reset</div>
           </div>
+          <div class="neck-stage">
+            <div class="neck-stage-top"><span id="song-neck-caption" class="neck-caption">Play along</span><span id="song-neck-tuning" class="neck-tuning"></span></div>
+            <div id="song-neck-3d" class="neck-3d" hidden></div>
 
           <!-- Visual Guitar Fretboard (2D) -->
-          <div id="song-neck-2d" class="fretboard-container" style="margin-top:12px; border:2px solid #5c3818; box-shadow:0 10px 30px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.9);">
+          <div id="song-neck-2d" class="fretboard-container pane-neck-flat">
             <div class="fret-numbers">
               <div class="fret-num">0 (Open)</div>
               <div class="fret-num">1</div>
@@ -1363,6 +1375,13 @@
               <!-- Rendered by buildSongFretboardUI() -->
             </div>
           </div>
+            <div id="song-neck-camera" class="neck-camera" hidden role="group" aria-label="Play-along 3D camera">
+              <button id="song-neck-zoom-in" aria-label="Zoom in">+</button>
+              <button id="song-neck-zoom-out" aria-label="Zoom out">−</button>
+              <button id="song-neck-reset" aria-label="Reset camera">⟲</button>
+            </div>
+            <p id="song-neck-help" class="neck-help">Drag to rotate · Click a string to play · + / − to zoom · R to reset</p>
+          </div>
         </div>
 
         <!-- Song Chords Palette Row -->
@@ -1373,6 +1392,7 @@
           <div class="song-chords-palette" id="song-chords-palette" style="display:flex; flex-wrap:wrap; gap:8px;">
             <!-- Populated by JS -->
           </div>
+          <details class="song-source"><summary>Original imported source / format limitations</summary><pre id="song-source-text"></pre></details>
         </div>
 
         <!-- Interactive Lyrics & Chords Scroll View -->
@@ -1507,7 +1527,7 @@
           </div>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span class="badge" style="background:rgba(6, 182, 212, 0.15); border:1px solid var(--accent-cyan); color:var(--accent-cyan); font-size:0.8rem;">
-              <span>🎸</span> Standard E A D G B E
+              <span>🎸</span> <span id="scale-tuning-label">E · A · D · G · B · E</span>
             </span>
             <span class="badge" id="scale-mic-badge" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-light); font-size:0.8rem;">
               <span id="scale-mic-dot">⚪</span> <span id="scale-mic-status">Mic Idle</span>
@@ -1522,14 +1542,14 @@
             <label class="scale-control-label">
               <span>🎯</span> Key Root Note
             </label>
-            <div class="scale-root-selector" id="scale-root-buttons">
+            <div class="scale-root-selector" id="scale-root-buttons" role="group" aria-label="Scale root">
               <!-- Dynamically populated by JS -->
             </div>
           </div>
 
           <!-- Scale Preset Selector -->
           <div class="scale-control-group">
-            <label class="scale-control-label">
+            <label class="scale-control-label" for="scale-preset-select">
               <span>📐</span> Western Scale Type
             </label>
             <select class="scale-preset-dropdown" id="scale-preset-select">
@@ -1549,15 +1569,15 @@
             <label class="scale-control-label">
               <span>🏷️</span> Display Label Mode
             </label>
-            <div class="scale-toggle-btn-group">
-              <button class="scale-toggle-btn active" id="scale-mode-note">Note Names (C, E, G)</button>
-              <button class="scale-toggle-btn" id="scale-mode-degree">Degrees (1, ♭3, 5)</button>
+            <div class="scale-toggle-btn-group" role="group" aria-label="Scale labels">
+              <button class="scale-toggle-btn active" id="scale-mode-note" aria-pressed="true">Note Names (C, E, G)</button>
+              <button class="scale-toggle-btn" id="scale-mode-degree" aria-pressed="false">Degrees (1, ♭3, 5)</button>
             </div>
           </div>
 
           <!-- Position Register Filter -->
           <div class="scale-control-group">
-            <label class="scale-control-label">
+            <label class="scale-control-label" for="scale-position-filter">
               <span>🔍</span> Fretboard Register
             </label>
             <select class="scale-preset-dropdown" id="scale-position-filter">
@@ -1573,7 +1593,7 @@
         <div style="margin-top:20px; padding:12px 16px; background:rgba(0,0,0,0.3); border:1px solid var(--border-light); border-radius:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
           <div>
             <span style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Formula & Notes:</span>
-            <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+            <div class="scale-formula-row" style="display:flex; align-items:center; gap:8px; margin-top:2px;">
               <span id="scale-ribbon-title" style="font-size:1.1rem; font-weight:800; color:var(--accent-gold);">A Pentatonic Minor</span>
               <span id="scale-ribbon-formula" style="font-size:0.85rem; color:var(--accent-cyan); font-weight:600;">(1 - ♭3 - 4 - 5 - ♭7)</span>
             </div>
@@ -1581,59 +1601,72 @@
           </div>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <!-- Scale Tempo BPM Control -->
-            <div style="display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.3); padding:6px 14px; border-radius:10px; border:1px solid var(--border-light);">
+            <div class="scale-tempo-control" style="display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.3); padding:6px 14px; border-radius:10px; border:1px solid var(--border-light);">
               <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">BPM:</span>
-              <input type="range" id="scale-tempo-slider" min="40" max="240" value="120" step="5" style="width:100px; accent-color:var(--accent-gold); cursor:pointer;">
+              <input type="range" id="scale-tempo-slider" aria-label="Scale tempo in beats per minute" min="40" max="240" value="120" step="5" style="width:100px; accent-color:var(--accent-gold); cursor:pointer;">
               <span id="scale-tempo-readout" style="font-size:0.85rem; font-weight:800; color:var(--accent-gold); min-width:65px;">120 BPM</span>
             </div>
             <button class="btn btn-primary" id="btn-scale-run">
               <span id="btn-scale-run-icon">▶️</span> <span id="btn-scale-run-text">Play Scale Run</span>
             </button>
-            <button class="btn btn-secondary" id="btn-scale-mic">
+            <button class="btn btn-secondary" id="btn-scale-mic" aria-pressed="false">
               <span>🎙️</span> <span id="btn-scale-mic-text">Practice with Guitar (Live Mic)</span>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Fretboard view switch (2D default, optional 3D) -->
-      <div class="neck-view-switch" role="group" aria-label="Fretboard view" style="display:flex; gap:6px; justify-content:flex-end; margin-bottom:8px;">
-        <button id="scale-neck-view-3d" aria-pressed="false" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">3D</button>
-        <button id="scale-neck-view-2d" aria-pressed="true" class="btn btn-secondary" style="padding:4px 14px; font-size:0.8rem;">2D</button>
-      </div>
-      <div style="position:relative; margin-bottom:12px;">
-        <div id="scale-neck-3d" hidden style="width:100%; height:340px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.35);"></div>
-        <div id="scale-neck-camera" hidden role="group" aria-label="3D camera" style="position:absolute; top:8px; right:8px; display:flex; gap:6px;">
-          <button id="scale-neck-zoom-in" class="btn btn-secondary" aria-label="Zoom in" style="padding:4px 10px;">+</button>
-          <button id="scale-neck-zoom-out" class="btn btn-secondary" aria-label="Zoom out" style="padding:4px 10px;">−</button>
-          <button id="scale-neck-reset" class="btn btn-secondary" aria-label="Reset camera" style="padding:4px 10px;">⟲</button>
-        </div>
-        <div id="scale-neck-help" hidden style="font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:6px;">Drag to rotate · Click a note to play · + / − to zoom · R to reset</div>
-      </div>
-
-      <!-- ROSEWOOD FRETBOARD CONTAINER (2D) -->
-      <div id="scale-neck-2d" class="fretboard-container" style="padding:20px 14px;">
-        <div class="fretboard-board" id="scale-fretboard-board">
-          <div class="fret-numbers">
-            <div class="fret-num">0 (Open)</div>
-            <div class="fret-num">1</div>
-            <div class="fret-num">2</div>
-            <div class="fret-num marker">3 •</div>
-            <div class="fret-num">4</div>
-            <div class="fret-num marker">5 •</div>
-            <div class="fret-num">6</div>
-            <div class="fret-num marker">7 •</div>
-            <div class="fret-num">8</div>
-            <div class="fret-num marker">9 •</div>
-            <div class="fret-num">10</div>
-            <div class="fret-num">11</div>
-            <div class="fret-num marker">12 ••</div>
-          </div>
-          <div id="scale-fretboard-strings-rows">
-            <!-- Rendered by JS -->
+      <section id="scale-neck" class="card neck-card" aria-label="Selected scale fretboard">
+        <div class="card-header">
+          <h3>Scale positions</h3>
+          <div class="neck-view-switch" role="group" aria-label="Scale fretboard view">
+            <button id="scale-neck-view-3d" aria-pressed="false">3D</button>
+            <button id="scale-neck-view-2d" aria-pressed="true">2D</button>
           </div>
         </div>
-      </div>
+        <div class="neck-stage">
+          <div class="neck-stage-top">
+            <span id="scale-neck-caption" class="neck-caption">A Pentatonic Minor</span>
+            <span id="scale-neck-tuning" class="neck-tuning">E · A · D · G · B · E</span>
+          </div>
+          <div id="scale-neck-3d" class="neck-3d" hidden></div>
+          <div id="scale-neck-2d" class="fretboard-container pane-neck-flat">
+            <div class="fretboard-board" id="scale-fretboard-board">
+              <div class="fret-numbers">
+                <div class="fret-num">0 (Open)</div>
+                <div class="fret-num">1</div>
+                <div class="fret-num">2</div>
+                <div class="fret-num marker">3 •</div>
+                <div class="fret-num">4</div>
+                <div class="fret-num marker">5 •</div>
+                <div class="fret-num">6</div>
+                <div class="fret-num marker">7 •</div>
+                <div class="fret-num">8</div>
+                <div class="fret-num marker">9 •</div>
+                <div class="fret-num">10</div>
+                <div class="fret-num">11</div>
+                <div class="fret-num marker">12 ••</div>
+              </div>
+              <div id="scale-fretboard-strings-rows"><!-- Rendered by JS --></div>
+            </div>
+          </div>
+          <div id="scale-neck-camera" class="neck-camera" hidden role="group" aria-label="Scale 3D camera">
+            <button id="scale-neck-zoom-in" aria-label="Zoom in">+</button>
+            <button id="scale-neck-zoom-out" aria-label="Zoom out">−</button>
+            <button id="scale-neck-reset" aria-label="Reset camera">⟲</button>
+          </div>
+          <p id="scale-neck-help" class="neck-help">Drag to rotate · Click a note to play · + / − to zoom · R to reset</p>
+        </div>
+        <div class="neck-footer">
+          <div class="neck-legend">
+            <span><i class="root-dot"></i>Root</span><span><i></i>Scale tone</span>
+            <span id="scale-blue-legend" hidden><i class="blue-dot"></i>Blue note (♭5)</span>
+            <span><i class="live-dot"></i>Playing / live</span>
+          </div>
+          <p id="scale-neck-summary" class="neck-summary" role="status">Choose a note to hear it, or play the selected scale run.</p>
+          <p class="neck-caveat">Frets are relative to the capo. Live highlights show matching scale positions, not measured finger placement.</p>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -1707,15 +1740,23 @@
     <div style="padding: var(--space-xl); max-width: 1000px; margin: 0 auto;">
       <div class="card">
         <div style="text-align:center; margin-bottom:var(--space-lg);">
-          <h2 style="font-size:1.8rem; font-weight:800; display:flex; align-items:center; justify-content:center; gap:10px;"><span>🔍</span> Search ANY Song Chords & Notes</h2>
-          <p style="color:var(--text-muted);">Type any Bollywood, Punjabi, Pop, or Rock song name</p>
+          <h2 style="font-size:1.8rem; font-weight:800;">Find a local song or chart</h2>
+          <p style="color:var(--text-muted);">Search this device's catalog and your imports. No automatic online chord or tab lookup.</p>
         </div>
         <div style="max-width:600px; margin:0 auto var(--space-lg);">
-          <div style="display:flex; gap:8px;">
+          <div class="song-search-input-row">
             <input type="text" id="search-song-input" placeholder="e.g. Tum Hi Ho, Hotel California, Kesariya..." style="flex:1; padding:14px 20px; background:rgba(10,14,26,0.9); border:2px solid var(--accent-cyan); border-radius:30px; font-size:1rem; color:#fff; outline:none;" aria-label="Song search">
             <button class="btn btn-primary" id="btn-search-song" style="padding:12px 28px; border-radius:30px; white-space:nowrap;"><span>🔎</span> Search</button>
           </div>
         </div>
+        <div class="song-finder-filters">
+          <label for="song-search-field">Search in</label>
+          <select id="song-search-field"><option value="all">Title and artist</option><option value="title">Title</option><option value="artist">Artist</option></select>
+          <label for="song-search-content">Available content</label>
+          <select id="song-search-content"><option value="all">All</option><option value="chords">Chords</option><option value="tabs">Tabs / note events</option><option value="imported">Imported</option></select>
+          <button class="btn btn-secondary" data-open-song-import>Import your chart / timing JSON</button>
+        </div>
+        <p id="song-search-status" class="song-data-status" role="status">Search by title or artist. Catalog excerpts are not verified full transcriptions.</p>
         <div id="search-results" style="display:none;"></div>
       </div>
     </div>
@@ -1755,6 +1796,7 @@
        ========================================================================== -->
   <div class="studio-tab-pane" id="pane-chords" role="tabpanel" aria-labelledby="tab-chords">
     <div style="padding: var(--space-xl); max-width: 1200px; margin: 0 auto;">
+      <section id="library-neck" class="card neck-card" aria-label="Selected library voicing"></section>
       <div class="card">
         <div class="card-header"><div class="card-title"><span>📚</span> Interactive Chord Library</div></div>
         <div style="margin-bottom:var(--space-md);">
@@ -1975,6 +2017,30 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
   </div>
 
   <!-- CUSTOM SONG CREATOR MODAL -->
+  <dialog id="song-timing-editor" class="song-timing-editor" aria-labelledby="song-editor-heading">
+    <h2 id="song-editor-heading">Edit timing</h2>
+    <p>Beats are quarter-note units. Tempo changes use zero-based beat positions. Notes use strings 1–6 (1 is high E) and frets 0–12 relative to the capo. Rests are silent. Built-in edits save as an imported copy.</p>
+    <label for="song-timing-title">Title</label><input id="song-timing-title">
+    <label for="song-timing-source">Source / arrangement reference (optional)</label><input id="song-timing-source">
+    <label for="song-timing-version">Version (optional)</label><input id="song-timing-version">
+    <label for="song-timing-json">Timing JSON</label>
+    <textarea id="song-timing-json" rows="16" spellcheck="false"></textarea>
+    <details><summary>Format example (original exercise)</summary><pre>{
+  "version": 1, "bpm": 80,
+  "tempos": [{"beat": 4, "bpm": 120}],
+  "events": [
+    {"type": "chord", "chord": "C", "beats": 2},
+    {"type": "rest", "beats": 1},
+    {"type": "note", "string": 1, "fret": 3, "beats": 2}
+  ]
+}</pre></details>
+    <p id="song-editor-status" role="status"></p>
+    <div class="song-timing-controls">
+      <button class="btn btn-primary" id="song-editor-save">Save timing</button>
+      <button class="btn btn-secondary" id="song-editor-export">Export song JSON</button>
+      <button class="btn btn-secondary" id="song-editor-close">Close</button>
+    </div>
+  </dialog>
   <div class="modal-backdrop" id="custom-song-modal" role="dialog" aria-modal="true" aria-labelledby="custom-song-title">
     <div class="modal-card" style="max-width:800px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-md);">
@@ -1988,7 +2054,16 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
         <div><label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">BPM</label><input type="number" id="custom-song-bpm" class="rhythm-select-pill" style="width:100%; padding:10px;" value="80" min="40" max="220"></div>
         <div><label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Strum Pattern</label><select id="custom-song-strum" class="rhythm-select-pill" style="width:100%;"><option value="D - D U - U D -">D - D U - U D - (Folk)</option><option value="D - D - D U D U">D - D - D U D U (Bollywood)</option><option value="D D U U D U">D D U U D U (Campfire)</option><option value="D - D - D - D -">D - D - D - D - (Slow 4/4)</option></select></div>
       </div>
-      <div style="margin-bottom:var(--space-md);"><label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Paste chords + lyrics ([Chord] before each word):</label><textarea id="custom-song-lyrics" rows="8" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--border-light); border-radius:var(--radius-md); color:#fff; padding:var(--space-md); font-family:monospace; font-size:0.85rem; line-height:1.5; resize:vertical;" placeholder="[Verse]&#10;[G]Amazing [C]grace how [G]sweet the [D]sound&#10;That [G]saved a [Em]wretch like [D]me&#10;&#10;[Chorus]&#10;[C]I once was [G]lost but [D]now I'm [G]found"></textarea><span style="font-size:0.7rem; color:var(--text-muted);">Paste any chord sheet using the [C]lyric format (copy from your chord source). Chords in [brackets] are parsed into a playable chart; section names like [Verse]/[Chorus] are recognized. It appears in Song finder and play-along.</span></div>
+      <div class="song-timing-controls">
+        <label for="custom-song-source">Source (optional)</label><input id="custom-song-source" placeholder="Your chart / arrangement reference">
+        <label for="custom-song-version">Version (optional)</label><input id="custom-song-version" placeholder="Arrangement or recording version">
+      </div>
+      <div style="margin-bottom:var(--space-md);">
+        <label for="custom-song-lyrics">Paste a chord chart, source tab text, or exported song/timing JSON</label>
+        <textarea id="custom-song-lyrics" rows="8" class="song-import-text" placeholder="[Exercise]&#10;[C]Two steps [G]and a pause&#10;C C G C"></textarea>
+        <p class="song-data-status">Bracketed chords, chord-only lines and chords above words are supported. Source text is preserved. ASCII tabs, bends, slides and other techniques are not converted to timed notes. Use Edit timing to author explicit notes/rests. Import only material you are authorized to use.</p>
+      </div>
+      <p id="custom-song-status" role="status"></p>
       <div style="display:flex; justify-content:flex-end; gap:var(--space-sm);">
         <button class="btn btn-secondary" onclick="document.getElementById('custom-song-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" id="btn-save-custom-song"><span>💾</span> Save to Library</button>

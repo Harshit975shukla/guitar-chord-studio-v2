@@ -4,9 +4,13 @@
  * BPM tempo control, scale runs, and live microphone note practice.
  */
 
-import { NOTE_NAMES, STANDARD_TUNING, StringTuning } from '../types';
+import { NOTE_NAMES, STANDARD_TUNING, type NoteName, type StringTuning } from '../types';
 import { playAcousticString, AcousticBus } from '../audio/engine';
 import { PaneNeck3D } from '../ui/paneNeck3d';
+import type { ScaleNeckPosition } from '../ui/fretboard3d';
+
+const REGISTER_RANGES = { all: [0, 12], open: [0, 4], middle: [5, 8], upper: [9, 12] } as const;
+type ScaleRegister = keyof typeof REGISTER_RANGES;
 
 export interface ScaleDefinition {
   name: string;
@@ -85,10 +89,10 @@ export const WESTERN_SCALES: Record<string, ScaleDefinition> = {
 };
 
 export class ScalesStudio {
-  private activeRoot = 'A';
+  private activeRoot: NoteName = 'A';
   private activeKey = 'pentatonic_minor';
   private activeLabelMode: 'note' | 'degree' = 'note';
-  private activeRegister: 'all' | 'open' | 'middle' | 'upper' = 'all';
+  private activeRegister: ScaleRegister = 'all';
   private bpm = 120;
   private isAudioRunning = false;
   private audioRunTimer: number | null = null;
@@ -97,8 +101,20 @@ export class ScalesStudio {
   private neck3d: PaneNeck3D | null = null;
   private acousticBus: AcousticBus | null = null;
   private isMicActive = false;
+  private active = false;
+  private initialized = false;
+  private highlightedPosition: { stringIndex: number; fret: number } | null = null;
+  private highlightedPc: number | null = null;
+  private highlightTimer: number | null = null;
+  private runGeneration = 0;
+  private pickGeneration = 0;
+  private micGeneration = 0;
+  public onPlayRequested?: () => Promise<void>;
+  public onMicStartRequested?: () => Promise<boolean>;
 
-  constructor() {}
+  constructor() {
+    window.addEventListener('pagehide', () => { this.stopScaleAudioRun(); this.setMicPracticeActive(false); });
+  }
 
   setAudio(ctx: AudioContext, bus: AcousticBus): void {
     this.audioContext = ctx;
@@ -106,14 +122,26 @@ export class ScalesStudio {
   }
 
   setTuning(tuning: StringTuning[]): void {
-    this.tuning = tuning;
-    this.renderFretboard();
+    // Capo tuning carries transposed MIDI but retains the physical string name.
+    this.tuning = tuning.map(string => ({ ...string, note: NOTE_NAMES[string.midi % 12] }));
+    if (this.initialized) this.refreshPattern();
+  }
+
+  setActive(active: boolean): void {
+    this.active = active;
+    if (!active) {
+      this.stopScaleAudioRun();
+      this.setMicPracticeActive(false);
+    }
+    this.neck3d?.setActive(active);
   }
 
   init(): void {
     this.initRootButtons();
     this.initControls();
     this.setupNeck3D();
+    this.initialized = true;
+    this.neck3d?.setActive(this.active);
     this.updateInfoRibbon();
     this.renderFretboard();
   }
@@ -133,24 +161,32 @@ export class ScalesStudio {
         reset: document.getElementById('scale-neck-reset'),
         help: document.getElementById('scale-neck-help'),
       },
-      (s, f) => this.pluckNote(s, f),
+      (s, f) => { void this.pluckNote(s, f); },
+      {
+        defaultMode: '3d', preferenceKey: 'gcs-scale-neck-view',
+        help2d: 'Scroll the neck · Tab to a fret, then Enter to play',
+      },
     );
   }
 
-  /** Push the scale pattern (+ optional live note) to the optional 3D neck. */
-  private updateNeck3D(liveMidi: number | null = null): void {
-    if (!this.neck3d) return;
-    const scale = WESTERN_SCALES[this.activeKey] || WESTERN_SCALES.pentatonic_minor;
-    const rootIdx = NOTE_NAMES.indexOf(this.activeRoot as any);
-    const scalePcs = scale.intervals.map(semi => (rootIdx + semi) % 12);
-    this.neck3d.update({
+  private updateNeck3D(positions: ScaleNeckPosition[]): void {
+    this.neck3d?.update({
       frets: [null, null, null, null, null, null],
       tuning: this.tuning,
-      liveMidi,
+      liveMidi: null,
       root: this.activeRoot,
-      scalePcs,
-      rootPc: rootIdx,
+      scalePositions: positions,
     });
+    const [minFret, maxFret] = REGISTER_RANGES[this.activeRegister];
+    const caption = document.getElementById('scale-neck-caption');
+    if (caption) caption.textContent = `${this.activeRoot} ${WESTERN_SCALES[this.activeKey].name} · Frets ${minFret}–${maxFret}`;
+    const tuning = [...this.tuning].reverse().map(s => s.note).join(' · ');
+    for (const id of ['scale-neck-tuning', 'scale-tuning-label']) {
+      const label = document.getElementById(id);
+      if (label) label.textContent = tuning;
+    }
+    const blueLegend = document.getElementById('scale-blue-legend');
+    if (blueLegend) blueLegend.hidden = this.activeKey !== 'blues';
   }
 
   private initRootButtons(): void {
@@ -163,6 +199,7 @@ export class ScalesStudio {
       btn.className = 'scale-root-btn' + (note === this.activeRoot ? ' active' : '');
       btn.id = 'scale-root-btn-' + note.replace('#', 's');
       btn.textContent = note;
+      btn.setAttribute('aria-pressed', String(note === this.activeRoot));
       btn.onclick = () => this.setRoot(note);
       container.appendChild(btn);
     });
@@ -178,7 +215,10 @@ export class ScalesStudio {
     const filterSelect = document.getElementById('scale-position-filter') as HTMLSelectElement;
     if (filterSelect) {
       filterSelect.value = this.activeRegister;
-      filterSelect.onchange = () => this.setRegister(filterSelect.value as any);
+      filterSelect.onchange = () => {
+        const register = filterSelect.value;
+        if (register === 'all' || register === 'open' || register === 'middle' || register === 'upper') this.setRegister(register);
+      };
     }
 
     const noteBtn = document.getElementById('scale-mode-note');
@@ -206,20 +246,23 @@ export class ScalesStudio {
     }
   }
 
-  setRoot(root: string): void {
+  setRoot(root: NoteName): void {
     this.activeRoot = root;
     document.querySelectorAll('.scale-root-btn').forEach(b => {
       b.classList.toggle('active', b.textContent?.trim() === root);
+      b.setAttribute('aria-pressed', String(b.textContent?.trim() === root));
     });
     this.updateInfoRibbon();
-    this.renderFretboard();
+    this.refreshPattern();
   }
 
   setScaleKey(key: string): void {
     if (WESTERN_SCALES[key]) {
       this.activeKey = key;
+      const select = document.getElementById('scale-preset-select') as HTMLSelectElement | null;
+      if (select) select.value = key;
       this.updateInfoRibbon();
-      this.renderFretboard();
+      this.refreshPattern();
     }
   }
 
@@ -229,12 +272,16 @@ export class ScalesStudio {
     const degBtn = document.getElementById('scale-mode-degree');
     if (noteBtn) noteBtn.classList.toggle('active', mode === 'note');
     if (degBtn) degBtn.classList.toggle('active', mode === 'degree');
+    noteBtn?.setAttribute('aria-pressed', String(mode === 'note'));
+    degBtn?.setAttribute('aria-pressed', String(mode === 'degree'));
     this.renderFretboard();
   }
 
-  setRegister(reg: 'all' | 'open' | 'middle' | 'upper'): void {
+  setRegister(reg: ScaleRegister): void {
     this.activeRegister = reg;
-    this.renderFretboard();
+    const select = document.getElementById('scale-position-filter') as HTMLSelectElement | null;
+    if (select) select.value = reg;
+    this.refreshPattern();
   }
 
   setBpm(bpm: number): void {
@@ -244,13 +291,13 @@ export class ScalesStudio {
 
     if (this.isAudioRunning) {
       this.stopScaleAudioRun();
-      this.startScaleAudioRun();
+      void this.startScaleAudioRun();
     }
   }
 
   updateInfoRibbon(): void {
     const scale = WESTERN_SCALES[this.activeKey] || WESTERN_SCALES.pentatonic_minor;
-    const rootIdx = NOTE_NAMES.indexOf(this.activeRoot as any);
+    const rootIdx = NOTE_NAMES.indexOf(this.activeRoot);
     const scaleNotes = scale.intervals.map(semi => NOTE_NAMES[(rootIdx + semi) % 12]);
 
     const titleEl = document.getElementById('scale-ribbon-title');
@@ -265,158 +312,179 @@ export class ScalesStudio {
   renderFretboard(): void {
     const container = document.getElementById('scale-fretboard-strings-rows');
     if (!container) return;
-    container.innerHTML = '';
+    // Keep native buttons stable while notes flash so keyboard focus is retained.
+    if (container.children.length === 0) {
+      for (let s = 0; s < 6; s++) {
+        const row = document.createElement('div');
+        row.className = 'guitar-string-row';
+        row.id = `scale-string-row-${s}`;
+        row.innerHTML = `<div class="string-header"><span>${s + 1}</span><span data-scale-string="${s}"></span></div>`;
+        const cells = document.createElement('div');
+        cells.className = 'fret-cells-container';
+        cells.innerHTML = `<div class="string-wire ${this.tuning[s].gaugeClass}" id="scale-string-wire-${s}"></div>`;
+        for (let f = 0; f <= 12; f++) {
+          const cell = document.createElement('button');
+          cell.type = 'button';
+          cell.className = 'fret-cell';
+          cell.id = `scale-fret-cell-${s}-${f}`;
+          cell.onclick = () => { void this.pluckNote(s, f); };
+          cells.appendChild(cell);
+        }
+        row.appendChild(cells);
+        container.appendChild(row);
+      }
+    }
 
-    const scale = WESTERN_SCALES[this.activeKey] || WESTERN_SCALES.pentatonic_minor;
-    const rootIdx = NOTE_NAMES.indexOf(this.activeRoot as any);
-
+    const positions = this.scalePositions();
     for (let s = 0; s < 6; s++) {
-      const strInfo = this.tuning[s];
-      const row = document.createElement('div');
-      row.className = 'guitar-string-row';
-      row.id = `scale-string-row-${s}`;
-
-      const header = document.createElement('div');
-      header.className = 'string-header';
-      header.innerHTML = `<span style="font-weight:800; color:var(--accent-gold);">${s + 1}</span><span>${strInfo.note}</span>`;
-      row.appendChild(header);
-
-      const cellsContainer = document.createElement('div');
-      cellsContainer.className = 'fret-cells-container';
-
-      const wire = document.createElement('div');
-      wire.className = `string-wire ${strInfo.gaugeClass}`;
-      wire.id = `scale-string-wire-${s}`;
-      cellsContainer.appendChild(wire);
-
+      container.querySelector(`[data-scale-string="${s}"]`)!.textContent = this.tuning[s].note;
+      document.getElementById(`scale-string-wire-${s}`)?.classList.toggle('vibrating', this.highlightedPosition?.stringIndex === s);
       for (let f = 0; f <= 12; f++) {
-        const cell = document.createElement('div');
-        cell.className = 'fret-cell';
-        cell.id = `scale-fret-cell-${s}-${f}`;
-
-        let inRegister = true;
-        if (this.activeRegister === 'open' && f > 4) inRegister = false;
-        if (this.activeRegister === 'middle' && (f < 5 || f > 8)) inRegister = false;
-        if (this.activeRegister === 'upper' && f < 9) inRegister = false;
-
-        const midi = strInfo.midi + f;
-        const noteName = NOTE_NAMES[midi % 12];
-        const octave = Math.floor(midi / 12) - 1;
-        const semitones = ((midi % 12) - rootIdx + 12) % 12;
-        const intervalIdx = scale.intervals.indexOf(semitones);
-
-        if (intervalIdx !== -1 && inRegister) {
-          const isRoot = semitones === 0;
-          const isBlue = this.activeKey === 'blues' && semitones === 6;
-          const degree = scale.degrees[intervalIdx];
-
-          const dot = document.createElement('div');
-          dot.className = 'scale-dot' + (isRoot ? ' root' : isBlue ? ' blue' : ' tone');
+        const cell = document.getElementById(`scale-fret-cell-${s}-${f}`)!;
+        const midi = this.tuning[s].midi + f;
+        const note = NOTE_NAMES[midi % 12];
+        const position = positions.find(p => p.stringIndex === s && p.fret === f);
+        const degree = this.degreeAt(midi);
+        cell.setAttribute('aria-label', `${note}${Math.floor(midi / 12) - 1}, string ${s + 1}, ${f === 0 ? 'open' : `fret ${f}`}, ${degree ? `degree ${degree}` : 'outside scale'}${position?.active ? ', playing' : ''}`);
+        cell.classList.toggle('live-note', !!position?.active);
+        cell.replaceChildren();
+        if (position) {
+          const dot = document.createElement('span');
+          dot.className = `scale-dot ${position.role}${position.active ? ' active-pluck' : ''}`;
           dot.id = `scale-dot-${s}-${f}`;
-          dot.textContent = this.activeLabelMode === 'note' ? noteName : degree;
-          dot.title = `${noteName}${octave} (${degree}) • String ${s + 1}, Fret ${f}`;
-
-          dot.onclick = (e) => {
-            e.stopPropagation();
-            this.pluckNote(s, f, noteName, octave, degree);
-          };
-
+          dot.textContent = position.label;
+          dot.dataset.pc = String(midi % 12);
           cell.appendChild(dot);
         }
-
-        cell.onclick = () => {
-          this.pluckNote(s, f, noteName, octave, intervalIdx !== -1 ? scale.degrees[intervalIdx] : '-');
-        };
-
-        cellsContainer.appendChild(cell);
       }
-
-      row.appendChild(cellsContainer);
-      container.appendChild(row);
     }
-
-    // Keep the optional 3D neck in sync with the current scale pattern
-    this.updateNeck3D(null);
+    this.updateNeck3D(positions);
   }
 
-  pluckNote(s: number, f: number, _noteName?: string, _octave?: number, _degree?: string): void {
+  private degreeAt(midi: number): string | undefined {
+    const scale = WESTERN_SCALES[this.activeKey];
+    const interval = (midi - NOTE_NAMES.indexOf(this.activeRoot) + 120) % 12;
+    return scale.degrees[scale.intervals.indexOf(interval)];
+  }
+
+  private scalePositions(includeHighlight = true): ScaleNeckPosition[] {
+    const positions: ScaleNeckPosition[] = [];
+    const rootPc = NOTE_NAMES.indexOf(this.activeRoot);
+    const [min, max] = REGISTER_RANGES[this.activeRegister];
+    for (let s = 0; s < 6; s++) {
+      for (let f = 0; f <= 12; f++) {
+        const midi = this.tuning[s].midi + f;
+        const pc = midi % 12;
+        const degree = this.degreeAt(midi);
+        const inPattern = !!degree && f >= min && f <= max;
+        const active = includeHighlight && ((this.highlightedPosition?.stringIndex === s && this.highlightedPosition.fret === f)
+          || (inPattern && pc === this.highlightedPc));
+        if (!inPattern && !active) continue;
+        positions.push({
+          stringIndex: s, fret: f,
+          label: this.activeLabelMode === 'degree' && degree ? degree : NOTE_NAMES[pc],
+          role: !degree ? 'outside' : pc === rootPc ? 'root'
+            : this.activeKey === 'blues' && (pc - rootPc + 12) % 12 === 6 ? 'blue' : 'tone',
+          active,
+        });
+      }
+    }
+    return positions;
+  }
+
+  private refreshPattern(): void {
+    const resume = this.isAudioRunning;
+    this.stopScaleAudioRun();
+    if (!this.initialized) this.renderFretboard();
+    if (resume) void this.startScaleAudioRun();
+  }
+
+  private status(message: string): void {
+    const summary = document.getElementById('scale-neck-summary');
+    if (summary) summary.textContent = message;
+  }
+
+  private clearHighlight(render = true): void {
+    if (this.highlightTimer !== null) window.clearTimeout(this.highlightTimer);
+    this.highlightTimer = null;
+    this.highlightedPosition = null;
+    this.highlightedPc = null;
+    if (render) {
+      if (this.initialized) this.renderFretboard();
+      this.status('Choose a note to hear it, or play the selected scale run.');
+    }
+  }
+
+  private expireHighlight(ms: number): void {
+    this.highlightTimer = window.setTimeout(() => this.clearHighlight(), ms);
+  }
+
+  private async readyAudio(): Promise<boolean> {
+    try {
+      if (this.onPlayRequested) await this.onPlayRequested();
+      if (!this.audioContext || !this.acousticBus) throw new Error('Scale audio is not initialized');
+      if (this.audioContext.state === 'suspended') await this.audioContext.resume();
+      return true;
+    } catch (error) {
+      console.error('Scale playback unavailable:', error);
+      this.status('Audio could not start. Try again or check your browser audio settings.');
+      return false;
+    }
+  }
+
+  async pluckNote(s: number, f: number): Promise<void> {
+    const generation = ++this.pickGeneration;
+    if (!await this.readyAudio() || generation !== this.pickGeneration || !this.active) return;
+    this.playPosition(s, f);
+  }
+
+  private playPosition(s: number, f: number): void {
     if (!this.audioContext || !this.acousticBus) return;
-
     const midi = this.tuning[s].midi + f;
-    const freq = 440 * Math.pow(2, (midi - 69) / 12);
-
     playAcousticString(this.audioContext, this.acousticBus, {
-      freq,
+      freq: 440 * Math.pow(2, (midi - 69) / 12),
       startTime: this.audioContext.currentTime + 0.005,
-      stringIndex: s,
-      velocity: 0.95,
+      stringIndex: s, velocity: 0.95,
     });
-
-    // Wire vibration animation
-    const wire = document.getElementById(`scale-string-wire-${s}`);
-    if (wire) {
-      wire.classList.add('vibrating');
-      setTimeout(() => wire.classList.remove('vibrating'), 350);
-    }
-
-    // Dot flash animation
-    const dot = document.getElementById(`scale-dot-${s}-${f}`);
-    if (dot) {
-      dot.classList.add('active-pluck');
-      setTimeout(() => dot.classList.remove('active-pluck'), 350);
-    }
-
-    // Light the played note on the 3D neck, then revert to the static pattern
-    this.updateNeck3D(midi);
-    setTimeout(() => this.updateNeck3D(null), 350);
+    this.clearHighlight(false);
+    this.highlightedPosition = { stringIndex: s, fret: f };
+    this.renderFretboard();
+    const degree = this.degreeAt(midi);
+    const [min, max] = REGISTER_RANGES[this.activeRegister];
+    this.status(`${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1} · String ${s + 1}, ${f === 0 ? 'open' : `fret ${f}`} · ${degree ? `Degree ${degree}` : 'Outside this scale'}${f < min || f > max ? ' · Outside selected register' : ''}`);
+    this.expireHighlight(350);
   }
 
   toggleScaleAudioRun(): void {
     if (this.isAudioRunning) {
       this.stopScaleAudioRun();
     } else {
-      this.startScaleAudioRun();
+      void this.startScaleAudioRun();
     }
   }
 
-  startScaleAudioRun(): void {
-    if (!this.audioContext || !this.acousticBus) return;
-
+  async startScaleAudioRun(): Promise<void> {
+    this.stopScaleAudioRun();
+    if (!this.active) return;
     this.isAudioRunning = true;
+    const generation = ++this.runGeneration;
     const runIcon = document.getElementById('btn-scale-run-icon');
     const runText = document.getElementById('btn-scale-run-text');
     if (runIcon) runIcon.textContent = '⏹️';
     if (runText) runText.textContent = 'Stop Scale Run';
-
-    // Gather all scale notes across the neck in pitch order
-    const scale = WESTERN_SCALES[this.activeKey] || WESTERN_SCALES.pentatonic_minor;
-    const rootIdx = NOTE_NAMES.indexOf(this.activeRoot as any);
-    const notesToPlay: Array<{ s: number; f: number; midi: number; noteName: string; octave: number; degree: string }> = [];
-
-    for (let s = 5; s >= 0; s--) {
-      for (let f = 0; f <= 12; f++) {
-        let inRegister = true;
-        if (this.activeRegister === 'open' && f > 4) inRegister = false;
-        if (this.activeRegister === 'middle' && (f < 5 || f > 8)) inRegister = false;
-        if (this.activeRegister === 'upper' && f < 9) inRegister = false;
-
-        const midi = this.tuning[s].midi + f;
-        const semi = ((midi % 12) - rootIdx + 12) % 12;
-        const intervalIdx = scale.intervals.indexOf(semi);
-
-        if (intervalIdx !== -1 && inRegister) {
-          notesToPlay.push({
-            s,
-            f,
-            midi,
-            noteName: NOTE_NAMES[midi % 12],
-            octave: Math.floor(midi / 12) - 1,
-            degree: scale.degrees[intervalIdx],
-          });
-        }
+    if (!await this.readyAudio()) {
+      if (generation === this.runGeneration) {
+        this.stopScaleAudioRun();
+        this.status('Audio could not start. Try again or check your browser audio settings.');
       }
+      return;
     }
+    if (generation !== this.runGeneration || !this.isAudioRunning || !this.active) return;
 
+    // Preserve the pitch-ordered run, including alternate string positions.
+    const notesToPlay = this.scalePositions(false).map(p => ({
+      s: p.stringIndex, f: p.fret, midi: this.tuning[p.stringIndex].midi + p.fret,
+    })).reverse();
     notesToPlay.sort((a, b) => a.midi - b.midi);
     if (notesToPlay.length === 0) {
       this.stopScaleAudioRun();
@@ -427,14 +495,14 @@ export class ScalesStudio {
     const stepInterval = (60 / this.bpm) * 1000;
 
     const playStep = () => {
-      if (!this.isAudioRunning) return;
+      if (!this.isAudioRunning || generation !== this.runGeneration) return;
 
       if (currentIdx >= notesToPlay.length) {
         currentIdx = 0; // loop scale run
       }
 
       const note = notesToPlay[currentIdx];
-      this.pluckNote(note.s, note.f, note.noteName, note.octave, note.degree);
+      this.playPosition(note.s, note.f);
       currentIdx++;
 
       this.audioRunTimer = window.setTimeout(playStep, stepInterval);
@@ -445,7 +513,9 @@ export class ScalesStudio {
 
   stopScaleAudioRun(): void {
     this.isAudioRunning = false;
-    if (this.audioRunTimer) {
+    this.runGeneration++;
+    this.pickGeneration++;
+    if (this.audioRunTimer !== null) {
       clearTimeout(this.audioRunTimer);
       this.audioRunTimer = null;
     }
@@ -454,13 +524,40 @@ export class ScalesStudio {
     const runText = document.getElementById('btn-scale-run-text');
     if (runIcon) runIcon.textContent = '▶️';
     if (runText) runText.textContent = 'Play Scale Run';
+    this.clearHighlight();
   }
 
-  toggleMicPractice(): void {
-    this.isMicActive = !this.isMicActive;
+  async toggleMicPractice(): Promise<void> {
+    if (this.isMicActive) {
+      this.setMicPracticeActive(false);
+      return;
+    }
+    const generation = ++this.micGeneration;
+    const button = document.getElementById('btn-scale-mic') as HTMLButtonElement | null;
+    if (button) button.disabled = true;
+    try {
+      if (!this.onMicStartRequested) throw new Error('Scale microphone is not connected');
+      const started = await this.onMicStartRequested();
+      if (generation !== this.micGeneration || !this.active) return;
+      this.setMicPracticeActive(started);
+      if (!started) this.status('Microphone unavailable. Allow access and try Practice with Guitar again.');
+    } catch (error) {
+      console.error('Scale microphone unavailable:', error);
+      this.setMicPracticeActive(false);
+      this.status('Microphone unavailable. Allow access and try Practice with Guitar again.');
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  setMicPracticeActive(active: boolean): void {
+    this.isMicActive = active;
+    this.micGeneration++;
+    if (!active && this.highlightedPc !== null) this.clearHighlight();
     const micDot = document.getElementById('scale-mic-dot');
     const micStatus = document.getElementById('scale-mic-status');
     const micText = document.getElementById('btn-scale-mic-text');
+    document.getElementById('btn-scale-mic')?.setAttribute('aria-pressed', String(active));
 
     if (this.isMicActive) {
       if (micDot) micDot.textContent = '🟢';
@@ -474,22 +571,26 @@ export class ScalesStudio {
   }
 
   onSingleNoteDetected(noteName: string): void {
-    if (!this.isMicActive) return;
-
-    // Check if detected note is in active scale
-    const scale = WESTERN_SCALES[this.activeKey] || WESTERN_SCALES.pentatonic_minor;
-    const rootIdx = NOTE_NAMES.indexOf(this.activeRoot as any);
-    const targetIdx = NOTE_NAMES.indexOf(noteName as any);
-    const semi = (targetIdx - rootIdx + 12) % 12;
-
-    if (scale.intervals.includes(semi)) {
-      // Flash matching dots on neck
-      document.querySelectorAll(`.scale-dot`).forEach(d => {
-        if (d.textContent?.trim() === noteName) {
-          d.classList.add('active-pluck');
-          setTimeout(() => d.classList.remove('active-pluck'), 600);
-        }
-      });
+    if (!this.isMicActive || !this.active) return;
+    const pc = NOTE_NAMES.findIndex(note => note === noteName);
+    if (pc < 0) {
+      console.warn('Unknown scale practice note:', noteName);
+      return;
     }
+    if (this.highlightedPc === pc) {
+      if (this.highlightTimer !== null) window.clearTimeout(this.highlightTimer);
+      this.expireHighlight(600);
+      return;
+    }
+    this.clearHighlight(false);
+    if (!this.degreeAt(pc)) {
+      this.renderFretboard();
+      this.status(`${noteName} · Outside ${this.activeRoot} ${WESTERN_SCALES[this.activeKey].name}`);
+      return;
+    }
+    this.highlightedPc = pc;
+    this.renderFretboard();
+    this.status(`Live ${noteName} · Degree ${this.degreeAt(pc)} · Matching scale positions, not measured finger placement`);
+    this.expireHighlight(600);
   }
 }

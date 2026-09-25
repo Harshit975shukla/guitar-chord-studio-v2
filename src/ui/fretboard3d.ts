@@ -2,15 +2,21 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { NOTE_NAMES, type StringTuning } from '../types';
 
+export interface ScaleNeckPosition {
+  stringIndex: number;
+  fret: number;
+  label: string;
+  role: 'root' | 'tone' | 'blue' | 'outside';
+  active: boolean;
+}
+
 export interface NeckState {
   frets: (number | null)[];
   tuning: StringTuning[];
   liveMidi: number | null;
   root: string | null;
-  /** Scale mode: highlight every position whose pitch class is in this set. */
-  scalePcs?: number[] | null;
-  /** Pitch class of the scale/chord root (0-11), for coloring in scale mode. */
-  rootPc?: number | null;
+  /** Explicit positions keep scale filters, degree labels and exact plucks in sync with 2D. */
+  scalePositions?: ScaleNeckPosition[] | null;
 }
 
 /** An on-demand scene: no animation loop competes with microphone analysis. */
@@ -39,6 +45,7 @@ export class Fretboard3D {
     private host: HTMLElement,
     private onPick: (string: number, fret: number) => void,
     onUnavailable: () => void,
+    descriptionId?: string,
   ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
@@ -46,7 +53,7 @@ export class Fretboard3D {
     this.renderer.setClearColor(0x000000, 0);
     const canvas = this.renderer.domElement;
     canvas.setAttribute('aria-label', 'Interactive 3D guitar neck. Drag to orbit; click a string to play. Use 2D view for individual keyboard-accessible frets.');
-    canvas.setAttribute('aria-describedby', 'neck-help');
+    if (descriptionId) canvas.setAttribute('aria-describedby', descriptionId);
     canvas.tabIndex = 0;
     host.append(canvas);
     this.camera.position.copy(this.home);
@@ -208,7 +215,7 @@ export class Fretboard3D {
       if (material && !Array.isArray(material)) { material.dispose(); this.materials.delete(material); }
     });
     this.markers.clear();
-    const scaleMode = Array.isArray(state.scalePcs) && state.scalePcs.length > 0;
+    const scaleMode = Array.isArray(state.scalePositions);
     for (let s = 0; s < 6; s++) {
       const fret = state.frets[s];
       this.label(state.tuning[s].note, -7.0, 0.2, this.stringZ(s), 0.33, 0xc0b7a9, this.markers);
@@ -217,14 +224,16 @@ export class Fretboard3D {
         const midi = state.tuning[s].midi + f;
         const pc = ((midi % 12) + 12) % 12;
         const live = state.liveMidi === midi;
+        const scalePosition = state.scalePositions?.find(p => p.stringIndex === s && p.fret === f);
         // Decide whether to mark this position and how to color it.
         let show = live;
         let color = 0x89d7bc; // live = green
         if (!live) {
           if (scaleMode) {
-            if (state.scalePcs!.includes(pc)) {
+            if (scalePosition) {
               show = true;
-              color = pc === state.rootPc ? 0xefb56d : 0x9ec5e8; // root amber, tone blue
+              color = scalePosition.active ? 0x89d7bc : scalePosition.role === 'root' ? 0xefb56d
+                : scalePosition.role === 'blue' ? 0x9ec5e8 : 0xf0dfc6;
             }
           } else if (f === fret) {
             show = true;
@@ -238,8 +247,9 @@ export class Fretboard3D {
         this.geometries.add(geometry);
         const marker = new THREE.Mesh(geometry, material);
         marker.position.set(this.noteX(f), 0.26, this.stringZ(s));
+        marker.userData = { stringIndex: s, fret: f };
         this.markers.add(marker);
-        this.label(note, this.noteX(f), 0.34, this.stringZ(s), 0.28, 0x211a12, this.markers);
+        this.label(scalePosition?.label ?? note, this.noteX(f), 0.34, this.stringZ(s), 0.28, 0x211a12, this.markers);
       }
     }
     this.requestRender();

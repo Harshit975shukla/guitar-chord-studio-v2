@@ -1,4 +1,5 @@
-import type { NeckState, Fretboard3D } from './fretboard3d';
+import type { NeckState } from './fretboard3d';
+import { PaneNeck3D } from './paneNeck3d';
 import { NOTE_NAMES } from '../types';
 import './studio.css';
 
@@ -164,95 +165,26 @@ export function prepareStudio(): void {
 }
 
 export class NeckController {
-  private scene: Fretboard3D | null = null;
-  private state: NeckState | null = null;
+  private neck: PaneNeck3D;
   private stateKey = '';
-  private mode: '2d' | '3d' = '2d';
-  private active = true;
-  private inView = true;
-  private generation = 0;
-  private loading = false;
-  private observer: IntersectionObserver;
-  private pick: (string: number, fret: number) => void;
 
   constructor(pick: (string: number, fret: number) => void, loadChord: (chord: string) => void) {
-    this.pick = pick;
-    element('neck-view-3d').addEventListener('click', () => this.setMode('3d'));
-    element('neck-view-2d').addEventListener('click', () => this.setMode('2d'));
-    element('neck-reset').addEventListener('click', () => this.scene?.reset());
-    element('neck-zoom-in').addEventListener('click', () => this.scene?.zoom(0.85));
-    element('neck-zoom-out').addEventListener('click', () => this.scene?.zoom(1.15));
+    this.neck = new PaneNeck3D(element('neck-3d'), {
+      toggle3d: element('neck-view-3d'), toggle2d: element('neck-view-2d'),
+      twoD: element('neck-2d'), camera: document.querySelector<HTMLElement>('.neck-camera'),
+      reset: element('neck-reset'), zoomIn: element('neck-zoom-in'), zoomOut: element('neck-zoom-out'),
+      help: element('neck-help'),
+    }, pick, {
+      defaultMode: '3d', preferenceKey: 'gcs-neck-view',
+      help2d: 'Scroll the neck · Tab to a fret, then Enter to play · × mutes a string',
+    });
     document.querySelectorAll<HTMLButtonElement>('[data-neck-chord]').forEach(button => {
       button.addEventListener('click', () => loadChord(button.dataset.neckChord!));
     });
-    this.observer = new IntersectionObserver(entries => {
-      this.inView = entries[0].isIntersecting;
-      this.syncVisibility();
-    }, { rootMargin: '120px' });
-    this.observer.observe(element('neck-3d'));
-    window.addEventListener('pagehide', () => this.release());
-    window.addEventListener('pageshow', () => this.syncVisibility());
-    let preferred = matchMedia('(prefers-reduced-motion: reduce)').matches ? '2d' : '3d';
-    try { preferred = localStorage.getItem('gcs-neck-view') || preferred; } catch { /* Private browsing. */ }
-    this.setMode(preferred === '3d' ? '3d' : '2d', false);
-  }
-
-  private setMode(mode: '2d' | '3d', persist = true): void {
-    this.mode = mode;
-    element('neck-3d').hidden = mode !== '3d';
-    element('neck-2d').hidden = mode !== '2d';
-    element('neck-view-3d').setAttribute('aria-pressed', String(mode === '3d'));
-    element('neck-view-2d').setAttribute('aria-pressed', String(mode === '2d'));
-    document.querySelector<HTMLElement>('.neck-camera')!.hidden = mode !== '3d';
-    element('neck-help').textContent = mode === '3d'
-      ? 'Drag to rotate · Click to play · + / − to zoom · R to reset'
-      : 'Scroll the neck · Tab to a fret, then Enter to play · × mutes a string';
-    if (persist) { try { localStorage.setItem('gcs-neck-view', mode); } catch { /* Optional preference. */ } }
-    if (mode === '2d') this.release();
-    else this.syncVisibility();
-  }
-
-  private async ensureScene(): Promise<void> {
-    if (this.scene || this.loading || this.mode !== '3d' || !this.active || !this.inView) return;
-    this.loading = true;
-    const generation = ++this.generation;
-    element('neck-3d').setAttribute('aria-busy', 'true');
-    try {
-      const { Fretboard3D } = await import('./fretboard3d');
-      if (generation !== this.generation || this.mode !== '3d') return;
-      this.scene = new Fretboard3D(element('neck-3d'), this.pick, () => this.fallback());
-      if (this.state) this.scene.update(this.state);
-      this.scene.setVisible(this.active && this.inView);
-    } catch (error) {
-      console.warn('3D neck unavailable; retaining interactive 2D fretboard.', error);
-      this.fallback();
-    } finally {
-      if (generation === this.generation) this.loading = false;
-      element('neck-3d').removeAttribute('aria-busy');
-    }
-  }
-
-  private fallback(): void {
-    this.setMode('2d', false);
-    element('neck-help').textContent = '3D is unavailable on this device. The full interactive 2D neck is ready to use.';
-    element('neck-help').setAttribute('role', 'status');
-  }
-
-  private release(): void {
-    this.generation++;
-    this.loading = false;
-    this.scene?.dispose();
-    this.scene = null;
   }
 
   setActive(active: boolean): void {
-    this.active = active;
-    this.syncVisibility();
-  }
-
-  private syncVisibility(): void {
-    this.scene?.setVisible(this.active && this.inView && this.mode === '3d');
-    void this.ensureScene();
+    this.neck.setActive(active);
   }
 
   update(state: NeckState, caption: string): void {
@@ -261,7 +193,6 @@ export class NeckController {
     const key = JSON.stringify({ ...state, caption });
     if (key === this.stateKey) return;
     this.stateKey = key;
-    this.state = { ...state, frets: [...state.frets], tuning: [...state.tuning] };
     const description = state.frets.map((fret, s) => fret === null ? '×' : `${NOTE_NAMES[(state.tuning[s].midi + fret) % 12]} ${fret === 0 ? 'open' : `fret ${fret}`}`);
     element('neck-summary').textContent = state.frets.every(f => f === null)
       ? 'Choose a chord below or click a fret to begin.'
@@ -269,6 +200,6 @@ export class NeckController {
     document.querySelectorAll<HTMLButtonElement>('[data-neck-chord]').forEach(button => {
       button.setAttribute('aria-pressed', String(caption === `${button.dataset.neckChord} · selected voicing`));
     });
-    this.scene?.update(state);
+    this.neck.update(state);
   }
 }

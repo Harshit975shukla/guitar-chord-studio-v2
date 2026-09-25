@@ -41,6 +41,11 @@ function freqSpec(freqs, peakDb, floor = -110) {
 }
 
 const results = [];
+let seed = 12345;
+function random() {
+  seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+  return seed / 0x100000000;
+}
 function check(name, pass, detail) {
   results.push({ name, pass, detail });
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
@@ -86,10 +91,10 @@ function run(eng, an, timeBuf, freqBuf, frames) {
   let chordOrNote = 0, total = 40;
   for (let i = 0; i < total; i++) {
     const t = new Float32Array(N);
-    for (let n = 0; n < N; n++) t[n] = (Math.random() - 0.5) * 0.08;
+    for (let n = 0; n < N; n++) t[n] = (random() - 0.5) * 0.08;
     an._time = t;
     const fd = new Float32Array(BINS);
-    for (let b = 0; b < BINS; b++) fd[b] = -70 + (Math.random() - 0.5) * 16;
+    for (let b = 0; b < BINS; b++) fd[b] = -70 + (random() - 0.5) * 16;
     const r = eng.processFrame(fd, SR, STANDARD_TUNING);
     if (r && (r.mode === 'chord' || r.mode === 'single-note')) chordOrNote++;
   }

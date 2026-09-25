@@ -11,6 +11,8 @@ import {
   TabTranscription,
   MidiConfig 
 } from '../types';
+import { normalizeSong } from '../songs/catalog';
+import { isRecord } from '../songs/timing';
 
 // ============================================================================
 // Storage Keys
@@ -159,16 +161,43 @@ export function getWeakChords(limit: number = 5): Array<{ chord: string; avgConf
 // ============================================================================
 
 export function loadCustomSongs(): Song[] {
-  return getJSON<Song[]>(STORAGE_KEYS.CUSTOM_SONGS, []);
+  return mergeCustomSongs(readCustomArray(STORAGE_KEYS.CUSTOM_SONGS), readCustomArray('guitar_custom_songs'));
+}
+
+function readCustomArray(key: string): unknown[] {
+  const raw = localStorage.getItem(key);
+  if (!raw) return [];
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { throw new Error(`Saved songs in ${key} could not be read. Export/repair that storage entry before saving; it has not been overwritten.`); }
+  if (!Array.isArray(value)) throw new Error(`Saved songs in ${key} must be an array; existing data was not changed.`);
+  return value;
+}
+
+export function mergeCustomSongs(primary: readonly unknown[], legacy: readonly unknown[]): Song[] {
+  const result = new Map<string, Song>();
+  const add = (raw: unknown, origin: string) => {
+    const song = normalizeSong(isRecord(raw) ? { ...raw, isCustom: true } : raw);
+    if (!song) { console.warn('Unrecognized custom song retained in storage:', origin); return; }
+    if (result.has(song.id)) {
+      if (JSON.stringify(result.get(song.id)) === JSON.stringify(song)) return;
+      let hash = 2166136261;
+      for (const c of JSON.stringify(raw)) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
+      song.id = `${song.id}~${origin}-${(hash >>> 0).toString(16)}`;
+    }
+    if (!result.has(song.id)) result.set(song.id, song);
+  };
+  primary.forEach(raw => add(raw, 'saved'));
+  legacy.forEach(raw => add(raw, 'legacy'));
+  return [...result.values()];
 }
 
 export function saveCustomSong(song: Song): void {
-  const songs = loadCustomSongs();
-  // Remove existing with same ID
-  const filtered = songs.filter(s => s.id !== song.id);
+  const songs = readCustomArray(STORAGE_KEYS.CUSTOM_SONGS);
+  // Validate both stores before writing; legacy data remains untouched.
+  readCustomArray('guitar_custom_songs');
+  const filtered = songs.filter(s => !isRecord(s) || s.id !== song.id);
   filtered.unshift(song);
-  if (filtered.length > 50) filtered.splice(50);
-  setJSON(STORAGE_KEYS.CUSTOM_SONGS, filtered);
+  localStorage.setItem(STORAGE_KEYS.CUSTOM_SONGS, JSON.stringify(filtered));
 }
 
 export function deleteCustomSong(id: string): void {

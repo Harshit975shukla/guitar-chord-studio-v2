@@ -8,7 +8,8 @@
     "build": "tsc && vite build && node scripts/stamp-sw.mjs",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
-    "test:detection": "tsx scripts/detection-smoke.mjs"
+    "test:detection": "tsx scripts/detection-smoke.mjs && tsx scripts/detection-reliability.mjs",
+    "test:songs": "tsx scripts/song-reliability.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",

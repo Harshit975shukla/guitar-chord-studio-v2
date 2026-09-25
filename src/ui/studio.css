@@ -96,23 +96,23 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
 .neck-view-switch button[aria-pressed="true"] { background: #eabb7f; color: #211e17; }
 .neck-stage { position: relative; min-width: 0; background: radial-gradient(ellipse at 50% 60%, #37362c 0%, #222621 65%); margin-top: 22px; border-block: 1px solid #343a31; }
 .neck-stage-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; font-size: 10px; color: #bdbfb1; }
-#neck-caption { color: #e5bb85; }
-#neck-tuning { letter-spacing: 1px; font-size: 9px; white-space: nowrap; }
-#neck-3d { height: 258px; width: 100%; }
-#neck-3d canvas { display: block; width: 100%; height: 100%; cursor: grab; }
-#neck-3d canvas:active { cursor: grabbing; }
-#neck-3d[aria-busy="true"]::before { content: 'Preparing your 3D neck…'; display: block; text-align: center; padding-top: 80px; color: var(--text-muted); font-size: 12px; }
+#neck-caption, .neck-caption { color: #e5bb85; }
+#neck-tuning, .neck-tuning { letter-spacing: 1px; font-size: 9px; white-space: nowrap; }
+#neck-3d, .neck-3d { height: 258px; width: 100%; }
+#neck-3d canvas, .neck-3d canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+#neck-3d canvas:active, .neck-3d canvas:active { cursor: grabbing; }
+#neck-3d[aria-busy="true"]::before, .neck-3d[aria-busy="true"]::before { content: 'Preparing your 3D neck…'; display: block; text-align: center; padding-top: 80px; color: var(--text-muted); font-size: 12px; }
 .neck-camera { position: absolute; bottom: 42px; right: 16px; display: flex; gap: 5px; }
 .neck-camera button { border: 1px solid #52564b; background: #242820; color: #d9decf; width: 32px; height: 32px; border-radius: 6px; font-size: 17px; }
 .neck-camera svg { width: 14px; height: 14px; }
-#neck-help { font-size: 10px; color: #a2aa9d; text-align: center; padding: 12px 16px; }
+#neck-help, .neck-help { font-size: 10px; color: #a2aa9d; text-align: center; padding: 12px 16px; }
 .neck-footer { padding: 16px 22px 20px; flex: 1; }
 .neck-legend { display: flex; gap: 15px; color: #b2b8aa; font-size: 9px; }
 .neck-legend span { display: flex; align-items: center; gap: 5px; }
 .neck-legend i { background: #f0dfc6; display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
 .neck-legend .root-dot { background: #efb56d; }
 .neck-legend .live-dot { background: #89d7bc; }
-#neck-summary { font-size: 11px; color: #dddccf; margin: 12px 0 3px; min-height: 18px; }
+#neck-summary, .neck-summary { font-size: 11px; color: #dddccf; margin: 12px 0 3px; min-height: 18px; }
 .neck-caveat { font-size: 9px; color: #a4ac9d; }
 .neck-presets { display: flex; align-items: center; gap: 7px; margin-top: 16px; flex-wrap: wrap; }
 .neck-presets > span { letter-spacing: 1.4px; color: #adb5a7; font-size: 8px; margin-right: 7px; }
@@ -128,6 +128,45 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
 .studio-redesign #fretboard-board .fret-cell.live-note { background: #89d7bc44; }
 .studio-redesign #fretboard-board .finger-dot { box-shadow: none; animation: none; background: #f0dfc6; }
 .studio-redesign #fretboard-board .finger-dot.root-note { background: #eabb7f; }
+.studio-redesign #library-neck { margin-bottom: 20px; scroll-margin-top: 80px; }
+.pane-neck-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.pane-neck-toolbar h3 { font-size: 16px; font-weight: 500; }
+.studio-redesign .pane-neck-flat { border: 0; border-radius: 0; box-shadow: none; padding: 20px 12px; background: #2c231c; height: 258px; }
+.studio-redesign .pane-neck-flat .fret-cell { background: transparent; border-top: 0; border-bottom: 0; border-left: 0; padding: 0; color: #eee3cd; }
+.studio-redesign .pane-neck-flat .fret-cell:hover { background: #eabb7f22; }
+.studio-redesign .pane-neck-flat .finger-dot { box-shadow: none; animation: none; background: #f0dfc6; }
+.studio-redesign .pane-neck-flat .finger-dot.root-note { background: #eabb7f; }
+.neck-play-controls select { max-width: 100%; min-width: 0; }
+.neck-play-controls label { align-self: center; font-size: 11px; color: var(--text-muted); }
+.studio-redesign .scale-select-grid { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+.scale-control-group { min-width: 0; }
+.scale-formula-row, .scale-tempo-control { flex-wrap: wrap; }
+#scale-neck .neck-legend { flex-wrap: wrap; }
+#scale-neck .blue-dot { background: #9ec5e8; }
+.studio-redesign #scale-neck .scale-dot { background: #f0dfc6; color: #211a12; border: 0; box-shadow: none; transform: none; transition: none; }
+.studio-redesign #scale-neck .scale-dot.root { background: #efb56d; }
+.studio-redesign #scale-neck .scale-dot.blue { background: #9ec5e8; }
+.studio-redesign #scale-neck .scale-dot.active-pluck { background: #89d7bc; outline: 2px solid #89d7bc; outline-offset: 2px; }
+.studio-redesign #scale-neck .live-note { background: #89d7bc22; }
+.song-timing-controls, .song-finder-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-block: 16px; }
+.song-timing-controls label, .song-finder-filters label { font-size: 12px; color: var(--text-muted); }
+.song-timing-controls select, .song-finder-filters select { min-width: 0; max-width: 100%; padding: 8px; background: var(--panel-bg); color: var(--text-main); border: 1px solid var(--border-subtle); border-radius: 6px; }
+.song-data-status { color: var(--text-muted); font-size: 12px; line-height: 1.6; margin-block: 12px; overflow-wrap: anywhere; }
+.song-current-target { font-size: 18px; color: var(--accent-gold); margin-block: 14px; }
+.song-source pre, .song-timing-editor pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.song-source { margin-block: 16px; }
+.song-search-input-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.song-search-input-row input { min-width: 0; }
+.song-search-result { padding-block: 18px; border-top: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+.song-search-result h3 { font-size: 18px; }
+.song-search-result p { color: var(--text-muted); font-size: 12px; margin-block: 8px; }
+.song-timing-editor { width: min(720px, calc(100vw - 32px)); max-height: 90dvh; overflow-y: auto; margin: auto; padding: 22px; color: var(--text-main); background: var(--panel-bg); border: 1px solid var(--border-subtle); border-radius: 12px; }
+.song-timing-editor::backdrop { background: #0009; }
+.song-timing-editor > p { font-size: 13px; line-height: 1.6; margin-block: 12px; }
+.song-timing-editor > label { display: block; margin-top: 12px; font-size: 13px; }
+.song-timing-editor > input, .song-timing-editor textarea, .song-import-text { width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-main); }
+.song-timing-editor textarea, .song-import-text { font: 12px/1.5 monospace; resize: vertical; }
+.studio-redesign .tempo-speed-control strong { width: auto !important; white-space: nowrap; }
 .studio-redesign .studio-disclosure { grid-column: 1 / -1; border: 1px solid #353b31; border-radius: 10px; padding: 0 20px; min-width: 0; background: #1b1f1a; }
 .studio-disclosure > summary { cursor: pointer; font-size: 12px; color: #c5cabc; padding: 17px 0; }
 .studio-disclosure[open] > summary { border-bottom: 1px solid #353b31; margin-bottom: 16px; }
@@ -200,8 +239,9 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
   .neck-card h3 { font-size: 13px; }
   .neck-view-switch button { padding: 6px 9px; }
   .neck-stage { margin-top: 16px; }
-  #neck-3d { height: 220px; }
-  #neck-help { font-size: 9px; padding-inline: 10px; }
+  #neck-3d, .neck-3d { height: 220px; }
+  #neck-help, .neck-help { font-size: 9px; padding-inline: 10px; }
+  .neck-stage-top { flex-wrap: wrap; }
   .neck-footer { padding: 14px 16px 18px; }
   .neck-presets { gap: 6px; }
   .neck-presets > span { width: 100%; margin-bottom: 3px; }
@@ -217,6 +257,8 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
   .studio-redesign .studio-tab-pane:not(#pane-detector) [style*="grid-template-columns"] { grid-template-columns: minmax(0, 1fr) !important; }
   .studio-redesign .studio-tab-pane select { max-width: 100%; min-width: 0 !important; }
   .studio-redesign .studio-tab-pane :is(div:has(> #song-selector-select), div:has(> #quiz-key-context)) { min-width: 0 !important; max-width: 100%; flex-wrap: wrap; }
+  .studio-redesign div:has(> #song-selector-select) { width: 100%; }
+  .studio-redesign :is(#song-selector-select, #song-transpose-select) { width: 100%; max-width: 100% !important; }
   .studio-redesign .tempo-speed-control { max-width: 100%; flex-wrap: wrap; }
   .studio-redesign .studio-tab-pane .fretboard-container { max-width: 100%; }
   .studio-redesign .studio-rhythm-controls { margin-inline: 16px; }

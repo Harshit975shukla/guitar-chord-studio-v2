@@ -99,7 +99,12 @@ export interface DetectedPeak {
 
 export interface DetectionResult {
   mode: DetectionMode;
+  /** Fresh evidence may drive practice/MIDI; held results are display-only. */
+  freshness: 'fresh' | 'held' | 'none';
+  /** Evidence time, preserved when held; processing time for idle/preview results. */
   timestamp: number;
+  /** Current-frame onset/gate evidence; independent of held display timestamps. */
+  performance?: { id: number; attackAt: number; frameAt: number; signalPresent: boolean };
   
   // Single note
   note?: {
@@ -335,6 +340,13 @@ export interface Song {
   westernHook?: string;
   lyrics?: string;
   isCustom?: boolean;
+  artist?: string;
+  album?: string;
+  source?: string;
+  versionLabel?: string;
+  sourceText?: string;
+  importWarnings?: string[];
+  timing?: import('../songs/timing').SongTiming;
 }
 
 export interface PlayAlongState {
