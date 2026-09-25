@@ -34,6 +34,12 @@ jobs:
       - name: Detection smoke test (guards live detection)
         run: npm run test:detection
 
+      - name: Song timing and practice regression tests
+        run: npm run test:songs
+
+      - name: Sound and local analysis regression tests
+        run: npm run test:audio
+
       - name: Build
         run: npm run build
 

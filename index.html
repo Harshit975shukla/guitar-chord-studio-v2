@@ -1740,8 +1740,8 @@
     <div style="padding: var(--space-xl); max-width: 1000px; margin: 0 auto;">
       <div class="card">
         <div style="text-align:center; margin-bottom:var(--space-lg);">
-          <h2 style="font-size:1.8rem; font-weight:800;">Find a local song or chart</h2>
-          <p style="color:var(--text-muted);">Search this device's catalog and your imports. No automatic online chord or tab lookup.</p>
+          <h2 style="font-size:1.8rem; font-weight:800;">Find chords or analyze your recording</h2>
+          <p style="color:var(--text-muted);">Search local chord charts, or create an editable draft from your MP3. Tabs remain in Play Along.</p>
         </div>
         <div style="max-width:600px; margin:0 auto var(--space-lg);">
           <div class="song-search-input-row">
@@ -1753,12 +1753,51 @@
           <label for="song-search-field">Search in</label>
           <select id="song-search-field"><option value="all">Title and artist</option><option value="title">Title</option><option value="artist">Artist</option></select>
           <label for="song-search-content">Available content</label>
-          <select id="song-search-content"><option value="all">All</option><option value="chords">Chords</option><option value="tabs">Tabs / note events</option><option value="imported">Imported</option></select>
+          <select id="song-search-content"><option value="chords">All chord charts</option><option value="imported">Imported chord charts</option></select>
           <button class="btn btn-secondary" data-open-song-import>Import your chart / timing JSON</button>
         </div>
-        <p id="song-search-status" class="song-data-status" role="status">Search by title or artist. Catalog excerpts are not verified full transcriptions.</p>
+        <p id="song-search-status" class="song-data-status" role="status">Search chords by title or artist. Catalog excerpts are not verified full arrangements.</p>
+        <a id="song-web-search" target="_blank" rel="noopener noreferrer" hidden>Search public chord pages on Google (leaves this app)</a>
         <div id="search-results" style="display:none;"></div>
       </div>
+      <section id="audio-analysis" class="card audio-analysis" aria-labelledby="analysis-heading">
+        <h3 id="analysis-heading">MP3 / WAV to chord draft</h3>
+        <p class="song-data-status">Analyze a recording you are allowed to use. Audio stays on this device. Results suggest chords and a major/minor key—not verified tabs or an exact transcription. Dense mixes, vocals, tuning differences and key changes can confuse this lightweight analyzer.</p>
+        <label for="analysis-file">Recording (MP3 or WAV, up to 30 MB and 5 minutes)</label>
+        <input type="file" id="analysis-file" accept=".mp3,.wav,audio/mpeg,audio/wav">
+        <div class="song-timing-controls">
+          <button class="btn btn-primary" id="analysis-start" disabled>Analyze on this device</button>
+          <button class="btn btn-secondary" id="analysis-cancel" disabled>Cancel analysis</button>
+          <button class="btn btn-secondary" id="analysis-clear">Clear recording</button>
+        </div>
+        <progress id="analysis-progress" max="100" value="0" aria-label="Audio analysis progress"></progress>
+        <p id="analysis-status" class="song-data-status" role="status">Choose a recording. No third-party analysis service is used.</p>
+        <audio id="analysis-audio" controls preload="metadata" hidden aria-label="Your recording reference"></audio>
+        <div id="analysis-results" hidden>
+          <h4 id="analysis-key"></h4>
+          <p class="song-data-status">Check each region against the recording. Enter a chord, <strong>Rest</strong> for silence, or <strong>?</strong> where unsure. Match scores are not accuracy percentages. Key candidates refer to the overall recording, not guaranteed modes or key changes.</p>
+          <div class="analysis-table-scroll">
+            <table class="analysis-table"><thead><tr><th scope="col">Time</th><th scope="col">Editable chord</th><th scope="col">Evidence</th></tr></thead><tbody id="analysis-regions"></tbody></table>
+          </div>
+          <datalist id="analysis-chord-help"><option value="Rest"><option value="?"><option value="C"><option value="G"><option value="Am"><option value="F"><option value="D"><option value="Em"></datalist>
+          <div class="song-timing-controls">
+            <label for="analysis-title">Draft title</label><input id="analysis-title">
+            <label for="analysis-bpm">Reference BPM (not detected)</label><input id="analysis-bpm" type="number" min="20" max="400" value="120">
+          </div>
+          <p class="song-data-status">Reference BPM maps measured seconds into beats for the editor; it does not estimate the song's rhythm. Existing Song timing preserves these draft durations. Review before practice.</p>
+          <label><input id="analysis-allow-unknown" type="checkbox"> I reviewed the uncertainty and want remaining ? regions imported as draft rests.</label>
+          <div class="song-timing-controls"><button class="btn btn-primary" id="analysis-save" disabled>Save draft to Play Along</button></div>
+        </div>
+      </section>
+      <section class="card audio-analysis" aria-labelledby="youtube-heading">
+        <h3 id="youtube-heading">YouTube reference</h3>
+        <p class="song-data-status">Use an official YouTube player for reference. This app cannot read its cross-origin audio, and does not download it. Analyze a matching authorized MP3 above to obtain chord/key suggestions.</p>
+        <label for="youtube-url">YouTube video URL</label><input id="youtube-url" type="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off">
+        <div class="song-timing-controls"><button class="btn btn-secondary" id="youtube-load">Load reference</button><button class="btn btn-secondary" id="youtube-clear">Remove video</button></div>
+        <p id="youtube-status" class="song-data-status" role="status">The official player contacts YouTube only when you choose Load reference.</p>
+        <div id="youtube-player"></div>
+        <a id="youtube-external" target="_blank" rel="noopener noreferrer" hidden>Open on YouTube (external)</a>
+      </section>
     </div>
   </div>
 

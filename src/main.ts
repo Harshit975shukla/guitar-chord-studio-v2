@@ -84,6 +84,7 @@ import { prepareStudio, NeckController } from './ui/studio';
 import { LibraryNeck } from './ui/libraryNeck';
 import { buildSongCatalog } from './songs/catalog';
 import { initSongTools } from './ui/songTools';
+import { AudioAnalysisController } from './ui/audioAnalysis';
 
 // ============================================================================
 // Global State
@@ -172,6 +173,7 @@ let appState: AppState = {
 
 let neckController: NeckController | null = null;
 let libraryNeck: LibraryNeck | null = null;
+let audioAnalysis: AudioAnalysisController | null = null;
 let liveNeckMidi: number | null = null;
 let neckCaption = 'Explore the fretboard';
 let microphonePending = false;
@@ -1223,6 +1225,7 @@ export function switchTab(tabId: string): void {
   libraryNeck?.setActive(tabId === 'chords');
   appState.songStudio.setActive(tabId === 'songs');
   appState.scalesStudio.setActive(tabId === 'scales');
+  audioAnalysis?.setActive(tabId === 'search');
   
   // Update tab panes
   document.querySelectorAll('.studio-tab-pane').forEach(pane => {
@@ -2663,6 +2666,10 @@ function initSearchTab(): void {
     editing: () => appState.songStudio.getSongForEditing(),
     pause: () => appState.songStudio.stopPlayback(),
   });
+  audioAnalysis = new AudioAnalysisController(
+    id => { switchTab('songs'); appState.songStudio.loadSong(id); },
+    () => appState.songStudio.stopPlayback(),
+  );
 }
 
 function initVideoTab(): void {

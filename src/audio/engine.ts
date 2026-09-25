@@ -85,12 +85,15 @@ function createWoodenBodyImpulse(
     }
   });
 
-  // Diffuse wooden box air decay
+  // Damped body modes avoid adding broadband noise to every sustained note.
+  const modes = model === 'nylon' ? [98, 195, 380] : model === 'twelve' ? [104, 215, 420] : [102, 208, 400];
   for (let i = 0; i < numSamples; i++) {
     const t = i / sampleRate;
-    const decay = Math.exp(-t * (model === 'nylon' ? 14.0 : model === 'twelve' ? 18.0 : 16.0));
-    left[i] += (Math.random() * 2 - 1) * decay * (model === 'nylon' ? 0.30 : model === 'twelve' ? 0.40 : 0.35);
-    right[i] += (Math.random() * 2 - 1) * decay * (model === 'nylon' ? 0.30 : model === 'twelve' ? 0.40 : 0.35);
+    for (let m = 0; m < modes.length; m++) {
+      const amplitude = Math.exp(-t * (24 + m * 12)) * 0.08 / (m + 1);
+      left[i] += Math.sin(2 * Math.PI * modes[m] * t) * amplitude;
+      right[i] += Math.sin(2 * Math.PI * modes[m] * t + m * 0.12) * amplitude;
+    }
   }
 
   // Normalize
@@ -114,6 +117,7 @@ function createWoodenBodyImpulse(
 
 export interface AcousticBus {
   ctx: AudioContext;
+  model: AcousticModel;
   input: GainNode;
   helmholtz: BiquadFilterNode;
   topPlate: BiquadFilterNode;
@@ -166,9 +170,9 @@ export function createAcousticBus(ctx: AudioContext, config: AcousticEngineConfi
 
   // Master acoustic limiter / compressor
   const limiter = ctx.createDynamicsCompressor();
-  limiter.threshold.value = -1.5;
-  limiter.knee.value = 3.0;
-  limiter.ratio.value = 12.0;
+  limiter.threshold.value = -6;
+  limiter.knee.value = 6.0;
+  limiter.ratio.value = 4.0;
   limiter.attack.value = 0.002;
   limiter.release.value = 0.12;
 
@@ -197,6 +201,7 @@ export function createAcousticBus(ctx: AudioContext, config: AcousticEngineConfi
 
   const bus: AcousticBus = {
     ctx,
+    model: config.model,
     input,
     helmholtz,
     topPlate,
@@ -215,54 +220,57 @@ export function createAcousticBus(ctx: AudioContext, config: AcousticEngineConfi
 }
 
 export function updateAcousticBusSettings(bus: AcousticBus, model: AcousticModel): void {
+  if (bus.model !== model && bus.convolver) bus.convolver.buffer = createWoodenBodyImpulse(bus.ctx, 0.22, model);
+  bus.model = model;
+  bus.dryGain.gain.value = 0.85;
   if (model === 'nylon') {
     // Spanish nylon: warmer, mellow highs, prominent cedar warmth
-    bus.helmholtz.gain.value = 9.0;
+    bus.helmholtz.gain.value = 3.0;
     bus.helmholtz.frequency.value = 98;
     bus.helmholtz.Q.value = 4.0;
-    bus.topPlate.gain.value = 7.0;
+    bus.topPlate.gain.value = 2.5;
     bus.topPlate.frequency.value = 195;
     bus.topPlate.Q.value = 3.5;
-    bus.backPlate.gain.value = 4.5;
+    bus.backPlate.gain.value = 1.5;
     bus.backPlate.frequency.value = 380;
     bus.backPlate.Q.value = 2.2;
     bus.sparkle.gain.value = -2.0; // Soft singing trebles, no metal bite
     bus.sparkle.frequency.value = 2800;
     bus.sparkle.Q.value = 1.8;
     bus.woodRollOff.frequency.value = 4500;
-    bus.wetGain.gain.value = 0.22;
+    bus.wetGain.gain.value = 0.12;
   } else if (model === 'twelve') {
     // 12-string shimmer: bright octave presence, wide airy sparkle
-    bus.helmholtz.gain.value = 6.0;
+    bus.helmholtz.gain.value = 2.0;
     bus.helmholtz.frequency.value = 104;
     bus.helmholtz.Q.value = 3.5;
-    bus.topPlate.gain.value = 5.0;
+    bus.topPlate.gain.value = 2.0;
     bus.topPlate.frequency.value = 215;
     bus.topPlate.Q.value = 3.0;
-    bus.backPlate.gain.value = 3.0;
+    bus.backPlate.gain.value = 1.0;
     bus.backPlate.frequency.value = 420;
     bus.backPlate.Q.value = 2.0;
-    bus.sparkle.gain.value = 5.5; // Sparkling octave presence
+    bus.sparkle.gain.value = 2.5; // Sparkling octave presence
     bus.sparkle.frequency.value = 3500;
     bus.sparkle.Q.value = 2.2;
     bus.woodRollOff.frequency.value = 7500;
-    bus.wetGain.gain.value = 0.24;
+    bus.wetGain.gain.value = 0.14;
   } else {
     // Standard steel dreadnought: full punch, deep body bass, crisp bronze chime
-    bus.helmholtz.gain.value = 8.0;
+    bus.helmholtz.gain.value = 3.0;
     bus.helmholtz.frequency.value = 102;
     bus.helmholtz.Q.value = 3.8;
-    bus.topPlate.gain.value = 6.5;
+    bus.topPlate.gain.value = 2.0;
     bus.topPlate.frequency.value = 208;
     bus.topPlate.Q.value = 3.2;
-    bus.backPlate.gain.value = 3.5;
+    bus.backPlate.gain.value = 1.5;
     bus.backPlate.frequency.value = 400;
     bus.backPlate.Q.value = 2.5;
-    bus.sparkle.gain.value = 3.2;
+    bus.sparkle.gain.value = 1.5;
     bus.sparkle.frequency.value = 3100;
     bus.sparkle.Q.value = 2.0;
     bus.woodRollOff.frequency.value = 6000;
-    bus.wetGain.gain.value = 0.18;
+    bus.wetGain.gain.value = 0.10;
   }
 }
 
@@ -277,29 +285,39 @@ export interface StringSynthParams {
   velocity: number; // 0-1
   isOctave?: boolean; // for 12-string
   model?: AcousticModel;
+  endTime?: number;
 }
 
-function createStringBuffer(
-  ctx: AudioContext,
+export function renderStringSamples(
+  sampleRate: number,
   params: StringSynthParams
-): AudioBuffer {
+): Float32Array {
   const { freq, stringIndex, isOctave, model = 'dreadnought' } = params;
-  const sampleRate = ctx.sampleRate;
+  if (!Number.isFinite(freq) || freq < 20 || freq > sampleRate / 4) throw new Error('String frequency is outside the synthesis range.');
   const duration = isOctave ? 1.6 : (model === 'nylon' ? 3.2 : 2.8);
   const numSamples = Math.floor(sampleRate * duration);
+  const isNylon = model === 'nylon';
+  const S = isNylon ? 0.44 : (model === 'twelve' ? 0.48 : 0.50);
+  const omega = 2 * Math.PI * freq / sampleRate;
+  const dampingDelay = Math.atan2((1 - S) * Math.sin(omega), 1 - (1 - S) * Math.cos(omega)) / omega;
 
-  // 1. EXACT ALLPASS FRACTIONAL DELAY (Concert-pitch accuracy)
+  // Compensate the actual loop-filter phase, not a fixed half-sample estimate.
   const exactDelay = sampleRate / freq;
-  let N = Math.floor(exactDelay - 0.5);
-  let frac = (exactDelay - 0.5) - N;
+  let N = Math.floor(exactDelay - dampingDelay);
+  let frac = (exactDelay - dampingDelay) - N;
   if (frac < 0.1) {
     N -= 1;
     frac += 1.0;
   }
-  const C = (1 - frac) / (1 + frac);
+  const ratio = Math.tan(omega * frac / 2) / Math.tan(omega / 2);
+  const C = (1 - ratio) / (1 + ratio);
+  let seed = (Math.round(freq * 1000) + stringIndex * 7919 + (isNylon ? 17 : 31)) >>> 0;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 0x100000000 * 2 - 1;
+  };
 
   // 2. PICK STRIKE COMB FILTER
-  const isNylon = model === 'nylon';
   const pluckRatio = isNylon ? 0.20 : (model === 'twelve' ? 0.14 : 0.14);
   const pluckDelay = Math.max(2, Math.round(N * pluckRatio));
 
@@ -308,7 +326,7 @@ function createStringBuffer(
   const noiseSeed = new Float32Array(N + 1);
   let flt = 0;
   for (let i = 0; i <= N; i++) {
-    const raw = Math.random() * 2 - 1;
+    const raw = random();
     flt = flt * pickHardness + raw * (1 - pickHardness);
     noiseSeed[i] = flt;
   }
@@ -322,12 +340,9 @@ function createStringBuffer(
 
   // 4. PHYSICAL STRING DECAY & LOSS FACTORS
   const baseLoss = isNylon ? 0.990 : (model === 'twelve' ? 0.996 : 0.995);
-  const stringLossBonus = (5 - stringIndex) * 0.0006; // lower strings decay slower
+  const stringLossBonus = stringIndex * 0.0006; // 5 = low E; lower strings decay slower
   const lossFactor = Math.min(0.9982, baseLoss + stringLossBonus);
-  const S = isNylon ? 0.44 : (model === 'twelve' ? 0.48 : 0.50); // Internal dispersion damping
-
-  const audioBuffer = ctx.createBuffer(1, numSamples, sampleRate);
-  const channelData = audioBuffer.getChannelData(0);
+  const channelData = new Float32Array(numSamples);
 
   let delayIdx = 0;
   let allpassPrevIn = 0;
@@ -357,13 +372,40 @@ function createStringBuffer(
     let click = 0;
     if (i < clickSamples && !isOctave) {
       const env = Math.exp(-i / (sampleRate * 0.0028));
-      click = (Math.random() * 2 - 1) * (isNylon ? 0.04 : (model === 'twelve' ? 0.08 : 0.12)) * env;
+      click = random() * (isNylon ? 0.01 : 0.025) * env;
     }
 
     channelData[i] = outSample + click;
   }
 
-  return audioBuffer;
+  let mean = 0, peak = 0;
+  for (const sample of channelData) mean += sample;
+  mean /= channelData.length;
+  for (const sample of channelData) peak = Math.max(peak, Math.abs(sample - mean));
+  for (let i = 0; i < channelData.length; i++) {
+    const fade = Math.min(1, i / (sampleRate * 0.001), (channelData.length - 1 - i) / (sampleRate * 0.015));
+    channelData[i] = (channelData[i] - mean) * (peak ? 0.8 / peak : 1) * fade;
+  }
+  return channelData;
+}
+
+const stringBuffers = new WeakMap<BaseAudioContext, Map<string, AudioBuffer>>();
+function createStringBuffer(ctx: AudioContext, params: StringSynthParams): AudioBuffer {
+  let cache = stringBuffers.get(ctx);
+  if (!cache) { cache = new Map(); stringBuffers.set(ctx, cache); }
+  const key = `${params.model}:${params.stringIndex}:${params.freq}:${!!params.isOctave}`;
+  const cached = cache.get(key);
+  if (cached) { cache.delete(key); cache.set(key, cached); return cached; }
+  const samples = renderStringSamples(ctx.sampleRate, params);
+  const buffer = ctx.createBuffer(1, samples.length, ctx.sampleRate);
+  buffer.getChannelData(0).set(samples);
+  let bytes = [...cache.values()].reduce((sum, b) => sum + b.length * 4, buffer.length * 4);
+  for (const [oldKey, old] of cache) {
+    if (bytes <= 8 * 1024 * 1024) break;
+    cache.delete(oldKey); bytes -= old.length * 4;
+  }
+  cache.set(key, buffer);
+  return buffer;
 }
 
 export function playAcousticString(
@@ -371,12 +413,12 @@ export function playAcousticString(
   bus: AcousticBus,
   params: StringSynthParams
 ): AudioBufferSourceNode {
-  const { freq: _freq, startTime, stringIndex, velocity, isOctave, model = 'dreadnought' } = params;
+  const { freq: _freq, startTime, stringIndex, velocity, isOctave, model = bus.model } = params;
   const now = Math.max(ctx.currentTime + 0.004, startTime);
   const duration = isOctave ? 1.6 : (model === 'nylon' ? 3.2 : 2.8);
 
   // Create physical string buffer
-  const audioBuffer = createStringBuffer(ctx, params);
+  const audioBuffer = createStringBuffer(ctx, { ...params, model });
 
   // Playback
   const bufferSource = ctx.createBufferSource();
@@ -386,9 +428,15 @@ export function playAcousticString(
   const stringGain = ctx.createGain();
   const peakVol = 0.55 * velocity * (isOctave ? 0.6 : 1.0);
   stringGain.gain.setValueAtTime(0.0001, now);
-  stringGain.gain.linearRampToValueAtTime(peakVol, now + 0.003);
-  stringGain.gain.exponentialRampToValueAtTime(peakVol * 0.35, now + 0.20);
-  stringGain.gain.exponentialRampToValueAtTime(0.00001, now + duration);
+  const end = params.endTime ?? now + duration;
+  const length = Math.max(0.001, end - now);
+  const attackEnd = now + Math.min(0.003, length * 0.1);
+  const decayEnd = now + Math.min(0.20, length * 0.6);
+  const releaseStart = Math.max(decayEnd, end - Math.min(0.025, length * 0.25));
+  stringGain.gain.linearRampToValueAtTime(peakVol, attackEnd);
+  stringGain.gain.exponentialRampToValueAtTime(peakVol * 0.35, decayEnd);
+  stringGain.gain.exponentialRampToValueAtTime(0.00001, params.endTime === undefined ? end : releaseStart);
+  if (params.endTime !== undefined) stringGain.gain.linearRampToValueAtTime(0, end);
 
   // Stereo Panorama: Spatialize strings across acoustic soundstage
   let panner: StereoPannerNode | null = null;
@@ -411,6 +459,8 @@ export function playAcousticString(
   }
 
   bufferSource.start(now);
+  if (params.endTime !== undefined) bufferSource.stop(end);
+  bufferSource.addEventListener('ended', () => { bufferSource.disconnect(); stringGain.disconnect(); panner?.disconnect(); }, { once: true });
   return bufferSource;
 }
 
@@ -423,7 +473,7 @@ export interface StrumParams {
   style: StrumStyle;
   velocity: number;
   tuning: StringTuning[];
-  model: AcousticModel;
+  model?: AcousticModel;
   startTime?: number;
   endTime?: number;
   humanize?: boolean;
@@ -434,7 +484,7 @@ export function strumChord(
   bus: AcousticBus,
   params: StrumParams
 ): AudioBufferSourceNode[] {
-  const { frets, style, velocity, tuning, model, startTime } = params;
+  const { frets, style, velocity, tuning, model = bus.model, startTime } = params;
   const now = startTime ?? (ctx.currentTime + 0.015);
 
   const activeStrings: Array<{ index: number; fret: number }> = [];
@@ -483,19 +533,22 @@ export function strumChord(
       stringIndex: s,
       velocity: strVel,
       model,
+      endTime: params.endTime,
     });
     sources.push(source);
 
     // In 12-string mode, trigger octave chorus pair on lower 4 strings
     if (model === 'twelve' && s >= 2) {
-      playAcousticString(ctx, bus, {
+      const octave = playAcousticString(ctx, bus, {
         freq: freq * 2.002, // slight detune for chorus
         startTime: now + delay + 0.004,
         stringIndex: s,
         velocity: strVel * 0.65,
         isOctave: true,
         model,
+        endTime: params.endTime,
       });
+      sources.push(octave);
     }
   });
 

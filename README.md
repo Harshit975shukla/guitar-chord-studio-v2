@@ -17,6 +17,7 @@ Production checks:
 npm run build
 npm run test:detection
 npm run test:songs
+npm run test:audio
 npm run preview
 ```
 
@@ -101,13 +102,33 @@ Beats are quarter-note units, **1/64–128 per event**; BPM is 20–400 and up t
 
 ## Song Finder and imports
 
-Finder searches the **local bundled catalog and device imports only**, with title/artist matching, typo tolerance, Unicode queries, and Chords / Tabs-note-events / Imported filters. Punctuation-only input does not match everything. Results report what actually exists: simplified chord charts, melody excerpts (not full tabs), imported source-only text, and approximate versus explicitly authored timing. Explicit timing means supplied event data, not transcription accuracy verified against a recording. Opening a result loads its exact ID in an available part; unknown IDs show an error instead of opening a different song.
+Finder searches **chord charts** in the local bundled catalog and device imports, with title/artist matching, typo tolerance, Unicode queries, and all/imported chord filters. Note-only excerpts and source-only tabs remain accessible through Play Along, not chord-search results. Punctuation-only input does not match everything. Results distinguish simplified/imported charts and approximate versus explicitly authored timing. Explicit timing means supplied event data, not transcription accuracy verified against a recording. Opening a result loads its exact ID with the chord part preferred; an explicitly authored mixed-event document retains its arrangement. Unknown IDs show an error instead of opening a different song. A meaningful query also offers a user-clicked Google chord search, clearly labeled as external; pages are not fetched or copied into the catalog.
 
 **Import your chart / timing JSON** accepts bracketed ChordPro-style chords, chord-only lines, chords above words, raw source-tab text, or the timing/export JSON above. Chord order and repetitions are retained across lines; `chordsUsed` is only an inventory, never an invented arrangement. Existing melody data uses per-line notes when supplied, otherwise its global lead-note list once. Chord sheets without authored timing use an explicitly approximate two beats per chord. ASCII tabs, bends/slides and other techniques are preserved as source text with an explicit limitation, not fabricated playable tabs; use the timing editor to author supported note events. `{title: ...}`, `{artist: ...}`, `{key: ...}`, `{source: ...}` and `{version: ...}` metadata are retained when supplied.
 
 Custom song saving, searching and loading share the canonical `guitar_studio_custom_songs` store and read the legacy `guitar_custom_songs` store without deleting/migrating it. Conflicting versions receive distinct IDs rather than disappearing; a new save does not trim older imports. Malformed storage and save failures are surfaced instead of claiming success. No external scraping, AI title-to-chord guesses, online provider credentials or unlimited catalog coverage are implied.
 
 `npm run test:songs` exercises pure timeline integration, transport boundaries/cancellation, performance rearming and matching, catalog ranking/IDs, non-destructive storage compatibility and import/export roundtrips with deterministic original fixtures.
+
+## Local recording analysis and YouTube references
+
+In **Song finder**, choose an **MP3 or WAV** recording and **Analyze on this device**. The first release supports up to **30 MB / 5 minutes** and rejects larger files rather than truncating them. Browser-native decoding resamples the audio, then a cancellable Web Worker runs our own FFT and the app's existing chroma/chord-template helpers. No audio is uploaded, no AI service or account is required, and no new model, sample pack or third-party dependency is included.
+
+The output is an **unverified draft**, not tablature or a licensed song arrangement. It shows estimated chord regions, silence, uncertain regions, template match scores (not accuracy percentages), and global **major/minor key / parent-scale candidates**. Relative keys can be ambiguous; modal music, key changes, vocals, dense mixes, unusual tunings and poor recordings can mislead this lightweight analyzer. An uncertain key stays unconfirmed in Play Along rather than being presented as C major.
+
+Listen using the local recording control and correct region chord names directly. Enter `Rest` for silence or `?` for uncertainty. Saving remaining uncertain regions as rests requires explicit acknowledgement. **Reference BPM is selected by the user, not detected**: it maps seconds into the timing editor's beat units. Song timing preserves the draft's durations at that reference BPM. Unsupported region lengths/counts are reported rather than silently reshaped. The saved draft includes source filename, key candidates and uncertainty notes; the audio file itself is not persisted in the app catalog. Use **Clear recording** to release the preview, or reselect the file after reloading.
+
+Analysis can be cancelled, and leaving the section cancels in-flight work and pauses reference playback. Decode failures, oversized files and worker errors are reported without restoring stale results. Pure silence/noise does not create a playable song.
+
+**YouTube reference** accepts standard HTTPS video, short, live and youtu.be links. It loads YouTube's official privacy-enhanced embed only after **Load reference**; it does not auto-play. This does contact YouTube, unlike local file analysis. Cross-origin player audio cannot be read by this app, so a YouTube link alone does **not** generate chords or a scale. There is no ripping/downloading service or automatic synchronization. Use a matching recording you are allowed to analyze, and open the video on YouTube if embedding is unavailable. Removing the video or leaving the section unloads its player.
+
+## Original synthesized guitar sound
+
+The guitar still uses our own physical-model synthesis, **not copied Musicca samples**. All note and strum paths now default to the selected acoustic-bus model; changing nylon/steel/twelve-string also updates the body response. Deterministic excitation, DC removal, click-safe buffer edges, loop-filter pitch compensation and gentler resonant filtering replace the noisier/inconsistent paths. An 8 MB per-context LRU buffer cache avoids regenerating repeated notes. Timed notes release within their event boundary, and twelve-string octave sources are included in cancellation.
+
+These changes improve measurable consistency, tuning and release behavior; they do not establish equivalence to a professionally sampled acoustic guitar. Listening comparisons should use matched volume and the same notes/strums.
+
+`npm run test:audio` checks synthesis repeatability, pitch, waveform bounds, offline chord/key suggestions, silence/noise rejection, draft timing and YouTube URL validation using original synthetic signals. `scripts/analysis-browser-checks.mjs` adds real browser MP3 decoding with original silent frames, WAV-to-worker-to-draft flow, no-upload checks, cancellation/errors, model/cache/release checks, safe reference embeds and 320px controls. YouTube media availability and real-song recognition accuracy remain dependent on the recording/device and are not established by synthetic checks.
 
 Before publishing, build and run the existing detection smoke tests, then check:
 

@@ -1,5 +1,5 @@
 import { saveCustomSong } from '../storage';
-import { importSong, searchSongs, type CatalogSong, type FinderFilters } from '../songs/catalog';
+import { importSong, searchSongs, searchText, type CatalogSong, type FinderFilters } from '../songs/catalog';
 import { validateTiming, type SongTiming } from '../songs/timing';
 
 interface SongTools {
@@ -99,23 +99,28 @@ export function initSongTools(tools: SongTools): void {
     results.style.display = 'block';
     const filters: FinderFilters = {
       field: field.value === 'title' || field.value === 'artist' ? field.value : 'all',
-      content: content.value === 'chords' || content.value === 'tabs' || content.value === 'imported' ? content.value : 'all',
+      content: content.value === 'imported' ? 'imported' : 'chords',
     };
+    const web = document.getElementById('song-web-search') as HTMLAnchorElement;
+    const meaningful = /[\p{L}\p{N}]/u.test(searchText(searchInput.value));
+    web.hidden = !meaningful;
+    if (meaningful) web.href = `https://www.google.com/search?q=${encodeURIComponent(`${searchInput.value.trim()} guitar chords`)}`;
+    else web.removeAttribute('href');
     try {
-      const songs = searchSongs(tools.catalog(), searchInput.value, filters);
-      message('song-search-status', songs.length ? `${songs.length} local results. Chord charts and melody excerpts are not verified full arrangements.` : 'No local matches. Try a title or artist, or import your own chart/timing JSON. This is not an online tab search.');
+      const songs = searchSongs(tools.catalog().filter(song => song.availability.chords), searchInput.value, filters);
+      message('song-search-status', songs.length ? `${songs.length} local chord results. These charts are not verified full arrangements.` : 'No local matches. Try a title or artist, analyze a recording, or use the external chord search. Online pages are not automatically copied.');
       for (const song of songs) {
         const card = document.createElement('article');
         card.className = 'song-search-result';
         const title = document.createElement('h3'); title.textContent = song.title;
         const artist = document.createElement('p'); artist.textContent = song.artist;
-        const capability = document.createElement('p'); capability.textContent = song.availability.labels.join(' · ');
+        const capability = document.createElement('p');
+        capability.textContent = `${song.isCustom ? 'Imported chord chart' : 'Simplified chord chart'} · ${song.timing ? 'Explicit timing · not verified' : 'Approximate timing'}`;
         const provenance = document.createElement('p'); provenance.textContent = [song.source, song.versionLabel].filter(Boolean).join(' · ');
         const button = document.createElement('button');
         button.className = 'btn btn-secondary'; button.dataset.songId = song.id;
-        const part = filters.content === 'tabs' ? 'notes' : song.availability.chords ? 'chords' : 'notes';
-        button.textContent = song.availability.chords || song.availability.tabs ? 'Open available chart' : 'Open source text';
-        button.onclick = () => tools.open(song.id, part);
+        button.textContent = 'Open chord chart';
+        button.onclick = () => tools.open(song.id, 'chords');
         card.append(title, artist, capability, provenance, button);
         results.append(card);
       }

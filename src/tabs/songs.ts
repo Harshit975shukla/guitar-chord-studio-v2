@@ -932,6 +932,7 @@ export class SongStudio {
   private transposeSemis = 0;
   private keyTonicPc = 0;
   private keyIsMinor = true;
+  private keyKnown = true;
   private timeline: SongTiming | null = null;
   private timingMode: TimingMode = 'song';
   private speed = 1;
@@ -1223,8 +1224,9 @@ export class SongStudio {
   }
 
   private parseSongKey(): void {
-    const key = String(this.activeSong?.key || 'C');
-    const m = key.match(/([A-G][#b]?)/);
+    const key = String(this.activeSong?.key || '');
+    const m = key.match(/^([A-G][#b]?)(?:\s|$|m)/);
+    this.keyKnown = !!m;
     this.keyTonicPc = m && NOTE_TO_PC[m[1]] !== undefined ? NOTE_TO_PC[m[1]] : 0;
     this.keyIsMinor = /min|minor|\bm\b/i.test(key) || /minor/i.test(key);
   }
@@ -1239,7 +1241,8 @@ export class SongStudio {
       const pc = (this.keyTonicPc + semi) % 12;
       const opt = document.createElement('option');
       opt.value = String(semi);
-      opt.textContent = `${PC_NAMES[pc]} ${mode}` + (semi === 0 ? ' (original)' : '');
+      opt.textContent = this.keyKnown ? `${PC_NAMES[pc]} ${mode}` + (semi === 0 ? ' (original)' : '')
+        : semi === 0 ? 'Original pitch (key unconfirmed)' : `+${semi} semitone${semi === 1 ? '' : 's'}`;
       sel.appendChild(opt);
     }
     sel.value = String(this.transposeSemis);
@@ -1450,11 +1453,11 @@ export class SongStudio {
     if (event.type === 'note') {
       const note = resolveSongNote(event, this.tuning, transpose ? this.transposeSemis : 0);
       if (!note) return () => {};
-      sources = [playAcousticString(ctx, bus, { freq: 440 * 2 ** ((note.midi - 69) / 12), stringIndex: note.s, startTime: start, velocity: 0.9 })];
+      sources = [playAcousticString(ctx, bus, { freq: 440 * 2 ** ((note.midi - 69) / 12), stringIndex: note.s, startTime: start, endTime: end, velocity: 0.9 })];
     } else {
       const frets = this.getChordFrets(transposeChordName(event.chord, this.transposeSemis));
       if (!frets) return () => {};
-      sources = strumChord(ctx, bus, { frets, style, velocity: 0.85, tuning: this.tuning, model: 'dreadnought', startTime: start, endTime: end, humanize: false });
+      sources = strumChord(ctx, bus, { frets, style, velocity: 0.85, tuning: this.tuning, startTime: start, endTime: end, humanize: false });
     }
     for (const source of sources) {
       this.sources.add(source);
@@ -1618,7 +1621,8 @@ export class SongStudio {
     const artist = song.artist || song.singer || 'Acoustic';
     const album = song.album || song.movie || '';
     const keyLabel = this.transposeSemis
-      ? `${PC_NAMES[(this.keyTonicPc + this.transposeSemis) % 12]} ${this.keyIsMinor ? 'Minor' : 'Major'} (transposed ${this.transposeSemis > 0 ? '+' : ''}${this.transposeSemis})`
+      ? this.keyKnown ? `${PC_NAMES[(this.keyTonicPc + this.transposeSemis) % 12]} ${this.keyIsMinor ? 'Minor' : 'Major'} (transposed +${this.transposeSemis})`
+        : `Unconfirmed key · transposed +${this.transposeSemis} semitones`
       : song.key;
     if (metaEl) metaEl.textContent = `Artist: ${artist}${album ? ' • Album: ' + album : ''} • Key: ${keyLabel}`;
     if (keyEl) keyEl.textContent = keyLabel;

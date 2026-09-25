@@ -197,7 +197,8 @@ export async function checkSongs({ check, evaluate, send, until, show, screensho
       const opened = appState.songStudio.activeSongId;
       const selector = document.getElementById('song-selector-select').value;
       window.switchTab('search');
-      document.getElementById('song-search-content').value = 'tabs';
+      document.getElementById('song-search-content').value = 'chords';
+      document.getElementById('search-song-input').value = 'Copper Timing Exercise';
       document.getElementById('btn-search-song').click();
       const tabsResults = document.querySelectorAll('#search-results button').length;
       document.getElementById('search-song-input').value = '...';

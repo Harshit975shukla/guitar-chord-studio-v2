@@ -9,6 +9,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { checkScales } from './scales-browser-checks.mjs';
 import { checkSongs } from './songs-browser-checks.mjs';
+import { checkAudioAnalysis } from './analysis-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -18,6 +19,7 @@ await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = rejec
 let id = 0;
 const pending = new Map();
 const errors = [];
+const requests = [];
 ws.onmessage = event => {
   const message = JSON.parse(event.data);
   if (message.id) {
@@ -29,6 +31,8 @@ ws.onmessage = event => {
     else request.resolve(message.result);
   } else if (message.method === 'Runtime.exceptionThrown') {
     errors.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
+  } else if (message.method === 'Network.requestWillBeSent') {
+    requests.push({ url: message.params.request.url, method: message.params.request.method });
   }
 };
 function send(method, params = {}) {
@@ -86,6 +90,7 @@ async function screenshot(name) {
 
 try {
   await send('Runtime.enable');
+  await send('Network.enable');
   await send('Page.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `if (location.origin === ${JSON.stringify(new URL(appUrl).origin)}) localStorage.clear();` });
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -176,6 +181,7 @@ try {
   await screenshot('songs-desktop');
 
   await checkSongs({ check, evaluate, send, until, show, screenshot });
+  await checkAudioAnalysis({ check, evaluate, send, until, show, screenshot, requests });
   await checkScales({ check, evaluate, send, until, show, screenshot });
 
   await check('held results do not score, send MIDI, log chords or paint live pitches', async () => {
