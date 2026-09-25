@@ -1,8 +1,8 @@
 // Service Worker for Guitar Chord Studio v2
 // Provides offline support, subpath compatibility, and instant updates
 
-// C06SDPCB is replaced at build time with the bundle hash (scripts/stamp-sw.mjs)
-const CACHE_NAME = 'guitar-studio-C06SDPCB';
+// skI-q6nL is replaced at build time with the bundle hash (scripts/stamp-sw.mjs)
+const CACHE_NAME = 'guitar-studio-skI-q6nL';
 
 const getBasePath = () => {
   const path = self.location.pathname;
