@@ -1,6 +1,7 @@
 import { DetectionEngine } from '../detection/engine';
 import { NOTE_NAMES, type Song } from '../types';
 import { validateTiming } from '../songs/timing';
+import { suggestStrumming, type StrummingAnalysis } from '../rhythm/strumming';
 
 export const ANALYSIS_RATE = 22050;
 export const MAX_AUDIO_SECONDS = 300;
@@ -25,6 +26,7 @@ export interface AudioAnalysis {
   regions: ChordRegion[];
   keys: KeySuggestion[];
   keyUncertain: boolean;
+  strumming?: StrummingAnalysis;
 }
 export type AnalysisResponse =
   | { type: 'progress'; percent: number }
@@ -140,8 +142,9 @@ export function analyzePcm(samples: Float32Array, onProgress: (percent: number) 
     if (frame % 20 === 0) onProgress(Math.round((frame + 1) / frames * 100));
   }
   const keys = suggestKeys(profile);
+  const strumming = suggestStrumming(samples, ANALYSIS_RATE);
   onProgress(100);
-  return { duration, regions, keys, keyUncertain: keys.length < 2 || keys[0].fit < 0.65 || keys[0].fit - keys[1].fit < 0.08 };
+  return { duration, regions, keys, strumming, keyUncertain: keys.length < 2 || keys[0].fit < 0.65 || keys[0].fit - keys[1].fit < 0.08 };
 }
 
 export function analysisToSong(result: AudioAnalysis, title: string, source: string, bpm: number, allowUnknownRests: boolean, id: string): Song {

@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { checkScales } from './scales-browser-checks.mjs';
 import { checkSongs } from './songs-browser-checks.mjs';
 import { checkAudioAnalysis } from './analysis-browser-checks.mjs';
+import { checkStrumming } from './strumming-browser-checks.mjs';
 import { checkPractice } from './practice-browser-checks.mjs';
 import { checkTwoOctaves } from './two-octave-browser-checks.mjs';
 
@@ -186,6 +187,7 @@ try {
 
   await checkSongs({ check, evaluate, send, until, show, screenshot });
   await checkAudioAnalysis({ check, evaluate, send, until, show, screenshot, requests });
+  await checkStrumming({ check, evaluate, send, until, screenshot });
   await checkScales({ check, evaluate, send, until, show, screenshot });
   await checkPractice({ check, evaluate, send, until, show, screenshot });
   await checkTwoOctaves({ check, evaluate, send, until, show, screenshot });

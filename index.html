@@ -1722,30 +1722,39 @@
     <div style="padding: var(--space-xl);">
       <div class="card" style="max-width: 800px; margin: 0 auto;">
         <div class="card-header"><div class="card-title"><span>🎯</span> Chord Change Drill</div></div>
+        <div id="drill-settings">
+        <div class="song-timing-controls">
+          <label for="drill-practice-mode">Exercise</label>
+          <select id="drill-practice-mode">
+            <option value="match">Chord match — advance after matching</option>
+            <option value="rhythm">Rhythm pattern — change on the bar</option>
+          </select>
+        </div>
+        <p class="song-data-status">Tempo and bars control Rhythm pattern mode. Chord match remains self-paced.</p>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-md); margin-bottom: var(--space-lg);">
           <div>
             <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Key</label>
-            <select class="rhythm-select-pill" id="drill-key" style="width:100%;"></select>
+            <select class="rhythm-select-pill" id="drill-key" aria-label="Drill key" style="width:100%;"></select>
           </div>
           <div>
             <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Scale</label>
-            <select class="rhythm-select-pill" id="drill-mode" style="width:100%;">
+            <select class="rhythm-select-pill" id="drill-mode" aria-label="Drill scale" style="width:100%;">
               <option value="major">Major</option>
               <option value="minor">Minor</option>
             </select>
           </div>
           <div>
             <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Progression</label>
-            <select class="rhythm-select-pill" id="drill-progression-type" style="width:100%;"></select>
+            <select class="rhythm-select-pill" id="drill-progression-type" aria-label="Chord progression" style="width:100%;"></select>
           </div>
           <div>
             <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">BPM</label>
-            <input type="range" id="drill-bpm" min="50" max="160" value="80" style="width:100%;" oninput="document.getElementById('drill-bpm-val').textContent=this.value+' BPM'">
+            <input type="range" id="drill-bpm" aria-label="Chord-change tempo in beats per minute" min="50" max="160" value="80" style="width:100%;" oninput="document.getElementById('drill-bpm-val').textContent=this.value+' BPM'">
             <div style="text-align:right; font-size:0.8rem; color:var(--accent-gold);" id="drill-bpm-val">80 BPM</div>
           </div>
           <div>
             <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Bars per Chord</label>
-            <select class="rhythm-select-pill" id="drill-bars-per-chord" style="width:100%;">
+            <select class="rhythm-select-pill" id="drill-bars-per-chord" aria-label="Bars per chord" style="width:100%;">
               <option value="1">1 Bar</option>
               <option value="2" selected>2 Bars</option>
               <option value="4">4 Bars</option>
@@ -1753,7 +1762,16 @@
           </div>
           <div>
             <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Total Changes</label>
-            <input type="number" id="drill-total-chords" min="4" max="64" value="16" style="width:100%; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border-light); border-radius:8px; color:#fff;">
+            <input type="number" id="drill-total-chords" aria-label="Total chord changes" min="4" max="64" value="16" style="width:100%; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border-light); border-radius:8px; color:#fff;">
+          </div>
+          <div id="drill-rhythm-settings" class="song-timing-controls" hidden>
+            <label for="drill-pattern">Strumming pattern</label>
+            <select id="drill-pattern"></select>
+            <label for="drill-count-in">Count-in</label>
+            <select id="drill-count-in"><option value="0">None</option><option value="1" selected>1 bar</option><option value="2">2 bars</option></select>
+            <label><input id="drill-rhythm-clicks" type="checkbox"> Audible rhythm clicks</label>
+            <label><input id="drill-check-chords" type="checkbox"> Check chord matches with microphone</label>
+          </div>
           </div>
         </div>
         <!-- Live preview of the realized progression + diatonic chords for the selected key -->
@@ -1768,9 +1786,16 @@
           <button class="btn btn-secondary" id="btn-stop-drill" disabled><span>⏹️</span> Stop</button>
           <button class="btn btn-secondary" id="btn-next-drill-chord" disabled><span>⏭️</span> Next Chord</button>
         </div>
+        <p id="drill-rhythm-status" class="song-data-status" role="status">Choose a chord-matching or rhythm exercise.</p>
+        <div id="drill-pattern-preview" hidden>
+          <div id="drill-pattern-grid" class="strumming-grid" role="group" aria-label="Strumming pattern"></div>
+          <p id="drill-rhythm-position" class="song-data-status">Ready</p>
+          <p class="song-data-status">Next chord: <strong id="drill-next-chord">—</strong></p>
+          <p class="song-data-status">4/4 counts: 1 &amp; 2 &amp; 3 &amp; 4 &amp;. ↓ down, ↑ up, — no stroke. Directions are practice instructions, not measured movements. Optional microphone checks chord identity only—not strum direction or rhythm accuracy. Use headphones with audible clicks.</p>
+        </div>
         <div style="text-align:center; font-size:3rem; font-weight:900; color:var(--accent-gold); min-height:120px; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); border-radius:var(--radius-lg); border:2px solid var(--border-light);" id="drill-current-chord">—</div>
-        <div style="margin-top:var(--space-md); display:flex; justify-content:center; gap:var(--space-lg); color:var(--text-muted); font-size:0.9rem;">
-          <span>Accuracy: <strong id="drill-accuracy" style="color:var(--accent-emerald);">—%</strong></span>
+        <div class="drill-results" style="margin-top:var(--space-md); display:flex; justify-content:center; gap:var(--space-lg); color:var(--text-muted); font-size:0.9rem;">
+          <span>Chord matches: <strong id="drill-accuracy" style="color:var(--accent-emerald);">—%</strong></span>
           <span>Avg Latency: <strong id="drill-latency" style="color:var(--accent-cyan);">— ms</strong></span>
           <span>Streak: <strong id="drill-streak" style="color:var(--accent-gold);">0</strong></span>
         </div>
@@ -1805,6 +1830,10 @@
         <div id="analysis-results" hidden>
           <h3>Suggested key</h3>
           <p id="analysis-key" class="song-data-status"></p>
+          <h3>Suggested strumming pattern</h3>
+          <p id="analysis-strumming-status" class="song-data-status"></p>
+          <div id="analysis-strumming-results"></div>
+          <p class="song-data-status">These 4/4 practice patterns match possible attack timing, not a proven guitar transcription. Down/up directions and bar alignment are suggestions. Choosing a pattern opens Chord Changes for review; it does not change your saved chart or its reference BPM.</p>
           <h3 id="analysis-chords-heading">Estimated chords</h3>
           <p class="song-data-status">Check each region against the recording. Enter a chord, <strong>Rest</strong> for silence, or <strong>?</strong> where unsure. Match scores are not accuracy percentages. Key candidates refer to the overall recording, not guaranteed modes or key changes.</p>
           <div class="analysis-table-scroll">

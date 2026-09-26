@@ -43,6 +43,9 @@ jobs:
       - name: Positions and scale-practice regression tests
         run: npm run test:practice
 
+      - name: Strumming and rhythm-drill regression tests
+        run: npm run test:strumming
+
       - name: Build
         run: npm run build
 

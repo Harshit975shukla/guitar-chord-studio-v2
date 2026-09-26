@@ -19,6 +19,7 @@ npm run test:detection
 npm run test:songs
 npm run test:audio
 npm run test:practice
+npm run test:strumming
 npm run preview
 ```
 
@@ -157,6 +158,14 @@ The section supports up to **30 MB / 5 minutes** and rejects larger files rather
 
 The output uses **Suggested key** and **Estimated chords** headings. It is an **unverified draft**, not tablature or a licensed song arrangement. It includes estimated chord regions, silence, uncertain regions, template match scores (not accuracy percentages), and global major/minor key candidates. Relative keys can be ambiguous; modal music, key changes, vocals, dense mixes, unusual tunings and poor recordings can mislead this lightweight analyzer. An uncertain key stays unconfirmed in Play Along rather than being presented as C major.
 
+### Suggested strumming pattern
+
+The same permission-gated, on-device analysis can suggest a few common strumming patterns from repeated attack timing. The first release compares **4/4 eighth-note grids at 50–160 BPM**, with at least eight attacks spanning four seconds in a recording of at least six seconds. A clean 10–20 second guitar rhythm is a better input than a full band mix. Silence, sustained tones, too few attacks and irregular evidence return an explicit unavailable message rather than a fabricated pattern.
+
+**Down/up directions are suggested practice motions, not detected hand movements.** The first beat, meter and half/double-tempo interpretation can be ambiguous, and drums may dominate the attacks. “Rhythm fit” is a template score, not an accuracy probability. Review the suggestion by listening. These suggestions do not automatically overwrite the draft's Reference BPM, chord timing or saved song metadata.
+
+**Practise this pattern in Chord Changes** copies that pattern and its estimated BPM into the exercise controls. It does not start playback or request the microphone; choose the key/progression and review the settings first. The pattern library is also available manually even when analysis cannot suggest a rhythm.
+
 Listen using the local recording control and correct region chord names directly. Enter `Rest` for silence or `?` for uncertainty. Saving remaining uncertain regions as rests requires explicit acknowledgement. **Reference BPM is selected by the user, not detected**: it maps seconds into the timing editor's beat units. Song timing preserves the draft's durations at that reference BPM. Unsupported region lengths/counts are reported rather than silently reshaped. The saved draft includes source filename, key candidates and uncertainty notes; the audio file itself is not persisted in the app catalog. Use **Clear recording** to release the preview, or reselect the file after reloading.
 
 Analysis can be cancelled, and leaving the section cancels in-flight work and pauses reference playback. Confirmation for the same selected file can be used for retry during that visit; changing/clearing the file or reloading requires a fresh confirmation. Decode failures, oversized files and worker errors are reported without restoring stale results. Pure silence/noise does not create a playable song.
@@ -170,6 +179,19 @@ The guitar still uses our own physical-model synthesis, **not copied Musicca sam
 These changes improve measurable consistency, tuning and release behavior; they do not establish equivalence to a professionally sampled acoustic guitar. Listening comparisons should use matched volume and the same notes/strums.
 
 `npm run test:audio` checks synthesis repeatability, pitch, waveform bounds, offline chord/key suggestions, silence/noise rejection, draft timing and YouTube URL validation using original synthetic signals. `scripts/analysis-browser-checks.mjs` adds per-file confirmation and keyboard access, blocked preview/decoding before permission, withdrawal during pending reads, actual browser MP3 decoding, WAV-to-worker-to-draft flow, no-upload checks, cancellation/errors, retained Play Along songs, model/cache/release checks, safe reference embeds and 320px controls. YouTube media availability and real-song recognition accuracy remain dependent on the recording/device and are not established by synthetic checks.
+
+## Strumming in Chord Changes
+
+**More tools → Chord changes → Exercise** offers two modes:
+
+- **Chord match** retains the self-paced microphone exercise: match the chord, then advance.
+- **Rhythm pattern** follows the selected BPM, count-in and bars per chord. The eight-slot **1 & 2 & 3 & 4 &** grid highlights down/up/no-stroke instructions and previews the next chord. Each chord stays for its full bar allocation; a match does not advance the clock early.
+
+Rhythm mode starts with chord checking and audible clicks off. Optional **Audible rhythm clicks** play the count-in beats and the pattern's attack rhythm, not a synthesized target chord. Use headphones. Optional **Check chord matches with microphone** requests microphone access and checks one fresh, exact root/quality performance per chord window, including the sounding capo transposition. Alternate candidates, held displays and pre-target attacks do not count as matches. Chord windows overlapping microphone calibration are not penalized as misses.
+
+The score measures **chord matches only**, not strumming direction, accents or rhythmic accuracy. With checking off, the score is blank rather than a claimed success/failure. Stop, Next, tab/page exit, tuning/capo changes and cancelled starts invalidate pending timers/clicks. Next begins the next chord's bar; it does not leave the old pulse running. Microphone denial or disconnection is shown explicitly; users can retry or choose rhythm practice without checking. The existing chord-match mode's delayed advancement is also cancelled on Stop/Next.
+
+`npm run test:strumming` validates deterministic attack inference, unavailable/irregular input handling and count-in/bar schedules. `scripts/strumming-browser-checks.mjs` covers permission-gated recording → suggestion → exercise, exact click scheduling, bar transitions, cancellation, chord-checking boundaries, microphone failure and mobile layout. Real-guitar strum-direction or rhythm-grading accuracy is not claimed.
 
 Before publishing, build and run the existing detection smoke tests, then check:
 

@@ -2,6 +2,7 @@ import { ANALYSIS_RATE, MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS, analysisToSong, type
 import { youtubeVideoId } from '../analysis/youtube';
 import { chordIdentity } from '../songs/timing';
 import { saveCustomSong } from '../storage';
+import { getStrummingPattern, patternNotation, type StrummingCandidate } from '../rhythm/strumming';
 
 function element<T extends HTMLElement>(id: string): T { return document.getElementById(id) as T; }
 
@@ -16,7 +17,7 @@ export class AudioAnalysisController {
   private invalidRegions = new Set<number>();
   private abort = new AbortController();
 
-  constructor(private openSong: (id: string) => void, private pauseSong: () => void) {
+  constructor(private openSong: (id: string) => void, private pauseSong: () => void, private practicePattern: (candidate: StrummingCandidate) => void) {
     const events = { signal: this.abort.signal };
     element<HTMLInputElement>('analysis-file').addEventListener('change', () => this.selectFile(), events);
     element<HTMLInputElement>('analysis-rights').checked = false;
@@ -61,6 +62,8 @@ export class AudioAnalysisController {
     this.invalidRegions.clear();
     element('analysis-key').textContent = '';
     element('analysis-regions').replaceChildren();
+    element('analysis-strumming-results').replaceChildren();
+    element('analysis-strumming-status').textContent = '';
     element('analysis-results').hidden = true;
     element<HTMLInputElement>('analysis-allow-unknown').checked = false;
     element<HTMLProgressElement>('analysis-progress').value = 0;
@@ -198,6 +201,31 @@ export class AudioAnalysisController {
       : 'No reliable major/minor key suggestion. Silence, noise or too few distinct notes.';
     const unknown = result.regions.filter(region => region.kind === 'uncertain').length;
     this.status(`Draft ready: ${result.regions.length} regions over ${result.duration.toFixed(1)} seconds; ${unknown} need review. Estimates are not verified song chords, rhythm or tabs.`);
+    element('analysis-strumming-status').textContent = result.strumming?.message || 'No strumming suggestion is available for this recording.';
+    const patterns = element('analysis-strumming-results');
+    patterns.replaceChildren();
+    for (const candidate of result.strumming?.candidates || []) {
+      const pattern = getStrummingPattern(candidate.patternId);
+      const item = document.createElement('div');
+      item.className = 'strumming-suggestion';
+      const label = document.createElement('p');
+      label.textContent = `${pattern.name} · about ${candidate.bpm} BPM · rhythm fit ${Math.round(candidate.fit * 100)}/100 (not accuracy)`;
+      const strokes = document.createElement('p');
+      strokes.className = 'strumming-notation';
+      strokes.textContent = patternNotation(pattern);
+      const use = document.createElement('button');
+      use.className = 'btn btn-secondary';
+      use.dataset.patternId = candidate.patternId;
+      use.textContent = 'Practise this pattern in Chord Changes';
+      use.onclick = () => {
+        if (!this.hasPermission() || this.result !== result) {
+          this.status('Analyze the currently confirmed recording before using a suggestion.');
+          return;
+        }
+        this.practicePattern(candidate);
+      };
+      item.append(label, strokes, use); patterns.append(item);
+    }
     const rows = element('analysis-regions');
     rows.replaceChildren();
     result.regions.forEach((region, index) => {

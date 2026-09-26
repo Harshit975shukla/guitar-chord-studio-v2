@@ -590,9 +590,10 @@ export function playSingleNote(
 
 export function playMetronomeClick(
   ctx: AudioContext,
-  isAccent: boolean = false
-): void {
-  const now = ctx.currentTime;
+  isAccent: boolean = false,
+  startTime: number = ctx.currentTime
+): () => void {
+  const now = startTime;
 
   // Resonant wood block click
   const osc = ctx.createOscillator();
@@ -616,6 +617,14 @@ export function playMetronomeClick(
 
   osc.start(now);
   osc.stop(now + 0.08);
+  let disposed = false;
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
+    osc.disconnect(); filter.disconnect(); gain.disconnect();
+  };
+  osc.addEventListener('ended', cleanup, { once: true });
+  return () => { if (!disposed) { osc.stop(); cleanup(); } };
 }
 
 export function playInTuneChime(ctx: AudioContext): void {

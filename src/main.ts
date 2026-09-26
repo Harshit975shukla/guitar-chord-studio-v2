@@ -85,6 +85,9 @@ import { LibraryNeck } from './ui/libraryNeck';
 import { buildSongCatalog } from './songs/catalog';
 import { initSongTools } from './ui/songTools';
 import { AudioAnalysisController } from './ui/audioAnalysis';
+import { DrillRhythm, renderStrummingGrid } from './ui/drillRhythm';
+import { getStrummingPattern, STRUMMING_PATTERNS, type StrummingCandidate } from './rhythm/strumming';
+import { transposeSongChord } from './songs/timing';
 
 // ============================================================================
 // Global State
@@ -470,6 +473,10 @@ export function stopMicrophone(): void {
   appState.isListening = false;
   appState.scalesStudio.setMicPracticeActive(false);
   appState.songStudio.onMicrophoneStopped();
+  if (appState.isDrillActive && (appState.drillConfig?.practiceMode !== 'rhythm' || appState.drillConfig.checkChords)) {
+    stopDrill();
+    setDrillStatus('Microphone stopped. Start again to retry, or use rhythm practice without chord checking.');
+  }
   appState.detectionEngine.reset();
   updateMicUI(false);
   liveNeckMidi = null;
@@ -522,6 +529,7 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
   // Wait mode also needs current gate/release metadata on held and idle frames.
   if (appState.activeTab === 'songs') appState.songStudio.evaluatePractice(result);
   if (appState.activeTab === 'scales') appState.scalesStudio.onDetectionResult(result);
+  if (appState.activeTab === 'drill' && appState.isDrillActive) evaluateDrillResult(result);
   // Handle room noise calibration progress and completion
   if (result.isCalibrating) {
     const nameEl = document.getElementById('display-chord-name');
@@ -573,9 +581,6 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
       loadChordPreset(result.chord.symbol);
     }
 
-    if (appState.isDrillActive && appState.drillConfig) {
-      evaluateDrillResult(result);
-    }
 
     // Route only to the active studio; background practice must not react.
     if (result.chord) {
@@ -809,6 +814,7 @@ function updateChordFromFretboard(chord: ChordDefinition): void {
 export function setTuningPreset(presetId: string): void {
   const preset = getTuningPreset(presetId);
   if (!preset) return;
+  if (appState.isDrillActive || drillStarting) { stopDrill(); setDrillStatus('Tuning changed. Start the exercise again with the new tuning.'); }
   
   appState.activeTuning = preset;
   appState.settings.activeTuningPreset = presetId;
@@ -835,6 +841,7 @@ export function setTuningPreset(presetId: string): void {
 }
 
 export function setCapo(fret: number): void {
+  if (appState.isDrillActive || drillStarting) { stopDrill(); setDrillStatus('Capo changed. Start the exercise again with the new capo.'); }
   appState.capoState = { enabled: fret > 0, fret: Math.max(0, Math.min(12, fret)) };
   updateEffectiveTuning();
   renderFretboard();
@@ -950,31 +957,92 @@ export function loadSong(song: Song): void {
 let drillChordStartTime = 0;
 let drillMatchedThisChord = false;
 let drillStreak = 0;
+let drillStarting = false;
+let drillStartGeneration = 0;
+let drillAdvanceTimer: number | null = null;
+let drillHitTimer: number | null = null;
+let rhythmDrill: DrillRhythm | null = null;
 
 export async function startDrill(config: DrillConfig): Promise<void> {
-  await ensureAudioContext();
-  if (!appState.isListening) {
-    await startMicrophone();
+  stopDrill();
+  if (appState.activeTab !== 'drill') switchTab('drill');
+  const generation = ++drillStartGeneration;
+  drillStarting = true; syncDrillControls();
+  setDrillStatus('Preparing practice…');
+  try {
+    if (!Number.isInteger(config.totalChords) || config.totalChords < 1 || config.totalChords > 64 ||
+        !Number.isFinite(config.bpm) || config.bpm < 50 || config.bpm > 160) throw new Error('Choose 1–64 changes and 50–160 BPM.');
+    if (config.practiceMode === 'rhythm') getStrummingPattern(config.strummingPatternId || 'quarter-down');
+    await ensureAudioContext();
+    if (generation !== drillStartGeneration || appState.activeTab !== 'drill') return;
+    if (config.practiceMode !== 'rhythm' || config.checkChords) {
+      const neededMic = !appState.isListening;
+      const started = appState.isListening || await startMicrophone();
+      if (generation !== drillStartGeneration || appState.activeTab !== 'drill') {
+        if (neededMic && started) stopMicrophone();
+        return;
+      }
+      if (!started) throw new Error('Microphone unavailable. Allow access and retry, or choose rhythm practice with chord checking off.');
+      setTargetMode('chords');
+    }
+    appState.drillConfig = config;
+    appState.isDrillActive = true;
+    appState.drillResults = { config, chordResults: [], overallAccuracy: 0, avgLatencyMs: 0, weakTransitions: [] };
+    appState.drillProgression = generateDrillProgression(config);
+    appState.drillCurrentIndex = 0; drillStreak = 0;
+    if (appState.currentSession) appState.currentSession.mode = 'drill';
+    updateDrillStats();
+    if (config.practiceMode === 'rhythm') {
+      if (!appState.audioContext) throw new Error('Audio clock is unavailable. Try again.');
+      rhythmDrill = new DrillRhythm(appState.audioContext, config, appState.drillProgression,
+        appState.capoState.enabled ? appState.capoState.fret : 0, {
+          chord: index => { appState.drillCurrentIndex = index; showNextDrillChord(); },
+          result: result => { appState.drillResults?.chordResults.push(result); drillStreak = result.matched ? drillStreak + 1 : 0; updateDrillStats(); },
+          finish: () => { stopDrill(); setDrillStatus('Rhythm practice complete. Chord matches do not certify strumming accuracy.'); },
+          status: setDrillStatus,
+        });
+      document.getElementById('drill-current-chord')!.textContent = config.countInBars > 0 ? 'Count-in' : 'Get ready';
+      rhythmDrill.start();
+      setDrillStatus(config.checkChords ? 'Follow the pattern. Only fresh chord matches are checked—not stroke direction or timing accuracy.' : 'Follow the pattern and change on the bar. Visual practice: chord checking is off.');
+    } else {
+      showNextDrillChord();
+      setDrillStatus('Play the target chord. This mode advances after a match; choose Rhythm pattern to practise to a beat.');
+    }
+  } catch (error) {
+    stopDrill();
+    setDrillStatus(error instanceof Error ? error.message : String(error));
+  } finally {
+    if (generation === drillStartGeneration) drillStarting = false;
+    syncDrillControls();
   }
+}
 
-  appState.drillConfig = config;
-  appState.isDrillActive = true;
-  appState.drillResults = {
-    config,
-    chordResults: [],
-    overallAccuracy: 0,
-    avgLatencyMs: 0,
-    weakTransitions: [],
-  };
-  
-  appState.activeTab = 'drill';
-  if (appState.currentSession) appState.currentSession.mode = 'drill';
-  switchTab('drill');
-  
-  appState.drillProgression = generateDrillProgression(config);
-  appState.drillCurrentIndex = 0;
-  drillStreak = 0;
-  showNextDrillChord();
+function setDrillStatus(message: string): void {
+  const status = document.getElementById('drill-rhythm-status');
+  if (status) status.textContent = message;
+}
+
+function syncDrillControls(): void {
+  const busy = appState.isDrillActive || drillStarting;
+  const start = document.getElementById('btn-start-drill') as HTMLButtonElement | null;
+  const stop = document.getElementById('btn-stop-drill') as HTMLButtonElement | null;
+  const next = document.getElementById('btn-next-drill-chord') as HTMLButtonElement | null;
+  if (start) start.disabled = busy;
+  if (stop) stop.disabled = !busy;
+  if (next) next.disabled = !appState.isDrillActive;
+  document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('#drill-settings input, #drill-settings select, #drill-progression-preview button, #drill-diatonic-preview button')
+    .forEach(control => { control.disabled = busy; });
+}
+
+function updateDrillStats(): void {
+  const results = appState.drillResults?.chordResults || [];
+  const matched = results.filter(r => r.matched);
+  const accuracy = document.getElementById('drill-accuracy');
+  const latency = document.getElementById('drill-latency');
+  const streak = document.getElementById('drill-streak');
+  if (accuracy) accuracy.textContent = results.length ? `${Math.round(matched.length / results.length * 100)}%` : '—';
+  if (latency) latency.textContent = matched.length ? `${Math.round(matched.reduce((sum, r) => sum + r.latencyMs, 0) / matched.length)} ms` : '—';
+  if (streak) streak.textContent = String(drillStreak);
 }
 
 // ── Diatonic harmony engine (drill progressions in any key/mode) ─────────────
@@ -1061,6 +1129,7 @@ function generateDrillProgression(config: DrillConfig): string[] {
 }
 
 function showNextDrillChord(): void {
+  if (!appState.isDrillActive) return;
   if (appState.drillCurrentIndex >= appState.drillProgression.length) {
     stopDrill();
     return;
@@ -1072,13 +1141,15 @@ function showNextDrillChord(): void {
   const chord = appState.drillProgression[appState.drillCurrentIndex];
   const display = document.getElementById('drill-current-chord');
   if (display) {
-    display.innerHTML = `<span>${chord}</span><div id="drill-feedback-banner" style="font-size:1.1rem; color:var(--text-muted); font-weight:700; margin-top:8px;">Strum ${chord} on your guitar now...</div>`;
+    const sounding = transposeSongChord(chord, appState.capoState.enabled ? appState.capoState.fret : 0);
+    display.innerHTML = `<span>${chord}</span><div id="drill-feedback-banner" style="font-size:1.1rem; color:var(--text-muted); font-weight:700; margin-top:8px;">${appState.drillConfig?.practiceMode === 'rhythm' ? 'Follow the rhythm below.' : `Strum ${chord} on your guitar now...`}${sounding !== chord ? ` Sounds ${sounding} with capo.` : ''}</div>`;
   }
   
   loadChordPreset(chord);
 }
 
 function evaluateDrillResult(result: DetectionResult): void {
+  if (appState.drillConfig?.practiceMode === 'rhythm') { rhythmDrill?.evaluate(result); return; }
   if (result.freshness !== 'fresh') return;
   if (!appState.isDrillActive || !appState.drillConfig || !appState.drillResults || drillMatchedThisChord) return;
   
@@ -1138,7 +1209,8 @@ function evaluateDrillResult(result: DetectionResult): void {
 
     if (display) {
       display.classList.add('hit-match');
-      setTimeout(() => display.classList.remove('hit-match'), 600);
+      if (drillHitTimer !== null) clearTimeout(drillHitTimer);
+      drillHitTimer = window.setTimeout(() => { display.classList.remove('hit-match'); drillHitTimer = null; }, 600);
     }
 
     if (feedbackBanner) {
@@ -1160,7 +1232,10 @@ function evaluateDrillResult(result: DetectionResult): void {
     if (latEl) latEl.textContent = `${latency} ms`;
     if (streakEl) streakEl.textContent = String(drillStreak);
 
-    window.setTimeout(() => {
+    const generation = drillStartGeneration;
+    drillAdvanceTimer = window.setTimeout(() => {
+      drillAdvanceTimer = null;
+      if (!appState.isDrillActive || generation !== drillStartGeneration) return;
       appState.drillCurrentIndex++;
       showNextDrillChord();
     }, 750);
@@ -1170,17 +1245,27 @@ function evaluateDrillResult(result: DetectionResult): void {
 }
 
 export function stopDrill(): void {
+  const wasActive = appState.isDrillActive;
+  drillStartGeneration++;
+  drillStarting = false;
   appState.isDrillActive = false;
-  if (appState.drillResults) {
+  rhythmDrill?.stop(); rhythmDrill = null;
+  if (drillAdvanceTimer !== null) clearTimeout(drillAdvanceTimer);
+  if (drillHitTimer !== null) clearTimeout(drillHitTimer);
+  drillAdvanceTimer = null; drillHitTimer = null;
+  document.getElementById('drill-current-chord')?.classList.remove('hit-match');
+  if (wasActive && appState.drillResults) {
     const results = appState.drillResults.chordResults;
     const matched = results.filter(r => r.matched).length;
     appState.drillResults.overallAccuracy = results.length > 0 ? matched / results.length : 0;
-    appState.drillResults.avgLatencyMs = results.reduce((a, b) => a + b.latencyMs, 0) / (results.length || 1);
+    const matches = results.filter(result => result.matched);
+    appState.drillResults.avgLatencyMs = matches.reduce((a, b) => a + b.latencyMs, 0) / (matches.length || 1);
     
     if (appState.currentSession) {
       appState.currentSession.drillResults = appState.drillResults;
       endSession();
     }
+    syncDrillControls();
   }
 }
 
@@ -1213,6 +1298,7 @@ export function switchTab(tabId: string): void {
   if (tabId !== 'metronome') stopMetronome();
   if (tabId !== 'rhythm' && rhythmPlaying) toggleRhythmPlayback();
   if (tabId !== 'songs') appState.songStudio.stopPlayback();
+  if (tabId !== 'drill' && (appState.isDrillActive || drillStarting)) stopDrill();
 
   // Update tab buttons
   document.querySelectorAll('.studio-tab-btn').forEach(btn => {
@@ -2291,7 +2377,12 @@ function currentDrillConfig(): DrillConfig {
   const bpm = parseInt((document.getElementById('drill-bpm') as HTMLInputElement)?.value || '80');
   const barsPerChord = parseInt((document.getElementById('drill-bars-per-chord') as HTMLSelectElement)?.value || '2');
   const totalChords = parseInt((document.getElementById('drill-total-chords') as HTMLInputElement)?.value || '16');
-  return { progressionType, bpm, barsPerChord, countInBars: 1, totalChords, key, mode };
+  const practiceMode = (document.getElementById('drill-practice-mode') as HTMLSelectElement)?.value === 'rhythm' ? 'rhythm' : 'match';
+  const strummingPatternId = (document.getElementById('drill-pattern') as HTMLSelectElement)?.value || 'quarter-down';
+  const countInBars = Number((document.getElementById('drill-count-in') as HTMLSelectElement)?.value || '0');
+  const checkChords = (document.getElementById('drill-check-chords') as HTMLInputElement)?.checked || false;
+  const rhythmClicks = (document.getElementById('drill-rhythm-clicks') as HTMLInputElement)?.checked || false;
+  return { progressionType, bpm, barsPerChord, countInBars, totalChords, key, mode, practiceMode, strummingPatternId, checkChords, rhythmClicks };
 }
 
 function chip(text: string, playChord?: string): string {
@@ -2327,9 +2418,20 @@ function updateDrillPreview(): void {
     diatEl.innerHTML = diatonicChords(rootPc, cfg.mode || 'major')
       .map((c, i) => chip(`${romans[i]} · ${c}`, c)).join('');
   }
+  const panel = document.getElementById('drill-pattern-preview');
+  if (panel) panel.hidden = cfg.practiceMode !== 'rhythm';
+  const settings = document.getElementById('drill-rhythm-settings');
+  if (settings) settings.hidden = cfg.practiceMode !== 'rhythm';
+  const grid = document.getElementById('drill-pattern-grid');
+  if (grid) renderStrummingGrid(grid, getStrummingPattern(cfg.strummingPatternId || 'quarter-down'));
 }
 
+let drillLifecycleBound = false;
 function renderDrillUI(): void {
+  const patternSelect = document.getElementById('drill-pattern') as HTMLSelectElement | null;
+  if (patternSelect && !patternSelect.options.length) {
+    STRUMMING_PATTERNS.forEach(pattern => patternSelect.add(new Option(pattern.name, pattern.id)));
+  }
   // Populate Key dropdown once
   const keySel = document.getElementById('drill-key') as HTMLSelectElement | null;
   if (keySel && keySel.children.length === 0) {
@@ -2344,6 +2446,9 @@ function renderDrillUI(): void {
   if (modeSel) modeSel.onchange = () => { populateDrillProgressions(modeSel.value as 'major' | 'minor'); updateDrillPreview(); };
   const progSel = document.getElementById('drill-progression-type') as HTMLSelectElement | null;
   if (progSel) progSel.onchange = updateDrillPreview;
+  if (patternSelect) patternSelect.onchange = updateDrillPreview;
+  const practice = document.getElementById('drill-practice-mode') as HTMLSelectElement | null;
+  if (practice) practice.onchange = updateDrillPreview;
 
   const bpmSlider = document.getElementById('drill-bpm') as HTMLInputElement | null;
   if (bpmSlider) bpmSlider.oninput = (e) => {
@@ -2351,28 +2456,44 @@ function renderDrillUI(): void {
   };
 
   const startBtn = document.getElementById('btn-start-drill') as HTMLButtonElement | null;
-  if (startBtn) startBtn.onclick = () => {
-    startDrill(currentDrillConfig());
-    startBtn.disabled = true;
-    (document.getElementById('btn-stop-drill') as HTMLButtonElement).disabled = false;
-    (document.getElementById('btn-next-drill-chord') as HTMLButtonElement).disabled = false;
-  };
+  if (startBtn) startBtn.onclick = () => { void startDrill(currentDrillConfig()); };
 
   const stopBtn = document.getElementById('btn-stop-drill') as HTMLButtonElement | null;
   if (stopBtn) stopBtn.onclick = () => {
     stopDrill();
-    (document.getElementById('btn-start-drill') as HTMLButtonElement).disabled = false;
-    stopBtn.disabled = true;
-    (document.getElementById('btn-next-drill-chord') as HTMLButtonElement).disabled = true;
+    setDrillStatus('Practice stopped.');
   };
 
   const nextBtn = document.getElementById('btn-next-drill-chord');
   if (nextBtn) nextBtn.onclick = () => {
+    if (!appState.isDrillActive) return;
+    if (rhythmDrill) { rhythmDrill.next(); return; }
+    if (drillAdvanceTimer !== null) clearTimeout(drillAdvanceTimer);
+    if (drillHitTimer !== null) clearTimeout(drillHitTimer);
+    drillAdvanceTimer = null;
+    drillHitTimer = null;
+    document.getElementById('drill-current-chord')?.classList.remove('hit-match');
     appState.drillCurrentIndex++;
     showNextDrillChord();
   };
+  if (!drillLifecycleBound) {
+    drillLifecycleBound = true;
+    window.addEventListener('pagehide', stopDrill);
+  }
+  syncDrillControls();
 }
 
+function useSuggestedStrumming(candidate: StrummingCandidate): void {
+  getStrummingPattern(candidate.patternId);
+  switchTab('drill');
+  (document.getElementById('drill-practice-mode') as HTMLSelectElement).value = 'rhythm';
+  (document.getElementById('drill-pattern') as HTMLSelectElement).value = candidate.patternId;
+  (document.getElementById('drill-bpm') as HTMLInputElement).value = String(candidate.bpm);
+  document.getElementById('drill-bpm-val')!.textContent = `${candidate.bpm} BPM`;
+  (document.getElementById('drill-check-chords') as HTMLInputElement).checked = false;
+  updateDrillPreview();
+  setDrillStatus('Suggested pattern and estimated tempo selected. Review the tempo, key and progression, then Start. Stroke directions are practice suggestions.');
+}
 function renderRhythmPresets(): void {
   const container = document.getElementById('rhythm-presets');
   const dockSelect = document.getElementById('dock-rhythm-select') as HTMLSelectElement;
@@ -2667,6 +2788,7 @@ function initSongToolsUI(): void {
   audioAnalysis = new AudioAnalysisController(
     id => { switchTab('songs'); appState.songStudio.loadSong(id); },
     () => appState.songStudio.stopPlayback(),
+    useSuggestedStrumming,
   );
 }
 

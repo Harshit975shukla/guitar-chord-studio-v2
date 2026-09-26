@@ -284,6 +284,10 @@ export interface DrillConfig {
   totalChords: number;
   key?: NoteName;
   mode?: 'major' | 'minor';
+  practiceMode?: 'match' | 'rhythm';
+  strummingPatternId?: string;
+  checkChords?: boolean;
+  rhythmClicks?: boolean;
 }
 
 export interface DrillResult {
