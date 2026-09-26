@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { join } from 'node:path';
 import { REGISTER_RANGES, chordInRegister, isPositionReach, positionBounds } from '../src/chords/positions.ts';
 import { CHORD_FORMULAS } from '../src/chords/definitions.ts';
 import { chordIdentity, fitMelodyOctaves, resolveSongNote, validateTiming } from '../src/songs/timing.ts';
@@ -118,7 +119,7 @@ check('guided scale uses the existing fresh-performance gate, not repeated ringi
 });
 check('Happy Birthday retains all 25 source notes and fits Open uniformly one octave lower', () => {
   const context = { window: {} };
-  vm.runInNewContext(fs.readFileSync('public\\song_catalog_data.js', 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(join('public', 'song_catalog_data.js'), 'utf8'), context);
   const raw = context.window.SONG_CATALOG.happy_birthday;
   const original = raw.lines.flatMap(line => line.notes);
   const song = normalizeSong(raw);
@@ -186,7 +187,7 @@ check('all scale/root spellings keep correct pitches and all available runs star
 });
 check('Happy Birthday fits every playing area using only an occasional one-fret melody reach', () => {
   const context = { window: {} };
-  vm.runInNewContext(fs.readFileSync('public\\song_catalog_data.js', 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(join('public', 'song_catalog_data.js'), 'utf8'), context);
   const events = songTimeline(normalizeSong(context.window.SONG_CATALOG.happy_birthday), 'notes').events;
   for (const register of ['open', 'middle', 'upper']) {
     const fit = fitMelodyOctaves(events, STANDARD_TUNING, 0, register, true);
