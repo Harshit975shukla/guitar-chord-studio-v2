@@ -108,7 +108,7 @@ export function buildSongCatalog(bundled: readonly Song[], external: unknown, cu
 }
 export function findSong(catalog: readonly CatalogSong[], id: string): CatalogSong {
   const song = catalog.find(item => item.id === id);
-  if (!song) throw new Error('This song is not in the local library. Search again or import your chart.');
+  if (!song) throw new Error('This song is not in the local library. Choose another song in Play Along or import your chart.');
   return song;
 }
 
@@ -130,44 +130,6 @@ export function songTimeline(song: CatalogSong, part: 'notes' | 'chords'): SongT
     });
   }
   return { version: 1, bpm: song.bpm, tempos: [], events };
-}
-
-export function searchText(value: string): string {
-  return value.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{M}\p{N}#]+/gu, ' ').trim().replace(/\s+/g, ' ');
-}
-function distance(a: string, b: string): number {
-  const aa = [...a], bb = [...b];
-  let previous = Array.from({ length: bb.length + 1 }, (_, i) => i);
-  for (let i = 0; i < aa.length; i++) {
-    const row = [i + 1];
-    for (let j = 0; j < bb.length; j++) row.push(Math.min(previous[j + 1] + 1, row[j] + 1, previous[j] + (aa[i] === bb[j] ? 0 : 1)));
-    previous = row;
-  }
-  return previous[bb.length];
-}
-export interface FinderFilters { field: 'all' | 'title' | 'artist'; content: 'all' | 'chords' | 'tabs' | 'imported' }
-export function searchSongs(catalog: readonly CatalogSong[], query: string, filters: FinderFilters): CatalogSong[] {
-  const normalized = searchText(query);
-  if (!normalized || !/[\p{L}\p{N}]/u.test(normalized)) return [];
-  const tokens = normalized.split(' ');
-  return catalog.flatMap(song => {
-    if (filters.content !== 'all' && !song.availability[filters.content === 'imported' ? 'imported' : filters.content]) return [];
-    const title = searchText(song.title), artist = searchText(song.artist);
-    const fields = filters.field === 'title' ? [title] : filters.field === 'artist' ? [artist] : [title, artist];
-    const words = fields.join(' ').split(' ');
-    let score = 0;
-    for (const token of tokens) {
-      if (words.includes(token)) score += 15;
-      else if (words.some(word => word.startsWith(token))) score += 8;
-      else if ([...token].length >= 4 && words.some(word => Math.abs(word.length - token.length) <= 1 && distance(word, token) <= 1)) score += 4;
-      else return [];
-    }
-    if (filters.field !== 'artist' && title === normalized) score += 1000;
-    if (filters.field !== 'title' && artist === normalized) score += 500;
-    if (fields.some(field => field.startsWith(normalized))) score += 50;
-    return [{ song, score }];
-  }).sort((a, b) => b.score - a.score || a.song.title.localeCompare(b.song.title) || a.song.id.localeCompare(b.song.id))
-    .slice(0, 50).map(result => result.song);
 }
 
 const SECTION = /^\s*[\[(]?(intro|verse|chorus|bridge|outro|pre[- ]?chorus|hook|solo|interlude|refrain)(?:\s+\d+)?[\])]?\s*:?\s*$/i;

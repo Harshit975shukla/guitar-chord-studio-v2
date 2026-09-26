@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { validateTiming, compileTiming, ORIGINAL_TIMING, resolveSongNote, transposeSongChord } from '../src/songs/timing.ts';
 import { PerformanceGate, matchesTarget } from '../src/songs/performance.ts';
 import { SongTransport } from '../src/songs/transport.ts';
-import { buildSongCatalog, normalizeSong, searchSongs, findSong, importSong, parseChordSheet, songTimeline, ORIGINAL_EXERCISE } from '../src/songs/catalog.ts';
+import { buildSongCatalog, normalizeSong, findSong, importSong, parseChordSheet, songTimeline, ORIGINAL_EXERCISE } from '../src/songs/catalog.ts';
 import { mergeCustomSongs, saveCustomSong, loadCustomSongs } from '../src/storage/index.ts';
 import { STANDARD_TUNING } from '../src/types/index.ts';
 
@@ -162,14 +162,13 @@ check('ASCII tab text is preserved with explicit limitation, not fabricated play
   assert.equal(imported.availability.chords, false);
   assert.match(imported.warnings.join(), /not converted/);
 });
-check('Finder prioritizes exact title/artist, handles typo and Unicode, and rejects empty punctuation', () => {
+check('Play Along catalog retains exact IDs, titles, artists and Unicode metadata', () => {
   const catalog = buildSongCatalog([song('exact', 'Copper Steps'), song('artist', 'Slow Window', 'Copper Steps'), song('unicode', 'रात की चाल', 'नील'), song('other', 'Copper Steps Again')], {}, []);
-  const filter = { field: 'all', content: 'all' };
-  assert.equal(searchSongs(catalog, 'Copper Steps', filter)[0].id, 'exact');
-  assert.equal(searchSongs(catalog, 'Copper Steps', { ...filter, field: 'artist' })[0].id, 'artist');
-  assert.equal(searchSongs(catalog, 'Coper Steps', filter)[0].id, 'exact');
-  assert.equal(searchSongs(catalog, 'रात', filter)[0].id, 'unicode');
-  for (const query of ['', '...', '###', 'nonexistent title']) assert.deepEqual(searchSongs(catalog, query, filter), []);
+  assert.equal(findSong(catalog, 'exact').title, 'Copper Steps');
+  assert.equal(findSong(catalog, 'artist').artist, 'Copper Steps');
+  assert.equal(findSong(catalog, 'unicode').title, 'रात की चाल');
+  assert.equal(findSong(catalog, 'unicode').artist, 'नील');
+  assert.throws(() => findSong(catalog, 'Copper Steps'), /not in the local library/);
 });
 check('catalog resolves exact IDs, deduplicates built-ins and keeps conflicting custom IDs distinct', () => {
   const imported = { ...song('a', 'Imported A'), isCustom: true };
@@ -206,7 +205,8 @@ check('timing JSON roundtrip retains authored durations, provenance and actual a
   saveCustomSong(imported);
   assert.deepEqual(loadCustomSongs().find(s => s.id === 'roundtrip').timing, imported.timing);
   const catalog = buildSongCatalog([], {}, [imported]);
-  assert.equal(searchSongs(catalog, 'Original Timing', { field: 'title', content: 'imported' })[0].id, 'roundtrip');
+  assert.equal(findSong(catalog, 'roundtrip').title, 'Original Timing');
+  assert.equal(findSong(catalog, 'roundtrip').availability.imported, true);
   assert.equal(findSong(catalog, 'roundtrip').availability.authored, true);
   assert.ok(findSong(catalog, 'roundtrip').availability.labels.every(label => !/^full|^verified/i.test(label)));
 });

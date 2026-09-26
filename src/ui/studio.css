@@ -166,18 +166,13 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
 #scale-pattern-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 6px 26px; padding-left: 20px; }
 #scale-pattern-steps li { padding: 6px; border-bottom: 1px solid var(--border-light); }
 #scale-pattern-steps li[aria-current="step"] { background: #89d7bc18; color: var(--accent-emerald); }
-.song-timing-controls, .song-finder-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-block: 16px; }
-.song-timing-controls label, .song-finder-filters label { font-size: 12px; color: var(--text-muted); }
-.song-timing-controls select, .song-finder-filters select { min-width: 0; max-width: 100%; padding: 8px; background: var(--panel-bg); color: var(--text-main); border: 1px solid var(--border-subtle); border-radius: 6px; }
+.song-timing-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-block: 16px; }
+.song-timing-controls label { font-size: 12px; color: var(--text-muted); }
+.song-timing-controls select { min-width: 0; max-width: 100%; padding: 8px; background: var(--panel-bg); color: var(--text-main); border: 1px solid var(--border-subtle); border-radius: 6px; }
 .song-data-status { color: var(--text-muted); font-size: 12px; line-height: 1.6; margin-block: 12px; overflow-wrap: anywhere; }
 .song-current-target { font-size: 18px; color: var(--accent-gold); margin-block: 14px; }
 .song-source pre, .song-timing-editor pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .song-source { margin-block: 16px; }
-.song-search-input-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.song-search-input-row input { min-width: 0; }
-.song-search-result { padding-block: 18px; border-top: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
-.song-search-result h3 { font-size: 18px; }
-.song-search-result p { color: var(--text-muted); font-size: 12px; margin-block: 8px; }
 .song-timing-editor { width: min(720px, calc(100vw - 32px)); max-height: 90dvh; overflow-y: auto; margin: auto; padding: 22px; color: var(--text-main); background: var(--panel-bg); border: 1px solid var(--border-subtle); border-radius: 12px; }
 .song-timing-editor::backdrop { background: #0009; }
 .song-timing-editor > p { font-size: 13px; line-height: 1.6; margin-block: 12px; }
@@ -186,7 +181,11 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
 .song-timing-editor textarea, .song-import-text { font: 12px/1.5 monospace; resize: vertical; }
 .studio-redesign .tempo-speed-control strong { width: auto !important; white-space: nowrap; }
 .studio-redesign .audio-analysis { margin-top: 20px; }
+.studio-redesign #pane-analysis .audio-analysis:first-child { margin-top: 0; }
 .audio-analysis > label { display: block; margin-block: 12px 6px; font-size: 12px; }
+.audio-analysis > .analysis-permission { display: flex; align-items: flex-start; gap: 10px; padding-top: 8px; font-size: 13px; line-height: 1.6; }
+.analysis-permission input { flex-shrink: 0; margin-top: 4px; }
+.analysis-permission strong { overflow-wrap: anywhere; }
 .audio-analysis input:not([type="checkbox"]) { max-width: 100%; min-width: 0; padding: 8px; color: var(--text-main); background: var(--bg-dark); border: 1px solid var(--border-subtle); border-radius: 6px; }
 .audio-analysis input[type="file"], .audio-analysis > input[type="url"] { width: 100%; }
 .audio-analysis input[aria-invalid="true"] { outline: 2px solid var(--accent-rose); }
@@ -197,7 +196,7 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
 .analysis-table input { width: 90px; }
 #youtube-player:empty { display: none; }
 #youtube-player iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; }
-.audio-analysis a, #song-web-search { color: var(--accent-cyan); text-underline-offset: 3px; }
+.audio-analysis a { color: var(--accent-cyan); text-underline-offset: 3px; }
 .studio-redesign .studio-disclosure { grid-column: 1 / -1; border: 1px solid #353b31; border-radius: 10px; padding: 0 20px; min-width: 0; background: #1b1f1a; }
 .studio-disclosure > summary { cursor: pointer; font-size: 12px; color: #c5cabc; padding: 17px 0; }
 .studio-disclosure[open] > summary { border-bottom: 1px solid #353b31; margin-bottom: 16px; }

@@ -1224,7 +1224,7 @@ export function switchTab(tabId: string): void {
   libraryNeck?.setActive(tabId === 'chords');
   appState.songStudio.setActive(tabId === 'songs');
   appState.scalesStudio.setActive(tabId === 'scales');
-  audioAnalysis?.setActive(tabId === 'search');
+  audioAnalysis?.setActive(tabId === 'analysis');
   
   // Update tab panes
   document.querySelectorAll('.studio-tab-pane').forEach(pane => {
@@ -1638,7 +1638,7 @@ function initializeUI(): void {
   try { renderPresetChips(); } catch (e) { console.warn('renderPresetChips:', e); }
   try { renderRhythmPresets(); } catch (e) { console.warn('renderRhythmPresets:', e); }
   try { renderLooperTracks(); } catch (e) { console.warn('renderLooperTracks:', e); }
-  try { initSearchTab(); } catch (e) { console.warn('initSearchTab:', e); }
+  try { initSongToolsUI(); } catch (e) { console.warn('initSongToolsUI:', e); }
   try { initVideoTab(); } catch (e) { console.warn('initVideoTab:', e); }
 }
 
@@ -2658,9 +2658,8 @@ function populateMidiDevices(): void {
   }
 }
 
-function initSearchTab(): void {
+function initSongToolsUI(): void {
   initSongTools({
-    catalog: getSongCatalog,
     open: (id, part) => { switchTab('songs'); appState.songStudio.loadSong(id, part); },
     editing: () => appState.songStudio.getSongForEditing(),
     pause: () => appState.songStudio.stopPlayback(),
@@ -2708,7 +2707,6 @@ declare global {
     loadChordPreset: (chord: string, autoPlay?: boolean) => Promise<void>;
     inspectChordPreset: (chord: string) => void;
     strumChordPreset: (chord: string) => void;
-    selectSongFromSearch: (songId: string) => void;
     toggleTrackRecord: (i: number) => void;
     setTrackVolume: (i: number, v: number) => void;
     toggleTrackMute: (i: number) => void;
@@ -2735,10 +2733,6 @@ if (typeof window !== 'undefined') {
   // Strum loads the chord's voicing, then strums it
   window.strumChordPreset = (chord: string) => {
     loadChordPreset(chord, true);
-  };
-  window.selectSongFromSearch = (songId: string) => {
-    switchTab('songs');
-    appState.songStudio.loadSong(songId);
   };
   window.appState = appState;
 

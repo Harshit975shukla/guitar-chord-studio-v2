@@ -12,12 +12,15 @@ export class AudioAnalysisController {
   private active = false;
   private result: AudioAnalysis | null = null;
   private audioUrl: string | null = null;
+  private confirmedFile: File | null = null;
   private invalidRegions = new Set<number>();
   private abort = new AbortController();
 
   constructor(private openSong: (id: string) => void, private pauseSong: () => void) {
     const events = { signal: this.abort.signal };
     element<HTMLInputElement>('analysis-file').addEventListener('change', () => this.selectFile(), events);
+    element<HTMLInputElement>('analysis-rights').checked = false;
+    element('analysis-rights').addEventListener('change', () => this.confirmPermission(), events);
     element('analysis-start').addEventListener('click', () => { void this.analyze(); }, events);
     element('analysis-cancel').addEventListener('click', () => this.cancel('Analysis cancelled. Your file is still available for retry.'), events);
     element('analysis-clear').addEventListener('click', () => this.clear(), events);
@@ -26,7 +29,7 @@ export class AudioAnalysisController {
     element('youtube-clear').addEventListener('click', () => this.clearYouTube(), events);
     element<HTMLAudioElement>('analysis-audio').addEventListener('play', () => pauseSong(), events);
     window.addEventListener('pagehide', () => this.setActive(false), events);
-    window.addEventListener('pageshow', () => this.setActive(element('pane-search').classList.contains('active')), events);
+    window.addEventListener('pageshow', () => this.setActive(element('pane-analysis').classList.contains('active')), events);
     this.syncControls();
   }
 
@@ -41,10 +44,15 @@ export class AudioAnalysisController {
 
   private status(text: string): void { element('analysis-status').textContent = text; }
 
+  private hasPermission(file = element<HTMLInputElement>('analysis-file').files?.[0]): boolean {
+    return !!file && this.confirmedFile === file && element<HTMLInputElement>('analysis-rights').checked;
+  }
+
   private syncControls(): void {
-    element<HTMLButtonElement>('analysis-start').disabled = this.busy || !element<HTMLInputElement>('analysis-file').files?.length;
+    element<HTMLInputElement>('analysis-rights').disabled = !element<HTMLInputElement>('analysis-file').files?.length;
+    element<HTMLButtonElement>('analysis-start').disabled = this.busy || !this.hasPermission();
     element<HTMLButtonElement>('analysis-cancel').disabled = !this.busy;
-    element<HTMLButtonElement>('analysis-save').disabled = this.busy || !this.result?.regions.some(r => r.kind === 'chord') || this.invalidRegions.size > 0;
+    element<HTMLButtonElement>('analysis-save').disabled = this.busy || !this.hasPermission() || !this.result?.regions.some(r => r.kind === 'chord') || this.invalidRegions.size > 0;
     element('audio-analysis').setAttribute('aria-busy', String(this.busy));
   }
 
@@ -54,23 +62,59 @@ export class AudioAnalysisController {
     element('analysis-key').textContent = '';
     element('analysis-regions').replaceChildren();
     element('analysis-results').hidden = true;
+    element<HTMLInputElement>('analysis-allow-unknown').checked = false;
     element<HTMLProgressElement>('analysis-progress').value = 0;
   }
 
   private selectFile(): void {
+    this.confirmedFile = null;
+    element<HTMLInputElement>('analysis-rights').checked = false;
     this.cancel('');
     this.clearResult();
+    this.releaseAudio();
+    const file = element<HTMLInputElement>('analysis-file').files?.[0];
+    element('analysis-permission-file').textContent = file?.name || 'the selected recording';
+    if (file) {
+      element<HTMLInputElement>('analysis-title').value = file.name.replace(/\.[^.]+$/, '');
+      this.status(`${file.name} selected. Confirm your rights or permission before previewing or analyzing this recording. No audio has been uploaded.`);
+    } else this.status('Choose an MP3 or WAV recording, then confirm your permission to analyze it.');
+    this.syncControls();
+  }
+
+  private releaseAudio(): void {
     const audio = element<HTMLAudioElement>('analysis-audio');
     audio.pause(); audio.removeAttribute('src'); audio.load(); audio.hidden = true;
     if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
     this.audioUrl = null;
+  }
+
+  private validateFile(file: File): void {
+    if (file.size > MAX_AUDIO_BYTES) throw new Error('Choose a file smaller than 30 MB. Nothing was uploaded.');
+    if (!/\.(mp3|wav)$/i.test(file.name)) throw new Error('This first release supports MP3 and WAV files.');
+  }
+
+  private confirmPermission(): void {
     const file = element<HTMLInputElement>('analysis-file').files?.[0];
-    if (file) {
+    this.confirmedFile = null;
+    this.cancel('');
+    this.clearResult();
+    this.releaseAudio();
+    if (!file || !element<HTMLInputElement>('analysis-rights').checked) {
+      this.status('Permission is not confirmed. Preview and analysis are stopped; confirm only if you have the necessary rights.');
+      this.syncControls();
+      return;
+    }
+    try {
+      this.validateFile(file);
       this.audioUrl = URL.createObjectURL(file);
+      const audio = element<HTMLAudioElement>('analysis-audio');
       audio.src = this.audioUrl; audio.hidden = false;
-      element<HTMLInputElement>('analysis-title').value = file.name.replace(/\.[^.]+$/, '');
-      this.status(`${file.name} selected. Analyze on this device; no upload to a server.`);
-    } else this.status('Choose an MP3 or WAV recording to analyze locally.');
+      this.confirmedFile = file;
+      this.status(`Permission confirmed for ${file.name}. Preview it or choose Analyze on this device. Results will be estimates.`);
+    } catch (error) {
+      this.releaseAudio();
+      this.status(error instanceof Error ? error.message : String(error));
+    }
     this.syncControls();
   }
 
@@ -91,18 +135,25 @@ export class AudioAnalysisController {
   async analyze(): Promise<void> {
     const file = element<HTMLInputElement>('analysis-file').files?.[0];
     if (!file || !this.active) return;
+    if (!this.hasPermission(file)) {
+      this.status('Confirm that you have the necessary rights or permission before analyzing this recording.');
+      this.syncControls();
+      element('analysis-rights').focus();
+      return;
+    }
     this.cancel('');
     this.clearResult();
     const generation = this.generation;
     this.busy = true; this.syncControls(); this.pauseSong();
     element<HTMLAudioElement>('analysis-audio').pause();
     try {
-      if (file.size > MAX_AUDIO_BYTES) throw new Error('Choose a file smaller than 30 MB. Nothing was uploaded.');
-      if (!/\.(mp3|wav)$/i.test(file.name)) throw new Error('This first release supports MP3 and WAV files.');
+      this.validateFile(file);
       this.status('Decoding locally. Large recordings can take a moment; Cancel remains available.');
       const decoder = new OfflineAudioContext(1, 1, ANALYSIS_RATE);
-      const decoded = await decoder.decodeAudioData(await file.arrayBuffer());
-      if (generation !== this.generation || !this.active) return;
+      const bytes = await file.arrayBuffer();
+      if (generation !== this.generation || !this.active || !this.hasPermission(file)) return;
+      const decoded = await decoder.decodeAudioData(bytes);
+      if (generation !== this.generation || !this.active || !this.hasPermission(file)) return;
       if (!decoded.length || decoded.duration > MAX_AUDIO_SECONDS) throw new Error('Choose a non-empty recording of at most 5 minutes. Longer files are not silently truncated.');
       const samples = new Float32Array(decoded.length);
       for (let channel = 0; channel < decoded.numberOfChannels; channel++) {
@@ -111,7 +162,7 @@ export class AudioAnalysisController {
       }
       this.worker = new Worker(new URL('../analysis/audioWorker.ts', import.meta.url), { type: 'module' });
       this.worker.onmessage = (event: MessageEvent<AnalysisResponse>) => {
-        if (generation !== this.generation || !this.active) return;
+        if (generation !== this.generation || !this.active || !this.hasPermission(file)) return;
         const message = event.data;
         if (message.type === 'progress') {
           element<HTMLProgressElement>('analysis-progress').value = message.percent;
@@ -143,7 +194,7 @@ export class AudioAnalysisController {
     if (!result) return;
     element('analysis-results').hidden = false;
     element('analysis-key').textContent = result.keys.length
-      ? `${result.keyUncertain ? 'Key / parent scale uncertain. Candidates' : 'Suggested key / parent scale'}: ${result.keys.map(k => `${k.root} ${k.mode}`).join(' · ')}`
+      ? `${result.keyUncertain ? 'Uncertain — candidates' : 'Candidate'}: ${result.keys.map(k => `${k.root} ${k.mode}`).join(' · ')}`
       : 'No reliable major/minor key suggestion. Silence, noise or too few distinct notes.';
     const unknown = result.regions.filter(region => region.kind === 'uncertain').length;
     this.status(`Draft ready: ${result.regions.length} regions over ${result.duration.toFixed(1)} seconds; ${unknown} need review. Estimates are not verified song chords, rhythm or tabs.`);
@@ -155,7 +206,7 @@ export class AudioAnalysisController {
       time.textContent = `${region.start.toFixed(2)}–${region.end.toFixed(2)} s`;
       const chordCell = document.createElement('td'), chord = document.createElement('input');
       chord.value = region.chord || (region.kind === 'silence' ? 'Rest' : '?');
-      chord.setAttribute('aria-label', `Chord for region ${index + 1}, ${time.textContent}`);
+      chord.setAttribute('aria-label', `Estimated chord for region ${index + 1}, ${time.textContent}`);
       chord.setAttribute('list', 'analysis-chord-help');
       const match = document.createElement('td');
       match.textContent = region.match === null ? region.kind : `${Math.round(region.match)} (template match, not accuracy)`;
@@ -178,7 +229,15 @@ export class AudioAnalysisController {
 
   private save(): void {
     const file = element<HTMLInputElement>('analysis-file').files?.[0];
-    if (!file || !this.result || this.invalidRegions.size) return;
+    if (!this.hasPermission(file)) {
+      this.status('Confirm your permission for this recording before saving an analysis draft.');
+      this.syncControls();
+      return;
+    }
+    if (!file || !this.result || this.invalidRegions.size) {
+      this.status('Analyze the confirmed recording and resolve invalid chord entries before saving.');
+      return;
+    }
     try {
       const song = analysisToSong(this.result, element<HTMLInputElement>('analysis-title').value, `User recording: ${file.name}`,
         Number(element<HTMLInputElement>('analysis-bpm').value), element<HTMLInputElement>('analysis-allow-unknown').checked, `custom_${crypto.randomUUID()}`);

@@ -174,10 +174,11 @@ export async function checkSongs({ check, evaluate, send, until, show, screensho
     assert.equal(result.selfGrade, 0); assert.equal(result.stopped, true);
   });
 
-  await check('Finder imports, searches and opens the exact original chart with truthful capabilities', async () => {
+  await check('Play Along imports and reopens the exact original chart without losing built-in songs', async () => {
     const result = await evaluate(() => {
-      window.switchTab('search');
-      document.querySelector('#pane-search [data-open-song-import]').click();
+      window.switchTab('songs');
+      const before = testMain.getAllSongs().filter(song => !song.isCustom).map(song => song.id);
+      document.querySelector('#pane-songs [data-open-song-import]').click();
       document.getElementById('custom-song-title-input').value = 'Copper Lantern Walk';
       document.getElementById('custom-song-artist-input').value = 'नील Original';
       document.getElementById('custom-song-source').value = 'My practice notebook';
@@ -187,32 +188,23 @@ export async function checkSongs({ check, evaluate, send, until, show, screensho
       const id = appState.songStudio.activeSongId;
       const order = appState.songStudio.timeline.events.map(e => e.chord);
       const source = document.getElementById('song-source-text').textContent;
-      window.switchTab('search');
-      document.getElementById('search-song-input').value = 'Coper Lantern Walk';
-      document.getElementById('song-search-content').value = 'imported';
-      document.getElementById('btn-search-song').click();
-      const resultId = document.querySelector('#search-results button')?.dataset.songId;
-      const capability = document.getElementById('search-results').textContent;
-      document.querySelector('#search-results button').click();
+      const capability = document.getElementById('song-timing-status').textContent;
+      appState.songStudio.loadSong('happy_birthday');
+      const select = document.getElementById('song-selector-select');
+      select.value = id;
+      select.dispatchEvent(new Event('change'));
       const opened = appState.songStudio.activeSongId;
       const selector = document.getElementById('song-selector-select').value;
-      window.switchTab('search');
-      document.getElementById('song-search-content').value = 'chords';
-      document.getElementById('search-song-input').value = 'Copper Timing Exercise';
-      document.getElementById('btn-search-song').click();
-      const tabsResults = document.querySelectorAll('#search-results button').length;
-      document.getElementById('search-song-input').value = '...';
-      document.getElementById('btn-search-song').click();
-      const noMatch = document.getElementById('song-search-status').textContent;
-      return { id, order, source, resultId, capability, opened, selector, tabsResults, noMatch };
+      const after = testMain.getAllSongs().filter(song => !song.isCustom).map(song => song.id);
+      return { id, order, source, capability, opened, selector, before, after };
     });
     assert.deepEqual(result.order, ['C', 'G', 'C', 'C', 'G', 'C']);
     assert.match(result.source, /\[C\]Two steps/);
-    assert.equal(result.id, result.resultId); assert.equal(result.id, result.opened); assert.equal(result.id, result.selector);
+    assert.equal(result.id, result.opened); assert.equal(result.id, result.selector);
     assert.match(result.capability, /Imported chord chart/); assert.match(result.capability, /Approximate timing/);
-    assert.equal(result.tabsResults, 0); assert.match(result.noMatch, /No local matches/);
+    assert.deepEqual(result.before, result.after);
+    assert.ok(result.after.includes('happy_birthday'));
   });
-  await screenshot('song-finder-desktop');
   await check('Timing editor validates, saves/reloads and exports authored musical events', async () => {
     const result = await evaluate(async () => {
       window.switchTab('songs');
@@ -259,7 +251,7 @@ export async function checkSongs({ check, evaluate, send, until, show, screensho
     assert.match(await evaluate(() => document.getElementById('song-transport-status').textContent), /not in the local library/);
     await evaluate(() => appState.songStudio.loadSong('original-timing-study'));
     await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 760, deviceScaleFactor: 1, mobile: false });
-    for (const tab of ['songs', 'search']) {
+    for (const tab of ['songs', 'analysis']) {
       await evaluate(`window.switchTab('${tab}'); window.scrollTo(0,0);`);
       await evaluate(async () => {
         await document.fonts.ready;

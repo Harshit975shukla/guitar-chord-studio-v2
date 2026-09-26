@@ -828,8 +828,8 @@
       <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="scales" aria-controls="pane-scales">
         <span>🎼</span> Scales & 3D Neck <span class="tab-badge" style="background:#06b6d4; color:#000;">BPM Control</span>
       </button>
-      <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="search" aria-controls="pane-search">
-        <span>🔍</span> Song Search & Chords <span class="tab-badge" style="background:#38bdf8; color:#000;">50+ Songs</span>
+      <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="analysis" aria-controls="pane-analysis">
+        <span>🎵</span> Analyze Audio
       </button>
       <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="tuner" aria-controls="pane-tuner">
         <span>🪕</span> Headstock Tuner <span class="tab-badge">6 Presets</span>
@@ -1779,50 +1779,36 @@
   </div>
 
   <!-- ==========================================================================
-       TAB: SONG SEARCH
+       TAB: ANALYZE AUDIO
        ========================================================================== -->
-  <div class="studio-tab-pane" id="pane-search" role="tabpanel" aria-labelledby="tab-search">
+  <div class="studio-tab-pane" id="pane-analysis" role="tabpanel" aria-labelledby="tab-analysis">
     <div style="padding: var(--space-xl); max-width: 1000px; margin: 0 auto;">
-      <div class="card">
-        <div style="text-align:center; margin-bottom:var(--space-lg);">
-          <h2 style="font-size:1.8rem; font-weight:800;">Find chords or analyze your recording</h2>
-          <p style="color:var(--text-muted);">Search local chord charts, or create an editable draft from your MP3. Tabs remain in Play Along.</p>
-        </div>
-        <div style="max-width:600px; margin:0 auto var(--space-lg);">
-          <div class="song-search-input-row">
-            <input type="text" id="search-song-input" placeholder="e.g. Tum Hi Ho, Hotel California, Kesariya..." style="flex:1; padding:14px 20px; background:rgba(10,14,26,0.9); border:2px solid var(--accent-cyan); border-radius:30px; font-size:1rem; color:#fff; outline:none;" aria-label="Song search">
-            <button class="btn btn-primary" id="btn-search-song" style="padding:12px 28px; border-radius:30px; white-space:nowrap;"><span>🔎</span> Search</button>
-          </div>
-        </div>
-        <div class="song-finder-filters">
-          <label for="song-search-field">Search in</label>
-          <select id="song-search-field"><option value="all">Title and artist</option><option value="title">Title</option><option value="artist">Artist</option></select>
-          <label for="song-search-content">Available content</label>
-          <select id="song-search-content"><option value="chords">All chord charts</option><option value="imported">Imported chord charts</option></select>
-          <button class="btn btn-secondary" data-open-song-import>Import your chart / timing JSON</button>
-        </div>
-        <p id="song-search-status" class="song-data-status" role="status">Search chords by title or artist. Catalog excerpts are not verified full arrangements.</p>
-        <a id="song-web-search" target="_blank" rel="noopener noreferrer" hidden>Search public chord pages on Google (leaves this app)</a>
-        <div id="search-results" style="display:none;"></div>
-      </div>
       <section id="audio-analysis" class="card audio-analysis" aria-labelledby="analysis-heading">
-        <h3 id="analysis-heading">MP3 / WAV to chord draft</h3>
-        <p class="song-data-status">Analyze a recording you are allowed to use. Audio stays on this device. Results suggest chords and a major/minor key—not verified tabs or an exact transcription. Dense mixes, vocals, tuning differences and key changes can confuse this lightweight analyzer.</p>
+        <h2 id="analysis-heading">Analyze Audio</h2>
+        <p class="song-data-status">Choose your recording to get a <strong>Suggested key</strong> and <strong>Estimated chords</strong>. Audio stays on this device. Review and correct the draft before saving it to Play Along. Your existing songs, charts and imports remain in Play Along.</p>
+        <p class="song-data-status">These are estimates, not verified tabs or an exact transcription. Dense mixes, vocals, unusual tuning and key changes can confuse the analyzer.</p>
         <label for="analysis-file">Recording (MP3 or WAV, up to 30 MB and 5 minutes)</label>
         <input type="file" id="analysis-file" accept=".mp3,.wav,audio/mpeg,audio/wav">
+        <label for="analysis-rights" class="analysis-permission">
+          <input type="checkbox" id="analysis-rights" aria-describedby="analysis-rights-help" disabled>
+          <span>I confirm that I hold the necessary rights or have permission to analyze <strong id="analysis-permission-file">the selected recording</strong>.</span>
+        </label>
+        <p id="analysis-rights-help" class="song-data-status">Required for each recording before preview or analysis. Confirm only if true. This acknowledgement does not grant copyright permissions or permission to redistribute music.</p>
         <div class="song-timing-controls">
           <button class="btn btn-primary" id="analysis-start" disabled>Analyze on this device</button>
           <button class="btn btn-secondary" id="analysis-cancel" disabled>Cancel analysis</button>
           <button class="btn btn-secondary" id="analysis-clear">Clear recording</button>
         </div>
         <progress id="analysis-progress" max="100" value="0" aria-label="Audio analysis progress"></progress>
-        <p id="analysis-status" class="song-data-status" role="status">Choose a recording. No third-party analysis service is used.</p>
+        <p id="analysis-status" class="song-data-status" role="status">Choose a recording, then confirm your permission. No third-party analysis service is used.</p>
         <audio id="analysis-audio" controls preload="metadata" hidden aria-label="Your recording reference"></audio>
         <div id="analysis-results" hidden>
-          <h4 id="analysis-key"></h4>
+          <h3>Suggested key</h3>
+          <p id="analysis-key" class="song-data-status"></p>
+          <h3 id="analysis-chords-heading">Estimated chords</h3>
           <p class="song-data-status">Check each region against the recording. Enter a chord, <strong>Rest</strong> for silence, or <strong>?</strong> where unsure. Match scores are not accuracy percentages. Key candidates refer to the overall recording, not guaranteed modes or key changes.</p>
           <div class="analysis-table-scroll">
-            <table class="analysis-table"><thead><tr><th scope="col">Time</th><th scope="col">Editable chord</th><th scope="col">Evidence</th></tr></thead><tbody id="analysis-regions"></tbody></table>
+            <table class="analysis-table" aria-labelledby="analysis-chords-heading"><thead><tr><th scope="col">Time</th><th scope="col">Estimated chord (editable)</th><th scope="col">Evidence</th></tr></thead><tbody id="analysis-regions"></tbody></table>
           </div>
           <datalist id="analysis-chord-help"><option value="Rest"><option value="?"><option value="C"><option value="G"><option value="Am"><option value="F"><option value="D"><option value="Em"></datalist>
           <div class="song-timing-controls">
