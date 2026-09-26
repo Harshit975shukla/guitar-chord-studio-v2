@@ -12,7 +12,8 @@
     "test:songs": "tsx scripts/song-reliability.mjs",
     "test:audio": "tsx scripts/audio-analysis-smoke.mjs",
     "test:practice": "tsx scripts/positions-practice-smoke.mjs",
-    "test:strumming": "tsx scripts/strumming-smoke.mjs"
+    "test:strumming": "tsx scripts/strumming-smoke.mjs",
+    "test:theory": "tsx scripts/circle-smoke.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",

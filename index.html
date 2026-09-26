@@ -831,6 +831,9 @@
       <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="analysis" aria-controls="pane-analysis">
         <span>🎵</span> Analyze Audio
       </button>
+      <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="fifths" aria-controls="pane-fifths">
+        <span>◯</span> Circle of Fifths
+      </button>
       <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="tuner" aria-controls="pane-tuner">
         <span>🪕</span> Headstock Tuner <span class="tab-badge">6 Presets</span>
       </button>
@@ -1859,6 +1862,90 @@
         <a id="youtube-external" target="_blank" rel="noopener noreferrer" hidden>Open on YouTube (external)</a>
       </section>
     </div>
+  </div>
+
+  <div class="studio-tab-pane" id="pane-fifths" role="tabpanel" aria-labelledby="tab-fifths">
+    <section class="fifths-page" aria-labelledby="fifths-heading">
+      <header class="fifths-header">
+        <h2 id="fifths-heading">Circle of fifths</h2>
+        <p>See how keys connect, hear their chord families, then take a key into your scale practice.</p>
+      </header>
+      <div class="fifths-layout">
+        <div>
+          <div class="fifths-mode" role="group" aria-label="Key family to explore">
+            <button id="fifths-major" class="btn btn-secondary" aria-pressed="true">Major keys</button>
+            <button id="fifths-minor" class="btn btn-secondary" aria-pressed="false">Relative minor keys</button>
+          </div>
+          <div id="fifths-wheel" class="fifths-wheel" role="group" aria-label="Circle key pairs. Arrow keys move around the circle; Home selects C/A minor.">
+            <svg class="fifths-ring" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+              <circle cx="50" cy="50" r="44" stroke="currentColor" stroke-width=".5"/>
+              <circle cx="50" cy="50" r="25" stroke="currentColor" stroke-width=".25"/>
+            </svg>
+            <div class="fifths-center" aria-hidden="true">
+              <strong id="fifths-center-root">C</strong>
+              <span id="fifths-center-mode">major</span>
+              <small id="fifths-center-signature">No sharps or flats</small>
+            </div>
+          </div>
+          <p class="fifths-wheel-help">Large names are major keys; small names are their relative minors. Choose a key family above. Gold marks your selection; outlined neighbors are one step away.</p>
+          <label class="fifths-spelling" for="fifths-spelling">Six-accidental spelling
+            <select id="fifths-spelling"><option value="sharp">F♯ major / D♯ minor</option><option value="flat">G♭ major / E♭ minor</option></select>
+          </label>
+          <p class="fifths-muted">Clockwise moves by a fifth in sounding pitch classes. At the sharp/flat crossover, enharmonic names can change while the pitches stay the same.</p>
+        </div>
+        <section class="card fifths-key-details" aria-labelledby="fifths-key-title">
+          <h3 id="fifths-key-title">C major</h3>
+          <dl class="fifths-facts">
+            <dt>Key signature</dt><dd id="fifths-signature"></dd>
+            <dt>Scale notes</dt><dd id="fifths-scale-notes"></dd>
+            <dt>Relative key</dt><dd id="fifths-relative"></dd>
+            <dt>Parallel key</dt><dd id="fifths-parallel"></dd>
+            <dt>Clockwise</dt><dd id="fifths-clockwise"></dd>
+            <dt>Counterclockwise</dt><dd id="fifths-counterclockwise"></dd>
+          </dl>
+          <div class="song-timing-controls">
+            <button id="fifths-hear-scale" class="btn btn-secondary" data-fifths-audio>Hear scale</button>
+            <button id="fifths-hear-interval" class="btn btn-secondary" data-fifths-audio>Hear a fifth</button>
+            <button id="fifths-stop" class="btn btn-secondary" disabled>Stop audio</button>
+            <button id="fifths-open-scales" class="btn btn-primary">Open C major in Scales</button>
+          </div>
+          <p id="fifths-audio-status" class="song-data-status" role="status">Choose a reference to hear it. Nothing plays automatically.</p>
+          <p class="fifths-muted">Reference audio uses concert pitch, independently of your capo/tuning. Stop microphone listening before auditioning references to avoid feeding them into detection. This tool does not grade your playing.</p>
+        </section>
+      </div>
+      <div class="fifths-layout fifths-harmony">
+        <section aria-labelledby="fifths-chords-heading">
+          <h3 id="fifths-chords-heading">Chords in this key</h3>
+          <p id="fifths-chord-description" class="fifths-muted"></p>
+          <table class="fifths-chord-table">
+            <thead><tr><th scope="col">Degree</th><th scope="col">Chord</th><th scope="col">Notes</th><th scope="col">Audio</th></tr></thead>
+            <tbody id="fifths-chords"></tbody>
+          </table>
+        </section>
+        <section aria-labelledby="fifths-cadences-heading">
+          <h3 id="fifths-cadences-heading">Hear a progression</h3>
+          <div id="fifths-progressions"></div>
+        </section>
+      </div>
+      <section class="fifths-lessons" aria-label="Circle of fifths learning topics">
+        <details>
+          <summary>Why a fifth? Why does the circle return to C?</summary>
+          <p>C to G spans seven semitones and five letter names: C, D, E, F, G. Repeating that pitch-class step visits all twelve positions before returning to C. Moving counterclockwise is a fifth down, equivalent in pitch class to a fourth up. The wheel is a map of keys, not guitar frets or strumming directions.</p>
+        </details>
+        <details>
+          <summary>Relative and parallel are different relationships</summary>
+          <p>C major and A natural minor share a key signature and note collection, but have different tonics. C major and C minor share the tonic C, but not the same scale notes. The key panel shows both relationships for your selection. Some theoretical parallel keys use double accidentals; an enharmonic spelling can be easier to read.</p>
+        </details>
+        <details>
+          <summary>Read a key signature—and understand minor-key exceptions</summary>
+          <p>Sharps are added in the order F, C, G, D, A, E, B; flats in the reverse order B, E, A, D, G, C, F. The signature belongs to a major key and its relative natural minor. Minor music can raise its seventh to form a major V chord: D minor keeps B♭ in its signature, while an A-major dominant uses C♯ as an accidental.</p>
+        </details>
+        <details>
+          <summary>Turn the circle into guitar practice</summary>
+          <p>Uppercase Roman numerals name major triads, lowercase names minor triads, and ° marks diminished. Hear the tonic, subdominant and dominant, then compare a cadence. These are generic harmony examples, not transcriptions of songs. Open the selected key in Scales to practise its notes; your existing range and position choices are preserved.</p>
+        </details>
+      </section>
+    </section>
   </div>
 
   <!-- ==========================================================================

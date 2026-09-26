@@ -88,6 +88,7 @@ import { AudioAnalysisController } from './ui/audioAnalysis';
 import { DrillRhythm, renderStrummingGrid } from './ui/drillRhythm';
 import { getStrummingPattern, STRUMMING_PATTERNS, type StrummingCandidate } from './rhythm/strumming';
 import { transposeSongChord } from './songs/timing';
+import { CircleOfFifths } from './ui/circleOfFifths';
 
 // ============================================================================
 // Global State
@@ -177,6 +178,7 @@ let appState: AppState = {
 let neckController: NeckController | null = null;
 let libraryNeck: LibraryNeck | null = null;
 let audioAnalysis: AudioAnalysisController | null = null;
+let circleOfFifths: CircleOfFifths | null = null;
 let liveNeckMidi: number | null = null;
 let neckCaption = 'Explore the fretboard';
 let microphonePending = false;
@@ -1311,6 +1313,7 @@ export function switchTab(tabId: string): void {
   appState.songStudio.setActive(tabId === 'songs');
   appState.scalesStudio.setActive(tabId === 'scales');
   audioAnalysis?.setActive(tabId === 'analysis');
+  circleOfFifths?.setActive(tabId === 'fifths');
   
   // Update tab panes
   document.querySelectorAll('.studio-tab-pane').forEach(pane => {
@@ -1725,6 +1728,7 @@ function initializeUI(): void {
   try { renderRhythmPresets(); } catch (e) { console.warn('renderRhythmPresets:', e); }
   try { renderLooperTracks(); } catch (e) { console.warn('renderLooperTracks:', e); }
   try { initSongToolsUI(); } catch (e) { console.warn('initSongToolsUI:', e); }
+  initCircleOfFifths();
   try { initVideoTab(); } catch (e) { console.warn('initVideoTab:', e); }
 }
 
@@ -2790,6 +2794,20 @@ function initSongToolsUI(): void {
     () => appState.songStudio.stopPlayback(),
     useSuggestedStrumming,
   );
+}
+
+function initCircleOfFifths(): void {
+  circleOfFifths = new CircleOfFifths(async () => {
+    if (appState.isListening) throw new Error('Stop microphone listening in Live studio before playing theory references. You can still explore the circle silently.');
+    await ensureAudioContext();
+    if (appState.isListening) throw new Error('Microphone listening is active. Stop listening before playing a reference.');
+    if (!appState.audioContext || !appState.acousticBus) throw new Error('Audio could not be initialized.');
+    return { context: appState.audioContext, bus: appState.acousticBus };
+  }, (root, mode) => {
+    switchTab('scales');
+    appState.scalesStudio.setRoot(root);
+    appState.scalesStudio.setScaleKey(mode === 'major' ? 'major' : 'natural_minor');
+  });
 }
 
 function initVideoTab(): void {

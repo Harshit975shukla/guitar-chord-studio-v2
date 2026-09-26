@@ -46,6 +46,9 @@ jobs:
       - name: Strumming and rhythm-drill regression tests
         run: npm run test:strumming
 
+      - name: Circle of fifths theory regression tests
+        run: npm run test:theory
+
       - name: Build
         run: npm run build
 

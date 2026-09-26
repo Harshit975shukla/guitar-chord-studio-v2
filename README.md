@@ -20,6 +20,7 @@ npm run test:songs
 npm run test:audio
 npm run test:practice
 npm run test:strumming
+npm run test:theory
 npm run preview
 ```
 
@@ -87,7 +88,21 @@ The original Three.js scene is in `src/ui/fretboard3d.ts`. It generates its own 
 node scripts/browser-smoke.mjs http://127.0.0.1:5173/ 9223
 ```
 
-Run it against the Vite dev server and an isolated Chrome/Edge profile started with `--remote-debugging-port=9223`; it resets test-origin preferences/service-worker caches and creates/closes its own test tab. It checks downstream freshness handling, all four views, voicing independence, song updates, 320px layout, pointer/camera controls, offscreen and loading cleanup, WebGL failure fallback and reduced-motion defaults. `scripts/scales-browser-checks.mjs` adds 64 scale/root/register/label combinations, tuning/capo, exact plucks, keyboard playing, clock-controlled run/highlight races and synthetic mic feedback. `scripts/songs-browser-checks.mjs` checks actual Web Audio start/stop scheduling, the three timing modes, cancellation, per-performance scoring, Finder/import/editor roundtrips and mobile layouts. `scripts/two-octave-browser-checks.mjs` checks planned notes, actual synthesized buffers, shift cues in both directions, guided completion, unavailable starts, cancellation and narrow layouts. These use original fixtures and synthetic detection inputs, never microphone recordings. Optional `SCREENSHOT_DIR` saves inspection images.
+Run it against the Vite dev server and an isolated Chrome/Edge profile started with `--remote-debugging-port=9223`; it resets test-origin preferences/service-worker caches and creates/closes its own test tab. It checks downstream freshness handling, all four views, voicing independence, song updates, 320px layout, pointer/camera controls, offscreen and loading cleanup, WebGL failure fallback and reduced-motion defaults. `scripts/scales-browser-checks.mjs` adds 64 scale/root/register/label combinations, tuning/capo, exact plucks, keyboard playing, clock-controlled run/highlight races and synthetic mic feedback. `scripts/songs-browser-checks.mjs` checks actual Web Audio start/stop scheduling, the three timing modes, cancellation, per-performance scoring, Play Along import/editor roundtrips and mobile layouts. `scripts/two-octave-browser-checks.mjs` checks planned notes, actual synthesized buffers, shift cues in both directions, guided completion, unavailable starts, cancellation and narrow layouts. These use original fixtures and synthetic detection inputs, never microphone recordings. Optional `SCREENSHOT_DIR` saves inspection images.
+
+## Circle of Fifths
+
+Open **More tools → Circle of fifths** to explore key relationships without changing your active practice settings. Each circle position pairs a major key with its relative natural minor. **Major keys / Relative minor keys** selects which family the wheel explores; it does not switch to the parallel key. Arrow keys move around the wheel, Home selects C/A minor, and native controls remain usable with reduced motion.
+
+The selected-key panel shows the key signature in conventional sharp/flat order, correctly spelled scale notes, relative and parallel keys, neighboring key pitch classes, and all seven diatonic triads. The F♯/G♭ selector changes the six-accidental spelling without changing pitches. At this crossover, some neighboring names are enharmonic; the wheel describes sounding pitch-class relationships.
+
+Use **Hear scale**, **Hear a fifth**, chord **Hear** buttons and **Hear progression** to compare generic harmony examples. Natural-minor triads retain a minor v; the separate minor cadence explicitly raises the seventh to make a major V. For D minor, B♭ remains in the key signature while A major uses C♯ as an accidental. The expandable lessons explain fifths/fourths, relative versus parallel keys, signatures and cadences.
+
+Reference audio uses the existing synthesized guitar at concert pitch, independently of current capo/tuning. It starts only on request and stops on Stop, key/mode/spelling changes, navigation or page exit. Pending audio starts are invalidated too. Stop global microphone listening before auditioning: the tool deliberately refuses reference sound while listening is active instead of feeding it into detection or silently stopping your microphone. It does not score playing or add song content.
+
+**Open this key in Scales** explicitly applies only the selected root and major/natural-minor scale. Existing range, position and practice-mode choices remain; the normal Scales key-change behavior resets its progress. No setting is transferred just by exploring the circle.
+
+`src/theory/circleOfFifths.ts` owns the key/triad/cadence model; the tool reuses the scale definitions and spelling helpers rather than maintaining a second scale catalog. `npm run test:theory` checks signatures, enharmonic equivalents, relative pitch collections, chord tones, minor dominants and tonic reference ranges. `scripts/circle-browser-checks.mjs` checks keyboard navigation, state isolation, exact reference buffers, cancellation, microphone protection, explicit Scales handoff and non-overlapping 44px targets at 320px.
 
 ## Song timing and self-paced practice
 

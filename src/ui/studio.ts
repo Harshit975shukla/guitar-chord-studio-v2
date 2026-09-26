@@ -41,6 +41,7 @@ export function prepareStudio(): void {
     detector: ['Live studio', 'mic'], songs: ['Play along', 'music'],
     chords: ['Chord library', 'book'], scales: ['Scales', 'neck'],
     drill: ['Chord changes', 'play'], trainer: ['Ear training', 'music'],
+    fifths: ['Circle of fifths', 'reset'],
     analysis: ['Analyze audio', 'mic'], tuner: ['Tuner', 'tools'],
     metronome: ['Metronome', 'tools'], rhythm: ['Percussion', 'music'],
     recorder: ['Audio recorder', 'mic'],
