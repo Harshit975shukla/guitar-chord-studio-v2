@@ -18,6 +18,7 @@ npm run build
 npm run test:detection
 npm run test:songs
 npm run test:audio
+npm run test:practice
 npm run preview
 ```
 
@@ -47,7 +48,31 @@ Tuning/capo changes update each view's note labels and playback tuning. Shapes r
 
 **Scales** shows the selected scale, not a chord voicing. Both views share the root, scale type, fret-register filter and note/degree labels. Amber marks roots, cream marks scale tones, blue marks the blues scale's ♭5, and green marks a playing/live note. Click or keyboard-play any fret: a synthesized pluck highlights its exact string/fret, including an explicitly labeled out-of-scale note. Live practice highlights matching pitch-class positions within the selected register, even in degree-label mode; it does not infer finger placement.
 
-Scale patterns and sounding string labels follow the effective tuning/capo. Scale runs keep the existing pitch-ordered, BPM-controlled loop and follow pattern/tuning changes. New notes replace old highlight timers, and leaving Scales or hiding the page stops the run and clears pending highlights. **Practice with Guitar** requests the existing microphone and selects Notes mode; disabling practice stops scale feedback but leaves the shared microphone under Live studio's listening control.
+Scale patterns and sounding string labels follow the effective tuning/capo. In **Free play**, **Play up/down loop** starts on the lowest root from which a complete scale fits, climbs to the highest reachable root, and mirrors the same fingerings back to its exact starting point. It repeats until **Stop scale**, without double-striking either turnaround note. For D major in standard tuning with Full neck selected, that is D3 → D5 → D3; Open uses D3 → D4 → D3. The loop never starts on an arbitrary non-root scale tone.
+
+In either **Guided** mode, **Play scale once** plays the target sequence in the selected direction and stops: one octave by default, or two with the range option below. Notes release at their beat boundary so earlier notes do not keep sounding after the last note. Reference runs and guided targets prefer the selected area, with labeled one-fret reaches allowed for Middle/Upper. If a complete run cannot fit, choose another position. Leaving Scales or hiding the page stops all reference sources/timers. **Check my playing** requests the existing microphone and selects Notes mode; disabling checking leaves the shared microphone under Live studio's listening control.
+
+Note spelling follows the written root and scale degree, not a universal sharp-only list. For example, **D natural minor is D–E–F–G–A–B♭–C–D**; D harmonic minor raises C to C♯. The same spelling is used in the note ribbon, 2D/3D markers, string labels, played-note captions, guided targets and microphone feedback. Sharp and flat root buttons are separate spellings of the same pitch where appropriate; choosing B♭ major does not display the theoretical A♯-major spelling.
+
+### Scale listening practice
+
+The **Playing position** selector is beside the Scales neck and listening controls: **Full neck (0–12)**, **Open (0–4)**, **Middle (5–8)** and **Upper (9–12)**. Middle/Upper are preferred hand areas: melodic runs/targets can reach one adjacent fret when needed, bounded by the rendered neck (Middle: 4 or 9; Upper: 8). The base scale pattern stays in the preferred area; a needed reference/target reach is shown and labeled when used. This selection updates both views, reference playback and guided practice.
+
+Choose **Free play** to check individual notes against the selected scale, in any order. The visible feedback panel reports the heard pitch and **Correct / Outside this scale**, distinguishes held results from fresh evidence, and asks for a clearer pluck when confidence is insufficient. A note may belong to the scale but have no possible location in the selected register; that is reported separately. Free play does not certify that a complete scale was performed.
+
+Choose **Guided: ascending / descending** for a root-to-root run in the selected range and effective tuning/capo. The next target shows its sounding pitch and suggested string/fret, outlined in blue in both views; adjacent reaches and hand shifts are explicitly labeled. Each step needs two fresh supported frames of the exact octave/pitch and a new post-target attack, using the same performance gate as Wait for me. Wrong pitches, held results and frames from the previous ringing note do not advance. The run stops at completion; **Restart run** starts it again. Changing the scale/root/register/range/tuning resets progress. If the complete range cannot fit, the UI asks you to choose another—no scale notes are silently transposed.
+
+Start/retry and reference playback require a brief quiet release before checking resumes. The app's plucks and reference runs are not graded as your performance; checking pauses during that sound and rearms afterward. Use headphones. Mic denial, calibration, unclear pitch and a stopped microphone are visible in the same panel. Guided checks assess note order and pitch, not timing accuracy or actual finger placement. Detection thresholds and capture timing are unchanged.
+
+### Two-octave hand-shift patterns
+
+Set **Exercise range → Two octaves — shift as needed**. The position selector becomes **Starting position**: it chooses the hand area of the ascending root, not a permanent ceiling on the rest of the exercise. **Automatic start** chooses a feasible low start. The default **In selected area** keeps the previous bounded-position behavior.
+
+The planner preserves the complete scale over exactly 24 semitones, prefers a stable hand area and core frets, and plans adjacent upward hand shifts when needed. A visible cue announces the current/next hand area and shifts; expand **Ascending fingering pattern** for the ordered note/string/fret list. Both fretboards display the planned positions, with an active reference note or guided target. Descending and up/down loops reverse those same fingerings and announce the return shifts.
+
+For **D natural minor, Middle start**, the pattern runs **D3 (string 5, fret 5) → D5 (string 1, fret 10)**, shifting to Upper for the top root. On the way back, it shifts to Middle and passes **E4 on string 2, fret 5** before returning to its starting D3. The scale uses B♭ throughout. Free play loops the two-octave route up/down until Stop; Guided mode checks all 15 notes in the chosen direction and then completes.
+
+Patterns stay within the existing 0–12 fret neck. Some high starting areas cannot contain two complete octaves; the UI reports this and asks for a lower start rather than dropping notes, inventing pitches or silently changing the octave. Tuning/capo changes recalculate the route. Physical comfort and actual hand placement remain the player's judgment; microphone checking verifies pitch, not which fingering was used.
 
 ## Rendering and validation
 
@@ -61,9 +86,17 @@ The original Three.js scene is in `src/ui/fretboard3d.ts`. It generates its own 
 node scripts/browser-smoke.mjs http://127.0.0.1:5173/ 9223
 ```
 
-Run it against the Vite dev server and an isolated Chrome/Edge profile started with `--remote-debugging-port=9223`; it resets test-origin preferences and creates/closes its own test tab. It checks downstream freshness handling, all four views, voicing independence, song updates, 320px layout, pointer/camera controls, offscreen and loading cleanup, WebGL failure fallback and reduced-motion defaults. `scripts/scales-browser-checks.mjs` adds 64 scale/root/register/label combinations, tuning/capo, exact plucks, keyboard playing, clock-controlled run/highlight races and synthetic mic feedback. `scripts/songs-browser-checks.mjs` checks actual Web Audio start/stop scheduling, the three timing modes, cancellation, per-performance scoring, Finder/import/editor roundtrips and mobile layouts. These use original fixtures and synthetic detection inputs, never microphone recordings. Optional `SCREENSHOT_DIR` saves inspection images.
+Run it against the Vite dev server and an isolated Chrome/Edge profile started with `--remote-debugging-port=9223`; it resets test-origin preferences/service-worker caches and creates/closes its own test tab. It checks downstream freshness handling, all four views, voicing independence, song updates, 320px layout, pointer/camera controls, offscreen and loading cleanup, WebGL failure fallback and reduced-motion defaults. `scripts/scales-browser-checks.mjs` adds 64 scale/root/register/label combinations, tuning/capo, exact plucks, keyboard playing, clock-controlled run/highlight races and synthetic mic feedback. `scripts/songs-browser-checks.mjs` checks actual Web Audio start/stop scheduling, the three timing modes, cancellation, per-performance scoring, Finder/import/editor roundtrips and mobile layouts. `scripts/two-octave-browser-checks.mjs` checks planned notes, actual synthesized buffers, shift cues in both directions, guided completion, unavailable starts, cancellation and narrow layouts. These use original fixtures and synthetic detection inputs, never microphone recordings. Optional `SCREENSHOT_DIR` saves inspection images.
 
 ## Song timing and self-paced practice
+
+**Playing position** chooses **Original / Auto (0–12)**, **Open (0–4)**, **Middle (5–8)** or **Upper (9–12)**. Melodies prefer the core area, then allow one adjacent fret for Middle/Upper when needed (Middle: 4 or 9; Upper: 8, staying within the 0–12 neck). Reaches are labeled in the target, neck caption and song summary. The exact fitted pitch is preserved—notes are never individually octave-wrapped. Chords keep complete chord-tone voicings inside the core range, honoring slash bass where available. Position labels/frets are relative to the capo.
+
+Melodies **automatically fit the selected position** when the song, part, position, transpose or tuning/capo changes. The nearest single octave shift that fits **every melody note** is used, preserving the tune's intervals/key and all event durations. Any shift is labeled (for example, **Automatically fitted: Melody 1 octave lower**). It affects note playback, both necks, audition and Wait targets together—not chord events or direct fret clicks. **Restore original octave** opts out until **Use automatic melody fitting** or a new song/part/position/transpose/tuning choice. The adjustment is for playback during this visit; the saved/exported source chart remains unchanged. If no uniform shift fits, the app reports that rather than skipping or individually shifting notes.
+
+For the bundled Happy Birthday melody, select the song and any playing position, then **Play** with a timed mode and Reference audio enabled. All 25 source notes are retained. Open and Upper fit the displayed one-octave-lower rendition without reaches; Middle uses two clearly labeled B3 reaches at string 3, fret 4. No extra fitting click is needed. Changing position restarts the chart from the beginning, and **Play again** after completion also starts at the first event—not the last note. Play Along's selector prefers melody; Finder still opens its requested chord part. Existing catalog timing remains approximate. Wait for me intentionally has no automatic reference audio; “Start silent practice” makes disabled reference audio explicit in timed modes.
+
+Both fretboards, audition audio and the practice target use the same selected fingering. Changing position cancels playback/pending starts and selects the first event. If a target cannot fit with the allowed octave shift and reach, the neck clears and a visible message asks for another position. Timed playback stops rather than silently skipping it; Wait mode allows manual Next without auto-grading an unavailable target. Position selection is kept when switching tabs/songs during the current visit. Pausing mid-song still resumes the selected event; a completed song replays from its beginning. Physical hand ergonomics still require player judgment.
 
 Play Along offers three explicit timing modes:
 
@@ -98,7 +131,7 @@ Choose **Edit / export timing** in Play Along. Edit the JSON and optional source
 }
 ```
 
-Beats are quarter-note units, **1/64–128 per event**; BPM is 20–400 and up to 2,000 events are supported. `tempos` is optional and uses increasing, unique zero-based beat positions before the timeline ends. Changes can fall within events. There are no hidden playback-duration floors: accepted durations are integrated from beats/tempo. Notes use strings 1–6 (1 is high E), frets 0–12 relative to the capo. Optional zero-based `line` associates an event with an imported chart line for seeking. Exact transposed notes outside this playable range are reported, not octave-wrapped. Complex tab techniques and verified bass inversions are outside the detector's first-release grading scope.
+Beats are quarter-note units, **1/64–128 per event**; BPM is 20–400 and up to 2,000 events are supported. `tempos` is optional and uses increasing, unique zero-based beat positions before the timeline ends. Changes can fall within events. There are no hidden playback-duration floors: accepted durations are integrated from beats/tempo. Source notes use strings 1–6 (1 is high E), with integer fret offsets 0–36 relative to the capo to preserve high source pitches. This does **not** extend the rendered neck beyond frets 0–12 or claim every source fingering is physically available. High pitches stay in the timeline with a warning and can use an explicit whole-melody octave fit; they are no longer discarded just because their source fret exceeds 12. Optional zero-based `line` associates an event with an imported chart line for seeking. Complex tab techniques and verified bass inversions are outside the detector's first-release grading scope.
 
 ## Song Finder and imports
 
@@ -109,6 +142,8 @@ Finder searches **chord charts** in the local bundled catalog and device imports
 Custom song saving, searching and loading share the canonical `guitar_studio_custom_songs` store and read the legacy `guitar_custom_songs` store without deleting/migrating it. Conflicting versions receive distinct IDs rather than disappearing; a new save does not trim older imports. Malformed storage and save failures are surfaced instead of claiming success. No external scraping, AI title-to-chord guesses, online provider credentials or unlimited catalog coverage are implied.
 
 `npm run test:songs` exercises pure timeline integration, transport boundaries/cancellation, performance rearming and matching, catalog ranking/IDs, non-destructive storage compatibility and import/export roundtrips with deterministic original fixtures.
+
+`npm run test:practice` covers exact-pitch position mapping, chord tones/bass, unavailable positions, tuning/capo, one-octave guided runs and two-octave hand-shift plans across the supported roots/scales. `scripts/practice-browser-checks.mjs` verifies the corresponding controls, real synthesized pitch versus both necks, fresh/held/free/guided feedback, octave/order errors, reference-audio suppression, completion/restart and mobile layouts. As with the other checks, synthetic streams do not establish real-room microphone accuracy.
 
 ## Local recording analysis and YouTube references
 

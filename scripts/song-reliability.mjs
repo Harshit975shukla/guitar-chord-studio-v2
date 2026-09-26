@@ -41,7 +41,7 @@ check('invalid timing reports errors rather than coercing/clamping authored data
   for (const patch of [
     { version: 2 }, { bpm: '80' }, { bpm: 0 }, { events: [] },
     { events: [{ type: 'note', string: 0, fret: 2, beats: 1 }] },
-    { events: [{ type: 'note', string: 1, fret: 13, beats: 1 }] },
+    { events: [{ type: 'note', string: 1, fret: 37, beats: 1 }] },
     { events: [{ type: 'rest', beats: 0 }] },
     { events: [{ type: 'rest', beats: .00001 }] },
     { events: [{ type: 'chord', chord: 'Cunknown', beats: 1 }] },

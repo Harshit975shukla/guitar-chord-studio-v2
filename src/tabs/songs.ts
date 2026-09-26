@@ -6,9 +6,10 @@ import { playAcousticString, strumChord, AcousticBus } from '../audio/engine';
 import { buildChordDefinition, CHORD_PRESETS, CHORD_FORMULAS } from '../chords/definitions';
 import { PaneNeck3D } from '../ui/paneNeck3d';
 import { findSong, songTimeline, type CatalogSong } from '../songs/catalog';
-import { chordIdentity, compileTiming, PITCH_CLASSES, resolveSongNote, transposeSongChord, type SongEvent, type SongTiming, type TimingMode } from '../songs/timing';
+import { chordIdentity, compileTiming, fitMelodyOctaves, PITCH_CLASSES, resolveSongNote, transposeSongChord, type SongEvent, type SongTiming, type TimingMode } from '../songs/timing';
 import { PerformanceGate, type PracticeTarget } from '../songs/performance';
 import { SongTransport } from '../songs/transport';
+import { chordInRegister, isFretboardRegister, REGISTER_LABELS, type FretboardRegister } from '../chords/positions';
 
 const PC_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const NOTE_TO_PC: Record<string, number> = {
@@ -918,6 +919,7 @@ export class SongStudio {
   private activeSongId = 'original-timing-study';
   private activeSong: CatalogSong | null = null;
   private isPlaying = false;
+  private playbackComplete = false;
   private currentLineIdx = 0;
   private currentEventIndex = 0;
   private playMode: 'notes' | 'chords' = 'notes'; // 'notes' (Lead Tabs) vs 'chords' (Rhythm Strum)
@@ -948,8 +950,11 @@ export class SongStudio {
   private auditionGeneration = 0;
   private auditionPending = false;
   private capo = 0;
+  private position: FretboardRegister = 'all';
+  private melodyOctaves = 0;
+  private automaticMelodyFit = true;
+  private positionVoicings = new Map<string, (number | null)[] | null>();
   private neck3d: PaneNeck3D | null = null;
-  private displayedChord: string | null = null;
   public onMicStartRequested?: () => Promise<boolean>;
   public onPlayRequested?: () => Promise<void>;
 
@@ -960,7 +965,7 @@ export class SongStudio {
     }, {
       play: (entry, at, end) => this.referenceAudio ? this.playEvent(entry.event, at, end) : () => {},
       target: entry => this.showEvent(entry.index),
-      finish: () => { this.isPlaying = false; this.updateTransportUI(); this.status('End of chart. Restart or choose another event.'); },
+      finish: () => this.completePlayback('End of chart. Press Play again to replay from the beginning.'),
       stalled: () => this.status('Playback resumed from the next event after a timing interruption.'),
     });
     window.addEventListener('pagehide', () => { this.stopPlayback(); this.onMicrophoneStopped(); });
@@ -973,11 +978,14 @@ export class SongStudio {
 
   setTuning(tuning: StringTuning[], capo = 0): void {
     this.stopPlayback();
+    this.melodyOctaves = 0;
     this.tuning = tuning.map(string => ({ ...string, note: NOTE_NAMES[string.midi % 12] }));
     this.capo = capo;
+    this.automaticMelodyFit = true;
+    this.refreshMelodyFit();
+    this.positionVoicings.clear();
     this.updateFretboardLabels();
-    if (this.displayedChord) this.renderChordOnFretboard(this.displayedChord);
-    else this.renderSongFretboard();
+    this.showEvent(this.playbackComplete ? 0 : this.currentEventIndex);
   }
 
   setActive(active: boolean): void {
@@ -1026,9 +1034,11 @@ export class SongStudio {
     if (!this.neck3d) return;
     const tuning = this.tuning;
     const empty: (number | null)[] = [null, null, null, null, null, null];
+    let reachCaption = '';
     if (noteItem) {
       const note = this.transposedNote(noteItem);
       if (note) empty[note.s] = note.f;
+      if (note?.reach) reachCaption = ` · one-fret reach to ${note.f}`;
       this.neck3d.update({ frets: empty, tuning, liveMidi: null, root: note ? NOTE_NAMES[note.midi % 12] : null });
     } else if (chordName) {
       const frets = this.getChordFrets(chordName)?.map(f => f === null || f < 0 ? null : f) || empty;
@@ -1038,7 +1048,9 @@ export class SongStudio {
       this.neck3d.update({ frets: empty, tuning, liveMidi: null, root: null });
     }
     const caption = document.getElementById('song-neck-caption');
-    if (caption) caption.textContent = chordName ? `${chordName} · song voicing${this.capo ? ` · sounds ${transposeChordName(chordName, this.capo)} with capo ${this.capo}` : ''}` : noteItem ? 'Target note · authored string/fret' : this.currentEvent()?.type === 'rest' ? 'Rest · no note to play' : 'Play along';
+    if (caption) caption.textContent = chordName ? `${chordName} · song voicing${this.capo ? ` · sounds ${transposeChordName(chordName, this.capo)} with capo ${this.capo}` : ''}` : noteItem ? this.position === 'all' ? 'Target note · original / auto fingering' : `Target note · ${REGISTER_LABELS[this.position]}` : this.currentEvent()?.type === 'rest' ? 'Rest · no note to play' : 'Play along';
+    if (caption && noteItem && this.melodyOctaves) caption.textContent += ` · ${this.melodyOctaveLabel()}`;
+    if (caption) caption.textContent += reachCaption;
     const tuningLabel = document.getElementById('song-neck-tuning');
     if (tuningLabel) tuningLabel.textContent = [...tuning].reverse().map(s => s.note).join(' · ');
   }
@@ -1120,6 +1132,16 @@ export class SongStudio {
       this.populateTransposeSelect();
       transposeSel.onchange = () => this.setTranspose(parseInt(transposeSel.value) || 0);
     }
+    const position = document.getElementById('song-position-filter') as HTMLSelectElement;
+    position.onchange = () => { if (isFretboardRegister(position.value)) this.setPosition(position.value); };
+    document.getElementById('song-fit-melody')!.onclick = () => this.fitMelodyToPosition();
+    document.getElementById('song-original-octave')!.onclick = () => {
+      this.stopPlayback();
+      this.automaticMelodyFit = false;
+      this.melodyOctaves = 0;
+      this.showEvent(this.playbackComplete ? 0 : this.currentEventIndex);
+      this.status('Original melody octave restored. Source timing and notes are unchanged.');
+    };
 
     // Play Mode buttons
     const notesBtn = document.getElementById('btn-mode-notes');
@@ -1169,7 +1191,12 @@ export class SongStudio {
     const loop = document.getElementById('song-loop') as HTMLInputElement;
     loop.onchange = () => { this.stopPlayback(); this.loop = loop.checked; };
     const reference = document.getElementById('song-reference-audio') as HTMLInputElement;
-    reference.onchange = () => { this.stopPlayback(); this.referenceAudio = reference.checked; };
+    reference.onchange = () => {
+      this.stopPlayback();
+      this.referenceAudio = reference.checked;
+      this.updateTransportUI();
+      this.status(this.referenceAudio ? 'Reference audio is on. Press Play to hear the chart in a timed mode.' : 'Reference audio is off. Timed practice advances silently; enable it to hear the chart.');
+    };
     document.getElementById('btn-song-audition')!.onclick = () => { void this.audition(); };
   }
 
@@ -1185,16 +1212,20 @@ export class SongStudio {
 
   loadSong(songId: string, part?: 'notes' | 'chords'): boolean {
     this.stopPlayback();
+    this.playbackComplete = false;
     this.activeSongId = songId;
     try {
       this.activeSong = findSong(this.getCatalog(), songId);
       this.bpm = this.activeSong.timing?.bpm ?? this.activeSong.bpm;
       this.transposeSemis = 0;
+      this.melodyOctaves = 0;
+      this.automaticMelodyFit = true;
       this.speed = 1;
       this.practiceScore = 0;
       document.getElementById('song-practice-score')!.textContent = '0';
-      this.playMode = part ?? (this.activeSong.availability.chords ? 'chords' : 'notes');
+      this.playMode = part ?? (this.activeSong.availability.tabs ? 'notes' : 'chords');
       this.timeline = songTimeline(this.activeSong, this.playMode);
+      this.refreshMelodyFit();
       this.parseSongKey();
       this.refreshCatalog();
       this.populateTransposeSelect();
@@ -1250,18 +1281,68 @@ export class SongStudio {
 
   setTranspose(semis: number): void {
     this.stopPlayback();
+    this.melodyOctaves = 0;
     this.transposeSemis = ((semis % 12) + 12) % 12;
+    this.automaticMelodyFit = true;
+    this.refreshMelodyFit();
     this.updateSongMetadataUI();
     this.renderChordsPalette();
     this.renderLyricsScrollView();
-    this.showEvent(this.currentEventIndex);
+    this.showEvent(this.playbackComplete ? 0 : this.currentEventIndex);
+  }
+
+  setPosition(position: FretboardRegister): void {
+    this.stopPlayback();
+    this.melodyOctaves = 0;
+    this.position = position;
+    this.automaticMelodyFit = true;
+    this.refreshMelodyFit();
+    this.positionVoicings.clear();
+    const select = document.getElementById('song-position-filter') as HTMLSelectElement | null;
+    if (select) select.value = position;
+    this.showEvent(0);
+    this.status(this.positionIssue() || `${REGISTER_LABELS[position]} selected. ${this.melodyOctaveLabel()}. Restarted at the beginning; the melody's intervals and key are unchanged.`);
+  }
+
+  private refreshMelodyFit(): void {
+    this.melodyOctaves = 0;
+    if (!this.automaticMelodyFit || !this.timeline) return;
+    const fit = fitMelodyOctaves(this.timeline.events, this.tuning, this.transposeSemis, this.position, true);
+    if (fit !== null) this.melodyOctaves = fit;
+  }
+
+  fitMelodyToPosition(): void {
+    this.stopPlayback();
+    this.automaticMelodyFit = true;
+    const fit = this.timeline ? fitMelodyOctaves(this.timeline.events, this.tuning, this.transposeSemis, this.position, true) : null;
+    if (fit === null) {
+      this.status('The complete melody cannot fit this position with a single octave adjustment. Choose another position. No notes were changed or skipped.');
+      return;
+    }
+    this.melodyOctaves = fit;
+    this.showEvent(this.playbackComplete ? 0 : this.currentEventIndex);
+    this.status(`${this.melodyOctaveLabel()}. Every melody note uses the same octave shift; key, intervals and timing are unchanged. Press Play.`);
+  }
+
+  private melodyOctaveLabel(): string {
+    return this.melodyOctaves === 0 ? 'Original melody octave' : `Melody ${Math.abs(this.melodyOctaves)} octave${Math.abs(this.melodyOctaves) === 1 ? '' : 's'} ${this.melodyOctaves < 0 ? 'lower' : 'higher'}`;
+  }
+
+  private positionIssue(event = this.currentEvent()): string | null {
+    if (!event || event.type === 'rest') return null;
+    if (event.type === 'note' && this.transposedNote(event)) return null;
+    if (event.type === 'chord' && this.getChordFrets(transposeChordName(event.chord, this.transposeSemis))) return null;
+    return `No ${event.type === 'note' ? 'fingering for this exact pitch' : 'complete chord voicing'} in ${REGISTER_LABELS[this.position]} with this tuning/capo. ${event.type === 'note' ? this.automaticMelodyFit ? 'The whole melody cannot fit with one uniform octave shift. Choose another position or use manual Next.' : 'Use automatic melody fitting, choose another position or use manual Next.' : 'Choose another position or use manual Next.'} No notes were skipped.`;
   }
 
   setPlayMode(mode: 'notes' | 'chords'): void {
     if (!this.activeSong || this.activeSong.timing) return;
     this.stopPlayback();
+    this.melodyOctaves = 0;
     this.playMode = mode;
     this.timeline = songTimeline(this.activeSong, mode);
+    this.automaticMelodyFit = true;
+    this.refreshMelodyFit();
     const notesBtn = document.getElementById('btn-mode-notes');
     const chordsBtn = document.getElementById('btn-mode-chords');
     const modeDesc = document.getElementById('song-mode-description');
@@ -1292,7 +1373,7 @@ export class SongStudio {
     this.stopPlayback();
     if (this.timingMode === 'fixed') this.bpm = val;
     else this.speed = val / 100;
-    this.showEvent(this.currentEventIndex);
+    this.showEvent(this.playbackComplete ? 0 : this.currentEventIndex);
     this.updateTransportUI();
   }
 
@@ -1305,15 +1386,16 @@ export class SongStudio {
   }
 
   async startPlayback(): Promise<void> {
+    const startIndex = this.playbackComplete ? 0 : this.currentEventIndex;
     this.stopPlayback();
     if (!this.active || !this.timeline?.events.length) return;
     const generation = this.startGeneration;
     this.isPlaying = true;
     this.updateTransportUI();
     this.gate = new PerformanceGate();
-    this.showEvent(this.currentEventIndex);
+    this.showEvent(startIndex);
     if (this.timingMode === 'wait') {
-      this.status(this.currentEvent()?.type === 'rest' ? 'Rest: take your time, then choose Next.' : 'Wait for me: stay quiet briefly, then play the target. Manual Next is always available.');
+      this.status(this.positionIssue() || (this.currentEvent()?.type === 'rest' ? 'Rest: take your time, then choose Next.' : 'Wait for me: stay quiet briefly, then play the target. Manual Next is always available.'));
       if (!this.isPracticeMicActive) await this.requestPracticeMic();
       return;
     }
@@ -1322,9 +1404,9 @@ export class SongStudio {
       if (generation !== this.startGeneration || !this.active || !this.isPlaying) return;
       if (!this.audioContext) throw new Error('Audio is unavailable; try again after allowing browser audio.');
       const entries = compileTiming(this.timeline, this.timingMode, this.bpm, this.speed);
-      if (this.referenceAudio) for (const entry of entries) {
-        if (entry.event.type === 'note' && !this.transposedNote(entry.event)) throw new Error('A transposed note is outside frets 0–12. Lower transpose or edit the note.');
-        if (entry.event.type === 'chord' && !this.getChordFrets(transposeChordName(entry.event.chord, this.transposeSemis))) throw new Error('A chord has no supported voicing in this tuning. Use Standard tuning or edit explicit notes.');
+      for (const entry of entries.slice(this.loop ? 0 : this.currentEventIndex)) {
+        const issue = this.positionIssue(entry.event);
+        if (issue) throw new Error(`Event ${entry.index + 1}: ${issue}`);
       }
       this.transport.start(entries, this.currentEventIndex, this.loop);
       this.status(this.referenceAudio ? 'Reference playback. Scoring is off while reference audio is enabled; use headphones.' : 'Timed practice. Play each target after a new attack.');
@@ -1348,6 +1430,13 @@ export class SongStudio {
     this.updateTransportUI();
   }
 
+  private completePlayback(message: string): void {
+    this.stopPlayback();
+    this.playbackComplete = true;
+    this.updateTransportUI();
+    this.status(message);
+  }
+
   restartPlayback(): void {
     this.stopPlayback();
     this.showEvent(0);
@@ -1362,7 +1451,7 @@ export class SongStudio {
     if (!this.timeline) return;
     if (this.currentEventIndex + 1 >= this.timeline.events.length) {
       if (this.loop) this.seek(0);
-      else { this.stopPlayback(); this.status('End of chart. Restart to practice again.'); }
+      else this.completePlayback('End of chart. Press Play again to replay from the beginning.');
     } else this.seek(this.currentEventIndex + 1);
   }
 
@@ -1377,14 +1466,14 @@ export class SongStudio {
   private currentEvent(): SongEvent | undefined { return this.timeline?.events[this.currentEventIndex]; }
 
   private transposedNote(note: { string: number; fret: number }) {
-    const position = resolveSongNote({ type: 'note', beats: 1, ...note }, this.tuning, this.transposeSemis);
+    const position = resolveSongNote({ type: 'note', beats: 1, ...note }, this.tuning, this.transposeSemis + this.melodyOctaves * 12, this.position, true);
     return position ? { ...position, freq: 440 * 2 ** ((position.midi - 69) / 12) } : null;
   }
 
   private showEvent(index: number): void {
+    this.playbackComplete = false;
     this.currentEventIndex = index;
     this.currentLineIdx = this.currentEvent()?.line ?? -1;
-    this.displayedChord = null;
     this.gate.setTarget(this.practiceTarget(), Date.now());
     this.updateActiveStepUI();
   }
@@ -1392,7 +1481,7 @@ export class SongStudio {
   setTimingMode(mode: TimingMode): void {
     this.stopPlayback();
     this.timingMode = mode;
-    this.showEvent(this.currentEventIndex);
+    this.showEvent(this.playbackComplete ? 0 : this.currentEventIndex);
     this.updateTransportUI();
     this.status(mode === 'wait' ? 'Wait for me has no automatic target audio. Stay quiet briefly, play each target anew, or use Next. Rests need manual Next.' : 'Press Play. Changes restart timing from the selected event.');
   }
@@ -1406,7 +1495,7 @@ export class SongStudio {
     const play = document.getElementById('btn-song-play') as HTMLButtonElement | null;
     if (play) play.disabled = !this.timeline?.events.length;
     const text = document.getElementById('song-play-text');
-    if (text) text.textContent = this.isPlaying ? 'Pause' : this.timingMode === 'wait' ? 'Start waiting' : 'Play';
+    if (text) text.textContent = this.isPlaying ? 'Pause' : this.timingMode === 'wait' ? 'Start waiting' : this.referenceAudio ? this.playbackComplete ? 'Play again' : 'Play' : 'Start silent practice';
     const icon = document.getElementById('song-play-icon');
     if (icon) icon.textContent = this.isPlaying ? '⏸' : '▶';
     const mode = document.getElementById('song-timing-mode') as HTMLSelectElement | null;
@@ -1427,6 +1516,11 @@ export class SongStudio {
     if (edit) edit.disabled = !this.activeSong;
     const parts = document.getElementById('song-part-selector');
     if (parts) parts.hidden = !!this.activeSong?.timing;
+    const fitButton = document.getElementById('song-fit-melody') as HTMLButtonElement | null;
+    const originalButton = document.getElementById('song-original-octave') as HTMLButtonElement | null;
+    const hasMelody = !!this.timeline?.events.some(event => event.type === 'note');
+    if (fitButton) fitButton.hidden = !hasMelody || this.automaticMelodyFit;
+    if (originalButton) originalButton.hidden = !hasMelody || this.melodyOctaves === 0;
     for (const part of ['notes', 'chords'] as const) {
       const button = document.getElementById(`btn-mode-${part}`) as HTMLButtonElement | null;
       if (button) {
@@ -1438,6 +1532,7 @@ export class SongStudio {
 
   private practiceTarget(): PracticeTarget {
     const event = this.currentEvent();
+    if (this.positionIssue(event)) return { type: 'rest' };
     if (event?.type === 'chord') return { type: 'chord', chord: transposeChordName(event.chord, this.transposeSemis + this.capo) };
     if (event?.type === 'note') {
       const note = this.transposedNote(event);
@@ -1451,7 +1546,7 @@ export class SongStudio {
     if (!ctx || !bus || event.type === 'rest') return () => {};
     let sources: AudioBufferSourceNode[] = [];
     if (event.type === 'note') {
-      const note = resolveSongNote(event, this.tuning, transpose ? this.transposeSemis : 0);
+      const note = resolveSongNote(event, this.tuning, transpose ? this.transposeSemis + this.melodyOctaves * 12 : 0, transpose ? this.position : 'all', transpose);
       if (!note) return () => {};
       sources = [playAcousticString(ctx, bus, { freq: 440 * 2 ** ((note.midi - 69) / 12), stringIndex: note.s, startTime: start, endTime: end, velocity: 0.9 })];
     } else {
@@ -1477,8 +1572,10 @@ export class SongStudio {
     try {
       if (this.onPlayRequested) await this.onPlayRequested();
       if (generation !== this.startGeneration || auditionGeneration !== this.auditionGeneration || !this.active || !this.audioContext) return;
-      if (event.type === 'note' && !resolveSongNote(event, this.tuning, transpose ? this.transposeSemis : 0)) throw new Error('Transposed note is outside the supported range.');
-      if (event.type === 'chord' && !this.getChordFrets(transposeChordName(event.chord, this.transposeSemis))) throw new Error('No supported voicing in this tuning.');
+      if (transpose) {
+        const issue = this.positionIssue(event);
+        if (issue) throw new Error(issue);
+      }
       this.sources.forEach(source => source.stop());
       this.sources.clear();
       this.auditionUntil = this.audioContext.currentTime + 2;
@@ -1496,6 +1593,8 @@ export class SongStudio {
     const target = document.getElementById('song-current-target');
     if (target) target.textContent = !event ? 'No playable target' : `${this.currentEventIndex + 1}/${this.timeline!.events.length} · ${chord || (note ? `${NOTE_NAMES[note.midi % 12]}${Math.floor(note.midi / 12) - 1}` : event.type === 'rest' ? 'Rest' : 'Note out of range')} · ${event.beats} beats${this.timingMode === 'wait' ? ' · waiting for you' : ` · starts at ${entry?.bpm.toFixed(0)} BPM`}${chord && chordIdentity(chord)?.bass ? ' · inversion not graded; use Next' : ''}`;
     if (target && chord && this.capo) target.textContent += ` · sounds ${transposeChordName(chord, this.capo)} (capo ${this.capo})`;
+    if (target && event?.type === 'note' && this.melodyOctaves) target.textContent += ` · ${this.melodyOctaveLabel()}`;
+    if (target && note?.reach) target.textContent += ` · One-fret reach: fret ${note.f}`;
     const hudNotes = document.getElementById('hud-notes-info');
     const hudChords = document.getElementById('hud-chords-info');
     if (hudNotes) hudNotes.style.display = note ? 'flex' : 'none';
@@ -1522,6 +1621,27 @@ export class SongStudio {
     }
 
     this.renderSongFretboard();
+    const issue = this.positionIssue();
+    const positionStatus = document.getElementById('song-position-status');
+    if (positionStatus) {
+      positionStatus.textContent = issue || `${REGISTER_LABELS[this.position]} · Frets are relative to the capo. Melodies prefer this area; Middle/Upper can use one adjacent fret within the 0–12 neck. Chord inversions may differ.`;
+      positionStatus.dataset.state = issue ? 'unavailable' : 'ready';
+    }
+    const fitStatus = document.getElementById('song-melody-fit-status');
+    if (fitStatus) {
+      const notes = this.timeline?.events.filter((event): event is Extract<SongEvent, { type: 'note' }> => event.type === 'note') || [];
+      fitStatus.hidden = !notes.length;
+      const positions = notes.map(note => this.transposedNote(note));
+      const blocked = positions.filter(position => !position).length;
+      fitStatus.textContent = this.melodyOctaves ? `Automatically fitted: ${this.melodyOctaveLabel()}. All ${notes.length} source notes are retained; this playback adjustment does not rewrite the saved chart.`
+        : blocked ? `${blocked} of ${notes.length} melody notes do not fit at their original octave. ${this.automaticMelodyFit ? 'No single octave adjustment fits the entire melody here. Choose another position.' : 'Automatic fitting is off. Use automatic melody fitting to find a playable octave.'}`
+        : `All ${notes.length} melody notes fit in the original octave.`;
+      const reaches = positions.flatMap(position => position?.reach ? [position.f] : []);
+      if (reaches.length) fitStatus.textContent += ` ${reaches.length} note${reaches.length === 1 ? '' : 's'} use a one-fret reach at fret ${[...new Set(reaches)].join(', ')}.`;
+    }
+    this.updateTransportUI();
+    const audition = document.getElementById('btn-song-audition') as HTMLButtonElement | null;
+    if (audition) audition.disabled = !!issue || !event || event.type === 'rest';
 
     // Update active line highlighting and scroll
     document.querySelectorAll('.lyric-line-item').forEach((el, idx) => {
@@ -1544,7 +1664,6 @@ export class SongStudio {
   }
 
   private renderSongFretboard(): void {
-    this.displayedChord = null;
     // Clear all status labels and fret cells
     for (let s = 0; s < 6; s++) {
       const statusEl = document.getElementById('song-str-status-' + s);
@@ -1660,7 +1779,6 @@ export class SongStudio {
   }
 
   renderChordOnFretboard(chord: string): void {
-    this.displayedChord = chord;
     this.updateNeck3D(null, chord);
     const frets = this.getChordFrets(chord);
     const chNameEl = document.getElementById('hud-chord-name');
@@ -1753,6 +1871,10 @@ export class SongStudio {
     const parsed = chordIdentity(chordSymbol);
     if (!parsed) return null;
     const shapeTuning = this.tuning.map(string => ({ ...string, midi: string.midi - this.capo }));
+    if (this.position !== 'all') {
+      if (!this.positionVoicings.has(chordSymbol)) this.positionVoicings.set(chordSymbol, chordInRegister(parsed, shapeTuning, this.position));
+      return this.positionVoicings.get(chordSymbol) ?? null;
+    }
     const def = buildChordDefinition(parsed.root, parsed.quality, shapeTuning);
     const expected = CHORD_FORMULAS[parsed.quality].map(interval => (PITCH_CLASSES[parsed.root] + interval) % 12);
     const candidates = [CHORD_PRESETS[chordSymbol]?.frets, ...def.voicings.map(v => v.frets)];
@@ -1816,7 +1938,7 @@ export class SongStudio {
       // Keep the accepted performance ID across targets; no frame-level dedupe.
       if (this.timeline && this.currentEventIndex + 1 < this.timeline.events.length) this.showEvent(this.currentEventIndex + 1);
       else if (this.loop) this.showEvent(0);
-      else { this.stopPlayback(); this.status('Completed. Restart to practice again.'); }
+      else this.completePlayback('Completed. Start waiting again to practice from the beginning.');
       if (this.currentEvent()?.type === 'rest' && this.isPlaying) this.status('Rest: take your time, then choose Next.');
       else if (this.isPlaying) this.status('Matched. Play the new target with a new attack, or use Next.');
     }

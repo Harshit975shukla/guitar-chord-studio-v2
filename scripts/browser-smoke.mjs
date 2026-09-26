@@ -10,6 +10,8 @@ import { join } from 'node:path';
 import { checkScales } from './scales-browser-checks.mjs';
 import { checkSongs } from './songs-browser-checks.mjs';
 import { checkAudioAnalysis } from './analysis-browser-checks.mjs';
+import { checkPractice } from './practice-browser-checks.mjs';
+import { checkTwoOctaves } from './two-octave-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -91,6 +93,8 @@ async function screenshot(name) {
 try {
   await send('Runtime.enable');
   await send('Network.enable');
+  await send('Storage.clearDataForOrigin', { origin: new URL(appUrl).origin, storageTypes: 'service_workers,cache_storage' });
+  await send('Network.setBypassServiceWorker', { bypass: true });
   await send('Page.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `if (location.origin === ${JSON.stringify(new URL(appUrl).origin)}) localStorage.clear();` });
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -183,6 +187,8 @@ try {
   await checkSongs({ check, evaluate, send, until, show, screenshot });
   await checkAudioAnalysis({ check, evaluate, send, until, show, screenshot, requests });
   await checkScales({ check, evaluate, send, until, show, screenshot });
+  await checkPractice({ check, evaluate, send, until, show, screenshot });
+  await checkTwoOctaves({ check, evaluate, send, until, show, screenshot });
 
   await check('held results do not score, send MIDI, log chords or paint live pitches', async () => {
     const data = await evaluate(async () => {
@@ -224,7 +230,7 @@ try {
       const freshNotes = { score: song.practiceScore, midi };
       let trainer = 0, scales = 0;
       appState.trainerStudio.onChordDetected = () => trainer++;
-      appState.scalesStudio.onSingleNoteDetected = () => scales++;
+      appState.scalesStudio.onDetectionResult = result => { if (result.freshness === 'fresh') scales++; };
       appState.activeTab = 'trainer';
       testMain.handleDetectionResult(held, new Float32Array(0));
       testMain.handleDetectionResult(chord, new Float32Array(0));

@@ -1,5 +1,5 @@
 import { NOTE_NAMES, STANDARD_TUNING, type Song, type SongLine, type SongNote } from '../types';
-import { chordIdentity, isRecord, ORIGINAL_TIMING, validateTiming, type SongEvent, type SongTiming } from './timing';
+import { chordIdentity, isRecord, MAX_SOURCE_FRET, ORIGINAL_TIMING, validateTiming, type SongEvent, type SongTiming } from './timing';
 
 export interface CatalogSong extends Song {
   artist: string;
@@ -15,7 +15,7 @@ function normalizeNote(raw: unknown): SongNote | null {
   const string = raw.string ?? raw.str;
   const fret = raw.fret;
   if (typeof string !== 'number' || !Number.isInteger(string) || string < 1 || string > 6 ||
-      typeof fret !== 'number' || !Number.isInteger(fret) || fret < 0 || fret > 12) return null;
+      typeof fret !== 'number' || !Number.isInteger(fret) || fret < 0 || fret > MAX_SOURCE_FRET) return null;
   const midi = STANDARD_TUNING[string - 1].midi + fret;
   return {
     string, fret, note: text(raw.note, `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`),
@@ -28,9 +28,11 @@ export function normalizeSong(raw: unknown, fallbackId = ''): CatalogSong | null
   if (!isRecord(raw) || !text(raw.title).trim() || !text(raw.id, fallbackId).trim()) return null;
   const warnings = list(raw.importWarnings).filter((w): w is string => typeof w === 'string');
   let invalidNotes = 0;
+  let highNotes = 0;
   const notes = (value: unknown) => list(value).flatMap(item => {
     const normalized = normalizeNote(item);
     if (!normalized) invalidNotes++;
+    else if (normalized.fret > 12) highNotes++;
     return normalized ? [normalized] : [];
   });
   const lines: SongLine[] = list(raw.lines).filter(isRecord).map((line, i) => ({
@@ -39,7 +41,8 @@ export function normalizeSong(raw: unknown, fallbackId = ''): CatalogSong | null
     notes: notes(line.notes), intervals: text(line.intervals), sargam: text(line.sargam),
   }));
   const leadNotes = notes(raw.leadNotes);
-  if (invalidNotes) warnings.push(`${invalidNotes} unsupported note positions are not playable (strings 1–6, frets 0–12 only). Original imported text is retained when supplied.`);
+  if (invalidNotes) warnings.push(`${invalidNotes} invalid source note positions could not be read (strings 1–6, source frets 0–${MAX_SOURCE_FRET}). Original imported text is retained when supplied.`);
+  if (highNotes) warnings.push(`${highNotes} high source notes retained. The displayed neck is frets 0–12; any automatic whole-melody octave fit is shown with Playing position.`);
   let timing: SongTiming | undefined;
   if (raw.timing !== undefined) {
     try { timing = validateTiming(raw.timing); }

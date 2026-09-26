@@ -1,10 +1,14 @@
 import { NOTE_NAMES, type ChordQuality, type ChordSymbol, type StringTuning } from '../types';
+import { positionBounds, REGISTER_RANGES, type FretboardRegister } from '../chords/positions';
 
 export type SongEvent = { beats: number; line?: number } & (
   { type: 'chord'; chord: string } |
   { type: 'note'; string: number; fret: number } |
   { type: 'rest' }
 );
+// Source charts may describe pitches above the rendered neck. Keep those notes
+// intact so an explicit whole-melody octave fit can make them playable.
+export const MAX_SOURCE_FRET = 36;
 export interface SongTiming {
   version: 1;
   bpm: number;
@@ -67,8 +71,8 @@ export function validateTiming(input: unknown): SongTiming {
     }
     if (raw.type === 'note') {
       const string = finite(raw.string, 1, 6, 'String');
-      const fret = finite(raw.fret, 0, 12, 'Fret');
-      if (!Number.isInteger(string) || !Number.isInteger(fret)) throw new Error('String/fret must be whole numbers (frets 0–12).');
+      const fret = finite(raw.fret, 0, MAX_SOURCE_FRET, 'Source fret');
+      if (!Number.isInteger(string) || !Number.isInteger(fret)) throw new Error('String/source fret must be whole numbers. The playable neck remains frets 0–12.');
       return { type: 'note', string, fret, beats, line };
     }
     throw new Error(`Event ${index + 1} needs type chord, note or rest.`);
@@ -108,12 +112,32 @@ export function compileTiming(timing: SongTiming, mode: 'fixed' | 'song', fixedB
   });
 }
 
-export function resolveSongNote(event: Extract<SongEvent, { type: 'note' }>, tuning: StringTuning[], transpose: number) {
+export function resolveSongNote(event: Extract<SongEvent, { type: 'note' }>, tuning: StringTuning[], transpose: number, register: FretboardRegister = 'all', allowReach = false): { s: number; f: number; midi: number; reach?: true } | null {
   const midi = tuning[event.string - 1].midi + event.fret + transpose;
   const preferred = event.fret + transpose;
-  if (preferred >= 0 && preferred <= 12) return { s: event.string - 1, f: preferred, midi };
-  const s = tuning.findIndex(string => midi - string.midi >= 0 && midi - string.midi <= 12);
-  return s < 0 ? null : { s, f: midi - tuning[s].midi, midi };
+  const [min, max] = REGISTER_RANGES[register];
+  if (preferred >= min && preferred <= max) return { s: event.string - 1, f: preferred, midi };
+  const s = tuning.findIndex(string => midi - string.midi >= min && midi - string.midi <= max);
+  if (s >= 0) return { s, f: midi - tuning[s].midi, midi };
+  const [reachMin, reachMax] = positionBounds(register, allowReach);
+  const reachedString = tuning.findIndex(string => midi - string.midi >= reachMin && midi - string.midi <= reachMax);
+  return reachedString < 0 ? null : { s: reachedString, f: midi - tuning[reachedString].midi, midi, reach: true };
+}
+
+/** Return one octave offset that fits every melody event, never per-note wrapping. */
+export function fitMelodyOctaves(events: readonly SongEvent[], tuning: StringTuning[], transpose: number, register: FretboardRegister, allowReach = false): number | null {
+  const notes = events.filter((event): event is Extract<SongEvent, { type: 'note' }> => event.type === 'note');
+  if (!notes.length) return null;
+  const pitches = notes.map(note => tuning[note.string - 1].midi + note.fret + transpose);
+  const [minFret, maxFret] = positionBounds(register, allowReach);
+  const low = Math.ceil((Math.min(...tuning.map(s => s.midi + minFret)) - Math.min(...pitches)) / 12);
+  const high = Math.floor((Math.max(...tuning.map(s => s.midi + maxFret)) - Math.max(...pitches)) / 12);
+  const shifts = Array.from({ length: Math.max(0, high - low + 1) }, (_, i) => low + i)
+    .sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
+  for (const octaves of shifts) {
+    if (notes.every(note => resolveSongNote(note, tuning, transpose + octaves * 12, register, allowReach))) return octaves;
+  }
+  return null;
 }
 
 export const ORIGINAL_TIMING: SongTiming = {

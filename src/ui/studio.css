@@ -148,6 +148,24 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
 .studio-redesign #scale-neck .scale-dot.blue { background: #9ec5e8; }
 .studio-redesign #scale-neck .scale-dot.active-pluck { background: #89d7bc; outline: 2px solid #89d7bc; outline-offset: 2px; }
 .studio-redesign #scale-neck .live-note { background: #89d7bc22; }
+.scale-practice-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 16px 22px 0; }
+.scale-practice-controls label { font-size: 12px; color: var(--text-muted); }
+.scale-practice-controls select { min-width: 0; max-width: 100%; padding: 8px; color: var(--text-main); background: var(--bg-dark); border: 1px solid var(--border-subtle); border-radius: 6px; }
+.scale-practice-feedback { margin: 16px 22px 0; padding: 14px; background: var(--bg-dark); border: 1px solid var(--border-subtle); border-radius: 8px; }
+.scale-practice-feedback p { font-size: 12px; line-height: 1.6; margin-block: 4px; }
+.scale-practice-feedback strong { color: var(--text-main); }
+.scale-practice-feedback [role="status"] { font-size: 14px; }
+.scale-practice-feedback[data-verdict="correct"] [role="status"] { color: var(--accent-emerald); }
+.scale-practice-feedback[data-verdict="wrong"] [role="status"], #song-position-status[data-state="unavailable"] { color: var(--accent-rose); }
+.studio-redesign #scale-neck .scale-dot.practice-target { outline: 2px solid #9ec5e8; outline-offset: 3px; }
+#scale-neck .target-dot { background: transparent; border: 1px solid #9ec5e8; width: 8px; height: 8px; }
+.scale-shift-guide { margin: 16px 22px 0; font-size: 12px; line-height: 1.6; }
+.scale-shift-guide p { margin-block: 8px; }
+#scale-shift-cue { color: var(--accent-cyan); font-weight: 600; }
+.scale-shift-guide summary { cursor: pointer; padding-block: 10px; }
+#scale-pattern-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 6px 26px; padding-left: 20px; }
+#scale-pattern-steps li { padding: 6px; border-bottom: 1px solid var(--border-light); }
+#scale-pattern-steps li[aria-current="step"] { background: #89d7bc18; color: var(--accent-emerald); }
 .song-timing-controls, .song-finder-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-block: 16px; }
 .song-timing-controls label, .song-finder-filters label { font-size: 12px; color: var(--text-muted); }
 .song-timing-controls select, .song-finder-filters select { min-width: 0; max-width: 100%; padding: 8px; background: var(--panel-bg); color: var(--text-main); border: 1px solid var(--border-subtle); border-radius: 6px; }

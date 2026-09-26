@@ -8,11 +8,13 @@ export interface ScaleNeckPosition {
   label: string;
   role: 'root' | 'tone' | 'blue' | 'outside';
   active: boolean;
+  target?: boolean;
 }
 
 export interface NeckState {
   frets: (number | null)[];
   tuning: StringTuning[];
+  stringLabels?: string[];
   liveMidi: number | null;
   root: string | null;
   /** Explicit positions keep scale filters, degree labels and exact plucks in sync with 2D. */
@@ -218,7 +220,7 @@ export class Fretboard3D {
     const scaleMode = Array.isArray(state.scalePositions);
     for (let s = 0; s < 6; s++) {
       const fret = state.frets[s];
-      this.label(state.tuning[s].note, -7.0, 0.2, this.stringZ(s), 0.33, 0xc0b7a9, this.markers);
+      this.label(state.stringLabels?.[s] ?? state.tuning[s].note, -7.0, 0.2, this.stringZ(s), 0.33, 0xc0b7a9, this.markers);
       if (!scaleMode && fret === null) this.label('×', -6.45, 0.23, this.stringZ(s), 0.33, 0x9d9286, this.markers);
       for (let f = 0; f <= 12; f++) {
         const midi = state.tuning[s].midi + f;
@@ -249,6 +251,14 @@ export class Fretboard3D {
         marker.position.set(this.noteX(f), 0.26, this.stringZ(s));
         marker.userData = { stringIndex: s, fret: f };
         this.markers.add(marker);
+        if (scalePosition?.target) {
+          const ring = new THREE.Mesh(new THREE.RingGeometry(0.20, 0.24, 24), new THREE.MeshBasicMaterial({ color: 0x9ec5e8, side: THREE.DoubleSide }));
+          this.geometries.add(ring.geometry);
+          this.materials.add(ring.material);
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.set(this.noteX(f), 0.30, this.stringZ(s));
+          this.markers.add(ring);
+        }
         this.label(scalePosition?.label ?? note, this.noteX(f), 0.34, this.stringZ(s), 0.28, 0x211a12, this.markers);
       }
     }

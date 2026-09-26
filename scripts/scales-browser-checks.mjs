@@ -7,6 +7,7 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
     const result = await evaluate(async () => {
       const url = performance.getEntriesByType('resource').findLast(e => new URL(e.name).pathname === '/src/tabs/scales.ts').name;
       const { WESTERN_SCALES } = await import(url);
+      const { spellScale } = await import('/src/scales/theory.ts');
       const roots = ['C', 'F#', 'A'];
       const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
       const ranges = { all: [0, 12], open: [0, 4], middle: [5, 8], upper: [9, 12] };
@@ -45,7 +46,7 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
                   expected.push({
                     stringIndex: s, fret: f, active: false,
                     role: interval === 0 ? 'root' : key === 'blues' && interval === 6 ? 'blue' : 'tone',
-                    label: mode === 'note' ? names[pc] : scale.degrees[degree],
+                    label: mode === 'note' ? spellScale(root, scale)[degree] : scale.degrees[degree],
                   });
                 }
               }
@@ -106,7 +107,7 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
     });
     assert.deepEqual(result.before, result.after);
     assert.deepEqual(result.tuned.tuning.map(s => s.midi), [66, 61, 57, 52, 47, 40]);
-    assert.match(result.tuningText, /E · B · E · A · C# · F#/);
+    assert.match(result.tuningText, /E · B · E · A · D♭ · G♭/);
     assert.deepEqual(result.flat, result.tuned.scalePositions.map(p => p.label));
     assert.equal(result.flatButtons, 78);
     assert.deepEqual([result.root, result.key, result.register, result.mode], ['A', 'blues', 'middle', 'degree']);
@@ -122,7 +123,11 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
       const originalSet = window.setTimeout, originalClear = window.clearTimeout;
       const micStart = scales.onMicStartRequested;
       const audioReady = scales.onPlayRequested;
+      const realDateNow = Date.now;
+      const audioTime = Object.getOwnPropertyDescriptor(scales.audioContext, 'currentTime');
       let now = 0, nextId = 100000;
+      Date.now = () => now;
+      Object.defineProperty(scales.audioContext, 'currentTime', { configurable: true, get: () => now / 1000 });
       const timers = new Map();
       window.setTimeout = (fn, delay) => { const id = ++nextId; timers.set(id, { fn, at: now + delay }); return id; };
       window.clearTimeout = id => { if (!timers.delete(id)) originalClear(id); };
@@ -159,7 +164,7 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
         const run2Held = active();
         scales.setRoot('C');
         scales.setScaleKey('major');
-        scales.setRegister('upper');
+        scales.setRegister('open');
         await settle();
         const changedPattern = scales.neck3d.state.scalePositions.filter(p => p.active);
         const runningAfterChange = scales.isAudioRunning;
@@ -172,10 +177,17 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
         scales.onMicStartRequested = async () => true;
         await scales.toggleMicPractice();
         scales.setRoot('A'); scales.setScaleKey('blues'); scales.setRegister('middle');
-        scales.onSingleNoteDetected('A');
+        advance(300);
+        const detect = (midi, signal = true) => scales.onDetectionResult({
+          mode: signal ? 'single-note' : 'idle', freshness: signal ? 'fresh' : 'none', timestamp: now,
+          note: signal ? { pitch: { midi, note: midi % 12 === 9 ? 'A' : 'C', octave: 4 }, confidence: 90 } : undefined,
+          performance: { id: 10, attackAt: now, frameAt: now, signalPresent: signal },
+        });
+        detect(69, false); advance(120); detect(69, false);
+        detect(69);
         const micPositions = scales.neck3d.state.scalePositions.filter(p => p.active);
         const micDots = [...document.querySelectorAll('#scale-neck-2d .active-pluck')].map(d => d.textContent);
-        scales.onSingleNoteDetected('C');
+        detect(72);
         advance(350);
         const latestMicPc = scales.highlightedPc;
         advance(250);
@@ -197,6 +209,9 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
         scales.onMicStartRequested = micStart;
         scales.onPlayRequested = audioReady;
         window.setTimeout = originalSet; window.clearTimeout = originalClear;
+        Date.now = realDateNow;
+        if (audioTime) Object.defineProperty(scales.audioContext, 'currentTime', audioTime);
+        else delete scales.audioContext.currentTime;
       }
     });
     assert.deepEqual(result.first, [[0, 5]]);
@@ -207,7 +222,7 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
     assert.notDeepEqual(result.run1, result.run2);
     assert.deepEqual(result.run2, result.run2Held);
     assert.equal(result.changedPattern.length, 1);
-    assert.ok(result.changedPattern[0].fret >= 9);
+    assert.ok(result.changedPattern[0].fret <= 4);
     assert.equal(result.runningAfterChange, true);
     assert.equal(result.timersAfterStop, 0);
     assert.equal(result.denied, true);

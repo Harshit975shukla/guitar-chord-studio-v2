@@ -26,6 +26,8 @@ export class PerformanceGate {
   private candidateId = 0;
   private accepted = false;
 
+  get needsRelease(): boolean { return this.releaseRequired; }
+
   setTarget(target: PracticeTarget, now: number): void {
     this.target = target;
     this.shownAt = now;

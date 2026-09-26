@@ -1236,6 +1236,19 @@
 
         <!-- Song Playback Controls Bar -->
         <div class="song-timing-controls">
+          <label for="song-position-filter">Playing position</label>
+          <select id="song-position-filter" aria-describedby="song-position-status">
+            <option value="all">Original / Auto (frets 0–12)</option>
+            <option value="open">Open position (frets 0–4)</option>
+            <option value="middle">Middle area (frets 5–8)</option>
+            <option value="upper">Upper area (frets 9–12)</option>
+          </select>
+          <button class="btn btn-secondary" id="song-fit-melody" aria-describedby="song-melody-fit-status" hidden>Use automatic melody fitting</button>
+          <button class="btn btn-secondary" id="song-original-octave" hidden>Restore original octave</button>
+        </div>
+        <p id="song-position-status" class="song-data-status" role="status">Melody octaves fit the selected position automatically; any whole-melody shift is shown below.</p>
+        <p id="song-melody-fit-status" class="song-data-status" role="status" hidden></p>
+        <div class="song-timing-controls">
           <label for="song-timing-mode">Practice timing</label>
           <select id="song-timing-mode">
             <option value="song">Song timing (authored tempo changes)</option>
@@ -1522,7 +1535,7 @@
               <span>🎼</span> Western Guitar Scales & 3D Fretboard
             </h2>
             <p style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">
-              Master Western scales across frets 0–12 on the master rosewood neck. Play audio scale runs with precision BPM tempo control, or practice with live microphone note recognition.
+              Explore Western scales across frets 0–12. Loop from root to highest root and back in Free play, practise one octave in Guided mode, or check your guitar with the microphone.
             </p>
           </div>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1545,6 +1558,7 @@
             <div class="scale-root-selector" id="scale-root-buttons" role="group" aria-label="Scale root">
               <!-- Dynamically populated by JS -->
             </div>
+            <span class="neck-caveat">Choose the written key: sharp and flat roots keep their own scale spelling.</span>
           </div>
 
           <!-- Scale Preset Selector -->
@@ -1575,18 +1589,6 @@
             </div>
           </div>
 
-          <!-- Position Register Filter -->
-          <div class="scale-control-group">
-            <label class="scale-control-label" for="scale-position-filter">
-              <span>🔍</span> Fretboard Register
-            </label>
-            <select class="scale-preset-dropdown" id="scale-position-filter">
-              <option value="all" selected>Full Fretboard (Frets 0–12)</option>
-              <option value="open">Open Position (Frets 0–4)</option>
-              <option value="middle">Mid Register (Frets 5–8)</option>
-              <option value="upper">Upper Octave (Frets 9–12)</option>
-            </select>
-          </div>
         </div>
 
         <!-- Scale Info Ribbon -->
@@ -1607,11 +1609,9 @@
               <span id="scale-tempo-readout" style="font-size:0.85rem; font-weight:800; color:var(--accent-gold); min-width:65px;">120 BPM</span>
             </div>
             <button class="btn btn-primary" id="btn-scale-run">
-              <span id="btn-scale-run-icon">▶️</span> <span id="btn-scale-run-text">Play Scale Run</span>
+              <span id="btn-scale-run-icon">▶️</span> <span id="btn-scale-run-text">Play up/down loop</span>
             </button>
-            <button class="btn btn-secondary" id="btn-scale-mic" aria-pressed="false">
-              <span>🎙️</span> <span id="btn-scale-mic-text">Practice with Guitar (Live Mic)</span>
-            </button>
+            <span id="scale-run-help" class="neck-caveat">Root → highest reachable root → starting root. Repeats until Stop.</span>
           </div>
         </div>
       </div>
@@ -1623,6 +1623,50 @@
             <button id="scale-neck-view-3d" aria-pressed="false">3D</button>
             <button id="scale-neck-view-2d" aria-pressed="true">2D</button>
           </div>
+        </div>
+        <div class="scale-practice-controls">
+          <label for="scale-exercise-range">Exercise range</label>
+          <select id="scale-exercise-range">
+            <option value="position">In selected area</option>
+            <option value="two-octaves">Two octaves — shift as needed</option>
+          </select>
+        </div>
+        <div class="scale-practice-controls">
+          <label for="scale-position-filter" id="scale-position-label">Playing position</label>
+          <select id="scale-position-filter" aria-describedby="scale-position-help">
+            <option value="all" selected>Full neck (frets 0–12)</option>
+            <option value="open">Open position (frets 0–4)</option>
+            <option value="middle">Middle area (frets 5–8)</option>
+            <option value="upper">Upper area (frets 9–12)</option>
+          </select>
+          <span class="neck-caveat" id="scale-position-help">Middle/Upper allow a labeled one-fret reach when needed, within frets 0–12.</span>
+        </div>
+        <div class="scale-practice-controls">
+          <label for="scale-practice-mode">Listening practice</label>
+          <select id="scale-practice-mode">
+            <option value="free">Free play — scale notes</option>
+            <option value="ascending">Guided: ascending</option>
+            <option value="descending">Guided: descending</option>
+          </select>
+          <button class="btn btn-primary" id="btn-scale-mic" aria-pressed="false">
+            <span id="btn-scale-mic-text">Check my playing</span>
+          </button>
+          <button class="btn btn-secondary" id="scale-practice-restart" disabled>Restart run</button>
+        </div>
+        <div id="scale-practice-feedback" class="scale-practice-feedback" data-verdict="neutral">
+          <p>Selected scale: <strong id="scale-practice-selected">A Pentatonic Minor</strong></p>
+          <p>Heard: <strong id="scale-practice-heard">—</strong></p>
+          <p id="scale-practice-message" role="status">Start Check my playing, then pluck one string at a time.</p>
+          <p id="scale-practice-target" aria-live="polite">Free play: any note from the selected scale, in any order.</p>
+          <p class="neck-caveat">This checks heard pitches, not your finger placement. Guided mode checks the selected range in order, not rhythm. Reference playback pauses checking; use headphones and mute strings briefly afterward.</p>
+        </div>
+        <div id="scale-shift-guide" class="scale-shift-guide" hidden>
+          <p id="scale-pattern-status"></p>
+          <p id="scale-shift-cue" role="status"></p>
+          <details>
+            <summary>Ascending fingering pattern · reverse to descend</summary>
+            <ol id="scale-pattern-steps"></ol>
+          </details>
         </div>
         <div class="neck-stage">
           <div class="neck-stage-top">
@@ -1662,6 +1706,7 @@
             <span><i class="root-dot"></i>Root</span><span><i></i>Scale tone</span>
             <span id="scale-blue-legend" hidden><i class="blue-dot"></i>Blue note (♭5)</span>
             <span><i class="live-dot"></i>Playing / live</span>
+            <span><i class="target-dot"></i>Outline: next target</span>
           </div>
           <p id="scale-neck-summary" class="neck-summary" role="status">Choose a note to hear it, or play the selected scale run.</p>
           <p class="neck-caveat">Frets are relative to the capo. Live highlights show matching scale positions, not measured finger placement.</p>
@@ -2058,7 +2103,7 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
   <!-- CUSTOM SONG CREATOR MODAL -->
   <dialog id="song-timing-editor" class="song-timing-editor" aria-labelledby="song-editor-heading">
     <h2 id="song-editor-heading">Edit timing</h2>
-    <p>Beats are quarter-note units. Tempo changes use zero-based beat positions. Notes use strings 1–6 (1 is high E) and frets 0–12 relative to the capo. Rests are silent. Built-in edits save as an imported copy.</p>
+    <p>Beats are quarter-note units. Tempo changes use zero-based beat positions. Source notes use strings 1–6 (1 is high E) and fret offsets 0–36 relative to the capo. The playable neck is frets 0–12; high source pitches are retained and may need Fit melody to position. Rests are silent. Built-in edits save as an imported copy.</p>
     <label for="song-timing-title">Title</label><input id="song-timing-title">
     <label for="song-timing-source">Source / arrangement reference (optional)</label><input id="song-timing-source">
     <label for="song-timing-version">Version (optional)</label><input id="song-timing-version">

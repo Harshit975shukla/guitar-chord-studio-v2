@@ -237,7 +237,7 @@ export async function initializeApp(): Promise<void> {
   appState.scalesStudio.onPlayRequested = ensureAudioContext;
   appState.scalesStudio.onMicStartRequested = async () => {
     const started = appState.isListening || await startMicrophone();
-    if (started) setTargetMode('notes');
+    if (started && appState.activeTab === 'scales') setTargetMode('notes');
     return started;
   };
   try {
@@ -521,6 +521,7 @@ function startDetectionLoop(): void {
 export function handleDetectionResult(result: DetectionResult, spectrum: Float32Array): void {
   // Wait mode also needs current gate/release metadata on held and idle frames.
   if (appState.activeTab === 'songs') appState.songStudio.evaluatePractice(result);
+  if (appState.activeTab === 'scales') appState.scalesStudio.onDetectionResult(result);
   // Handle room noise calibration progress and completion
   if (result.isCalibrating) {
     const nameEl = document.getElementById('display-chord-name');
@@ -579,9 +580,6 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
     // Route only to the active studio; background practice must not react.
     if (result.chord) {
       if (appState.activeTab === 'trainer') appState.trainerStudio?.onChordDetected(result.chord.symbol);
-    }
-    if (result.note) {
-      if (appState.activeTab === 'scales') appState.scalesStudio?.onSingleNoteDetected(result.note.pitch.note);
     }
   }
 
@@ -827,6 +825,7 @@ export function setTuningPreset(presetId: string): void {
     noiseGateDb: appState.settings.noiseGateDb,
     seventhStrictness: appState.settings.seventhStrictness,
     triggerMode: appState.settings.triggerMode,
+    targetMode: appState.settings.targetMode,
     micGainMultiplier: appState.settings.micGain,
     fftSize: appState.analyser ? appState.analyser.fftSize : DEFAULT_DETECTION_CONFIG.fftSize,
   });

@@ -40,6 +40,9 @@ jobs:
       - name: Sound and local analysis regression tests
         run: npm run test:audio
 
+      - name: Positions and scale-practice regression tests
+        run: npm run test:practice
+
       - name: Build
         run: npm run build
 

@@ -144,6 +144,7 @@ export class PaneNeck3D {
     this.stateKey = key;
     this.state = {
       ...state, frets: [...state.frets], tuning: state.tuning.map(s => ({ ...s })),
+      stringLabels: state.stringLabels ? [...state.stringLabels] : undefined,
       scalePositions: state.scalePositions?.map(position => ({ ...position })),
     };
     this.scene?.update(this.state);
