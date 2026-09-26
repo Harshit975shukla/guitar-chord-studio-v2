@@ -475,6 +475,7 @@ export function stopMicrophone(): void {
   appState.isListening = false;
   appState.scalesStudio.setMicPracticeActive(false);
   appState.songStudio.onMicrophoneStopped();
+  circleOfFifths?.onMicrophoneStopped();
   if (appState.isDrillActive && (appState.drillConfig?.practiceMode !== 'rhythm' || appState.drillConfig.checkChords)) {
     stopDrill();
     setDrillStatus('Microphone stopped. Start again to retry, or use rhythm practice without chord checking.');
@@ -531,6 +532,7 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
   // Wait mode also needs current gate/release metadata on held and idle frames.
   if (appState.activeTab === 'songs') appState.songStudio.evaluatePractice(result);
   if (appState.activeTab === 'scales') appState.scalesStudio.onDetectionResult(result);
+  if (appState.activeTab === 'fifths') circleOfFifths?.onDetectionResult(result);
   if (appState.activeTab === 'drill' && appState.isDrillActive) evaluateDrillResult(result);
   // Handle room noise calibration progress and completion
   if (result.isCalibrating) {
@@ -2807,6 +2809,19 @@ function initCircleOfFifths(): void {
     switchTab('scales');
     appState.scalesStudio.setRoot(root);
     appState.scalesStudio.setScaleKey(mode === 'major' ? 'major' : 'natural_minor');
+  }, async target => {
+    const previousTarget = appState.settings.targetMode || 'chords';
+    const owned = !appState.isListening;
+    if (!appState.isListening && !await startMicrophone()) throw new Error('Allow microphone access and check your input device.');
+    const stream = appState.micStream;
+    setTargetMode(target);
+    let released = false;
+    return { release: () => {
+      if (released) return;
+      released = true;
+      if (appState.settings.targetMode === target) setTargetMode(previousTarget);
+      if (owned && appState.isListening && appState.micStream === stream) stopMicrophone();
+    } };
   });
 }
 

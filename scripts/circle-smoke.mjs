@@ -3,6 +3,8 @@ import { CIRCLE_KEYS, circleKey, circleSignature, circleTheory, circleChordMidis
 import { scaleRootPc } from '../src/scales/theory.ts';
 import { WESTERN_SCALES } from '../src/scales/definitions.ts';
 import { WESTERN_SCALES as legacyScaleExport } from '../src/tabs/scales.ts';
+import { buildCircleRound, circlePracticeTarget } from '../src/theory/circlePractice.ts';
+import { matchesTarget, PerformanceGate } from '../src/songs/performance.ts';
 
 let checks = 0;
 function check(name, fn) { fn(); checks++; console.log(`PASS ${name}`); }
@@ -81,5 +83,47 @@ check('reference scales begin/end on tonic and invalid key inputs are explicit',
   assert.throws(() => circleKey(-1), /twelve/); assert.throws(() => circleKey(12), /twelve/);
   assert.throws(() => circleTheory(0, 'dorian'), /major or minor/);
   assert.throws(() => circleSignature({ major: 'C', minor: 'A', fifths: 9 }), /seven/);
+});
+check('guitar rounds visit all twelve keys once in either direction and preserve key-family spelling', () => {
+  for (const mode of ['major', 'minor']) for (const direction of [1, -1]) for (const flat of [false, true]) for (let start = 0; start < 12; start++) {
+    const round = buildCircleRound(start, mode, flat, direction);
+    assert.equal(round.length, 12); assert.equal(round[0].index, start);
+    assert.equal(new Set(round.map(t => t.index)).size, 12);
+    round.forEach((target, i) => {
+      assert.equal(target.root, circleKey(target.index, flat)[mode]);
+      assert.equal(target.chord, target.root + (mode === 'minor' ? 'm' : ''));
+      const next = round[(i + 1) % 12];
+      assert.equal((scaleRootPc(next.root) - scaleRootPc(target.root) + 12) % 12, direction === 1 ? 7 : 5);
+    });
+  }
+  assert.throws(() => buildCircleRound(0, 'major', false, 0), /clockwise/);
+});
+check('circle chord goals match exact major/minor quality with enharmonic roots', () => {
+  const bb = buildCircleRound(10, 'major', false, 1)[0];
+  const chord = symbol => ({ mode: 'chord', freshness: 'fresh', chord: { symbol, confidence: 90 } });
+  assert.equal(matchesTarget(circlePracticeTarget(bb, 'chord'), chord('A#')), true);
+  assert.equal(matchesTarget(circlePracticeTarget(bb, 'chord'), chord('A#m')), false);
+  assert.equal(matchesTarget(circlePracticeTarget(bb, 'chord'), chord('Bbmaj7')), false);
+  const dm = buildCircleRound(11, 'minor', false, 1)[0];
+  assert.equal(matchesTarget(circlePracticeTarget(dm, 'chord'), chord('Dm')), true);
+  assert.equal(matchesTarget(circlePracticeTarget(dm, 'chord'), chord('D')), false);
+});
+check('root-note goals accept octaves but still require two fresh frames and a new performance', () => {
+  const c = circlePracticeTarget(buildCircleRound(0, 'major', false, 1)[0], 'root');
+  const gate = new PerformanceGate(); gate.setTarget(c, 0);
+  for (const at of [0, 120]) gate.consume({ freshness: 'none', performance: { id: 0, attackAt: 0, frameAt: at, signalPresent: false } });
+  const note = (midi, id, at, freshness = 'fresh', confidence = 90) => ({
+    mode: 'single-note', freshness, note: { pitch: { midi }, confidence },
+    performance: { id, attackAt: 160, frameAt: at, signalPresent: true },
+  });
+  assert.equal(gate.consume(note(60, 1, 160, 'held')), false);
+  assert.equal(gate.consume(note(60, 1, 160, 'fresh', 30)), false);
+  assert.equal(gate.consume(note(60, 1, 160)), false);
+  assert.equal(gate.consume(note(48, 1, 200)), true);
+  gate.setTarget(circlePracticeTarget(buildCircleRound(1, 'major', false, 1)[0], 'root'), 220);
+  assert.equal(gate.consume(note(67, 1, 250)), false);
+  assert.equal(matchesTarget({ type: 'note', midi: 60 }, note(48, 2, 260)), false, 'Existing exact-octave targets stay exact');
+  assert.equal(matchesTarget(c, note(48, 2, 260)), true);
+  assert.equal(matchesTarget(c, note(61, 2, 260)), false);
 });
 console.log(`\n${checks}/${checks} circle-of-fifths checks passed`);

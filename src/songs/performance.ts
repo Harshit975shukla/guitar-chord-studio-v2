@@ -1,11 +1,14 @@
 import type { DetectionResult } from '../types';
 import { chordIdentity } from './timing';
 
-export type PracticeTarget = { type: 'chord'; chord: string } | { type: 'note'; midi: number } | { type: 'rest' };
+export type PracticeTarget = { type: 'chord'; chord: string } | { type: 'note'; midi: number } | { type: 'pitch-class'; pitchClass: number } | { type: 'rest' };
 export function matchesTarget(target: PracticeTarget, result: DetectionResult): boolean {
   if (result.freshness !== 'fresh') return false;
-  if (target.type === 'note') return result.mode === 'single-note' && !!result.note &&
-    Math.round(result.note.pitch.midi) === target.midi && result.note.confidence >= 70;
+  if (target.type === 'note' || target.type === 'pitch-class') {
+    if (result.mode !== 'single-note' || !result.note || result.note.confidence < 70 || !Number.isFinite(result.note.pitch.midi)) return false;
+    const midi = Math.round(result.note.pitch.midi);
+    return target.type === 'note' ? midi === target.midi : ((midi % 12) + 12) % 12 === target.pitchClass;
+  }
   if (target.type === 'chord' && result.mode === 'chord' && result.chord) {
     const expected = chordIdentity(target.chord), found = chordIdentity(result.chord.symbol);
     // The detector does not verify inversions. Slash-chord targets use manual Next.
@@ -56,7 +59,7 @@ export class PerformanceGate {
     if (!matchesTarget(this.target, result)) { this.supportedFrames = 0; return false; }
     if (this.candidateId !== evidence.id) { this.candidateId = evidence.id; this.supportedFrames = 0; }
     this.supportedFrames++;
-    if (this.target.type === 'note' && this.supportedFrames < 2) return false;
+    if ((this.target.type === 'note' || this.target.type === 'pitch-class') && this.supportedFrames < 2) return false;
     this.accepted = true;
     this.usedId = evidence.id;
     return true;

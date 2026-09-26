@@ -14,6 +14,7 @@ import { checkStrumming } from './strumming-browser-checks.mjs';
 import { checkPractice } from './practice-browser-checks.mjs';
 import { checkTwoOctaves } from './two-octave-browser-checks.mjs';
 import { checkCircle } from './circle-browser-checks.mjs';
+import { checkCirclePractice } from './circle-practice-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -193,6 +194,7 @@ try {
   await checkPractice({ check, evaluate, send, until, show, screenshot });
   await checkTwoOctaves({ check, evaluate, send, until, show, screenshot });
   await checkCircle({ check, evaluate, send, until, screenshot });
+  await checkCirclePractice({ check, evaluate, send, until, screenshot });
 
   await check('held results do not score, send MIDI, log chords or paint live pitches', async () => {
     const data = await evaluate(async () => {

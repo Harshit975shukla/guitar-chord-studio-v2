@@ -1870,6 +1870,32 @@
         <h2 id="fifths-heading">Circle of fifths</h2>
         <p>See how keys connect, hear their chord families, then take a key into your scale practice.</p>
       </header>
+      <details id="fifths-practice-panel" class="fifths-practice-panel" data-state="idle" data-verdict="neutral">
+        <summary id="fifths-practice-heading">Practise the circle with your guitar</summary>
+        <div class="song-timing-controls">
+          <label for="fifths-practice-goal">Goal</label>
+          <select id="fifths-practice-goal">
+            <option value="chord">Tonic chords</option>
+            <option value="root">Root notes (any octave)</option>
+          </select>
+          <label for="fifths-practice-direction">Direction</label>
+          <select id="fifths-practice-direction">
+            <option value="clockwise">Clockwise · fifths</option>
+            <option value="counterclockwise">Counterclockwise · fourths</option>
+          </select>
+          <button id="fifths-practice-start" class="btn btn-primary">Start guitar practice</button>
+          <button id="fifths-practice-stop" class="btn btn-secondary" disabled>Stop practice</button>
+          <button id="fifths-practice-skip" class="btn btn-secondary" disabled>Skip target</button>
+        </div>
+        <p class="fifths-muted">Choose major or relative-minor keys below, then play 12 targets at your own pace. Chords must match major/minor quality; for root notes, pluck one string. Targets are sounding pitches, not capo shape names. Choosing another key/family ends the round.</p>
+        <div class="fifths-practice-readout">
+          <strong id="fifths-practice-target">Start from C major</strong>
+          <span>Heard: <strong id="fifths-practice-heard">—</strong></span>
+          <span id="fifths-practice-progress">0/12 visited · 0 matched · 0 skipped</span>
+        </div>
+        <p id="fifths-practice-message" role="status">Choose a goal and direction, then start a round. No microphone is requested until Start.</p>
+        <p class="fifths-muted">Microphone audio stays on this device. Held sounds do not count again; skips are not correct answers. Reference audio is disabled during the round. Stop releases a microphone this round started; pre-existing listening remains under Live studio's control. This checks pitch/chord identity, not finger placement or rhythm.</p>
+      </details>
       <div class="fifths-layout">
         <div>
           <div class="fifths-mode" role="group" aria-label="Key family to explore">
@@ -1881,13 +1907,29 @@
               <circle cx="50" cy="50" r="44" stroke="currentColor" stroke-width=".5"/>
               <circle cx="50" cy="50" r="25" stroke="currentColor" stroke-width=".25"/>
             </svg>
+            <svg id="fifths-round-meter" class="fifths-ring fifths-round-meter" viewBox="0 0 100 100" fill="none" aria-hidden="true" hidden>
+              <circle cx="50" cy="50" r="34" stroke="var(--border-subtle)" stroke-width="1"/>
+              <circle id="fifths-round-progress" cx="50" cy="50" r="34" stroke="var(--accent-gold)" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+            <div class="fifths-cursor-window" aria-hidden="true">
+              <div id="fifths-practice-cursor" class="fifths-practice-cursor" hidden><span></span></div>
+            </div>
             <div class="fifths-center" aria-hidden="true">
               <strong id="fifths-center-root">C</strong>
               <span id="fifths-center-mode">major</span>
               <small id="fifths-center-signature">No sharps or flats</small>
             </div>
           </div>
+          <div id="fifths-wheel-feedback" class="fifths-wheel-feedback" hidden>
+            <strong id="fifths-wheel-target"></strong>
+            <p id="fifths-wheel-message"></p>
+            <div id="fifths-wheel-actions" class="song-timing-controls" hidden>
+              <button id="fifths-wheel-stop" class="btn btn-secondary" disabled>Stop practice</button>
+              <button id="fifths-wheel-skip" class="btn btn-secondary" disabled>Skip target</button>
+            </div>
+          </div>
           <p class="fifths-wheel-help">Large names are major keys; small names are their relative minors. Choose a key family above. Gold marks your selection; outlined neighbors are one step away.</p>
+          <p id="fifths-round-legend" class="fifths-muted" hidden>Moving dot: target key · ✓ matched · — skipped. The progress ring counts visited targets, not accuracy.</p>
           <label class="fifths-spelling" for="fifths-spelling">Six-accidental spelling
             <select id="fifths-spelling"><option value="sharp">F♯ major / D♯ minor</option><option value="flat">G♭ major / E♭ minor</option></select>
           </label>
@@ -1910,7 +1952,7 @@
             <button id="fifths-open-scales" class="btn btn-primary">Open C major in Scales</button>
           </div>
           <p id="fifths-audio-status" class="song-data-status" role="status">Choose a reference to hear it. Nothing plays automatically.</p>
-          <p class="fifths-muted">Reference audio uses concert pitch, independently of your capo/tuning. Stop microphone listening before auditioning references to avoid feeding them into detection. This tool does not grade your playing.</p>
+          <p class="fifths-muted">Reference audio uses concert pitch, independently of your capo/tuning. Stop microphone listening before auditioning references to avoid feeding them into detection. Guitar Practice is optional and never scores these reference sounds.</p>
         </section>
       </div>
       <div class="fifths-layout fifths-harmony">
