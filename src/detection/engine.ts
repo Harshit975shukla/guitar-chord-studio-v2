@@ -12,13 +12,13 @@ import {
   STANDARD_TUNING,
   NOTE_NAMES,
   DEGREE_NAMES,
-  midiToPitch,
   NoteName,
   ChordQuality,
   DetectionTargetMode
 } from '../types';
 import { calibrationWarning, median } from './inputHealth';
 import { harmonicChroma } from './harmonicChroma';
+import { estimateNotePitch, NOTE_PITCH_MIN, NOTE_PITCH_MAX } from './notePitch';
 
 // ============================================================================
 // Detection Configuration
@@ -174,6 +174,8 @@ export class DetectionEngine {
   private performanceId = 0;
   private performanceAttackAt = 0;
   private frameSignalPresent = false;
+  private pendingNoteMidi: number | null = null;
+  private pendingNoteFrames = 0;
 
   constructor(config: Partial<DetectionConfig> = {}) {
     this.config = { ...DEFAULT_DETECTION_CONFIG, ...config };
@@ -194,12 +196,14 @@ export class DetectionEngine {
         if (this.noiseProfile.rms !== undefined) this.noiseProfile.rms *= ratio;
       }
       this.prevFrameBandEnergy *= ratio;
+      this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
       this.clearStrumAttempt();
       this.gainSettleFrames = Math.ceil(this.analyser.fftSize / (this.analyser.context?.sampleRate || 44100) / .032) + 2;
       if (this.isCalibrating) this.startNoiseCalibration();
     }
     if ((config.triggerMode && config.triggerMode !== this.config.triggerMode) ||
         (config.targetMode && config.targetMode !== this.config.targetMode)) {
+      this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
       this.clearStrumAttempt();
     }
     this.config = { ...this.config, ...config };
@@ -236,6 +240,7 @@ export class DetectionEngine {
 
   startNoiseCalibration(): void {
     if (!this.analyser) return;
+    this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
     this.clearStrumAttempt();
     this.isCalibrating = true;
     this.calibrationFrames = 0;
@@ -431,10 +436,10 @@ export class DetectionEngine {
   // Peak Extraction with Sub-bin Interpolation
   // ============================================================================
 
-  extractPeaks(cleanAmps: Float32Array, sampleRate: number): DetectedPeak[] {
+  extractPeaks(cleanAmps: Float32Array, sampleRate: number, maxFreq = this.config.maxFreq, minFreq = this.config.minFreq): DetectedPeak[] {
     const binWidth = sampleRate / this.config.fftSize;
-    const minBin = Math.floor(this.config.minFreq / binWidth);
-    const maxBin = Math.min(cleanAmps.length - 2, Math.ceil(this.config.maxFreq / binWidth));
+    const minBin = Math.max(1, Math.floor(minFreq / binWidth));
+    const maxBin = Math.min(cleanAmps.length - 2, Math.ceil(maxFreq / binWidth));
 
     const peaks: DetectedPeak[] = [];
 
@@ -571,6 +576,29 @@ export class DetectionEngine {
   } | null {
     if (!peaks || peaks.length === 0) return null;
 
+    if (this.config.targetMode !== 'chords') {
+      const estimate = this.timeBuffer ? estimateNotePitch(this.timeBuffer, sampleRate) : null;
+      if (!estimate) return null;
+      const estimateMidi = 69 + 12 * Math.log2(estimate.freq / 440);
+      const fundamental = peaks.find(peak => Math.abs(peak.midi - estimateMidi) < .35 && peak.amp >= peaks[0].amp * .08);
+      if (!fundamental) return null;
+      let energy = 0, supported = 0;
+      for (const peak of peaks) {
+        energy += peak.amp * peak.amp;
+        const harmonic = Math.round(peak.freq / estimate.freq);
+        if (harmonic >= 1 && Math.abs(peak.freq - estimate.freq * harmonic) <= Math.max(sampleRate / this.config.fftSize, peak.freq * .01)) supported += peak.amp * peak.amp;
+      }
+      if (supported < energy * .80) return null;
+      const midi = 69 + 12 * Math.log2(estimate.freq / 440), rounded = Math.round(midi);
+      const cents = Math.round((midi - rounded) * 100), pitchClass = ((rounded % 12) + 12) % 12;
+      return {
+        freq: estimate.freq, midi, pitchClass, note: NOTE_NAMES[pitchClass], octave: Math.floor(rounded / 12) - 1,
+        cents, confidence: Math.min(99, Math.round(estimate.confidence * 100)),
+        guitarPosition: this.findGuitarPosition(rounded, tuning) ?? undefined,
+        tunerVerdict: Math.abs(cents) <= 4 ? 'in-tune' : cents < 0 ? 'flat' : 'sharp',
+      };
+    }
+
     // 1. Try autocorrelation on time-domain buffer
     const autoCorr = this.timeBuffer ? this.fastAutocorrelate(this.timeBuffer, sampleRate) : { freq: -1, confidence: 0, rms: 0 };
     const isHum = !this.noiseProfile?.calibrated && (Math.abs(autoCorr.freq - 50) < 2 || Math.abs(autoCorr.freq - 60) < 2 ||
@@ -624,53 +652,6 @@ export class DetectionEngine {
       guitarPosition,
       tunerVerdict,
     };
-  }
-
-  processSingleNote(
-    f0: number, 
-    peaks: DetectedPeak[], 
-    _dominantPc?: number,
-    tuning: StringTuning[] = STANDARD_TUNING
-  ): DetectionResult {
-    const midi = 69 + 12 * Math.log2(f0 / 440);
-    const roundMidi = Math.round(midi);
-    const pitch = midiToPitch(roundMidi);
-    const cents = Math.round((midi - roundMidi) * 100);
-    const pitchClass = ((roundMidi % 12) + 12) % 12;
-    
-    const guitarPos = this.findGuitarPosition(roundMidi, tuning);
-    const tunerVerdict: 'in-tune' | 'flat' | 'sharp' = 
-      Math.abs(cents) <= 4 ? 'in-tune' : (cents < 0 ? 'flat' : 'sharp');
-
-    // Build dedicated single-note chroma for 12 Semitone Energy
-    const singleNoteChroma = new Float32Array(12);
-    singleNoteChroma[pitchClass] = 1.0;
-    singleNoteChroma[(pitchClass + 7) % 12] = 0.20; // natural 5th harmonic overtone
-    for (let i = 0; i < 12; i++) {
-      this.smoothedChroma[i] = 0.50 * this.smoothedChroma[i] + 0.50 * singleNoteChroma[i];
-    }
-
-    const ringingNotes = this.extractRingingNotes(peaks);
-    
-    const result: DetectionResult = {
-      mode: 'single-note',
-      freshness: 'fresh',
-      timestamp: Date.now(),
-      note: {
-        pitch,
-        guitarPosition: guitarPos || undefined,
-        confidence: Math.max(70, Math.min(99, Math.round(55 + (peaks[0]?.amp || 0.1) * 100))),
-        tunerVerdict,
-      },
-      chroma: new Float32Array(this.smoothedChroma),
-      peaks,
-      ringingNotes,
-      spectrum: new Float32Array(0),
-      signalLevelDb: 0,
-      statusMessage: `🎵 Plucked Note: ${pitch.note}${pitch.octave} (${pitch.freq.toFixed(1)} Hz) • ${tunerVerdict}`,
-    };
-
-    return result;
   }
 
   // ============================================================================
@@ -1023,10 +1004,12 @@ export class DetectionEngine {
     const calibratedRms = this.noiseProfile?.rms;
     const analysisScale = calibratedRms !== undefined ? Math.max(1, Math.min(12, .10 / Math.max(currentRms, .000001))) : 1;
 
-    // 4. Total guitar band energy (65 Hz to 1250 Hz ONLY)
+    const targetMode = this.config.targetMode || 'chords';
+    const upperFrequency = targetMode === 'chords' ? 1250 : Math.max(NOTE_PITCH_MAX, this.config.maxFreq);
+    // Chord analysis retains its existing band; note/tuner input also covers the upper register.
     const binWidth = sampleRate / this.config.fftSize;
-    const minGuitarBin = Math.max(1, Math.floor(65 / binWidth));
-    const maxGuitarBin = Math.min(cleanAmps.length - 1, Math.ceil(1250 / binWidth));
+    const minGuitarBin = Math.max(1, Math.floor((targetMode === 'chords' ? 65 : NOTE_PITCH_MIN) / binWidth));
+    const maxGuitarBin = Math.min(cleanAmps.length - 1, Math.ceil(upperFrequency / binWidth));
 
     let totalGuitarBandEnergy = 0;
     let maxCleanAmp = 0;
@@ -1047,7 +1030,7 @@ export class DetectionEngine {
     let spectralGatePassed = maxDb > minDbThreshold;
     if (this.noiseProfile?.calibrated) {
       const ratio = 10 ** (Math.max(10, this.config.noiseGateDb) / 20);
-      const upper = Math.min(rawAmps.length - 1, Math.ceil(this.config.maxFreq / binWidth));
+      const upper = Math.min(rawAmps.length - 1, Math.ceil((targetMode === 'chords' ? this.config.maxFreq : upperFrequency) / binWidth));
       spectralGatePassed = false;
       for (let b = minGuitarBin; b <= upper; b++) {
         if (cleanAmps[b] > .005 && rawAmps[b] > this.noiseProfile.amps[b] * ratio) { spectralGatePassed = true; break; }
@@ -1070,10 +1053,9 @@ export class DetectionEngine {
       this.performanceAttackAt = now;
     }
 
-    const targetMode = this.config.targetMode || 'chords';
-
     const silenceDuration = now - this.lastAudioActivityTimestamp;
     if (!isGatePassed) {
+      this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
       // If sustained silence for > 5 seconds, clear the held chord/note
       if (this.lastAudioActivityTimestamp > 0 && silenceDuration > 5000) {
         this.lockedChordResult = null;
@@ -1127,7 +1109,8 @@ export class DetectionEngine {
 
     // 6. Extract peaks and verify tonal content
     if (analysisScale !== 1) for (let i = 0; i < this.timeBuffer.length; i++) this.timeBuffer[i] *= analysisScale;
-    const peaks = this.extractPeaks(cleanAmps, sampleRate);
+    const peaks = this.extractPeaks(cleanAmps, sampleRate, targetMode === 'chords' ? this.config.maxFreq : upperFrequency,
+      targetMode === 'chords' ? this.config.minFreq : NOTE_PITCH_MIN);
     peaks.sort((a, b) => b.amp - a.amp);
 
     const numGuitarBins = maxGuitarBin - minGuitarBin + 1;
@@ -1135,6 +1118,7 @@ export class DetectionEngine {
     const crestFactor = (peaks[0]?.amp || 0) / (meanBandAmp + 1e-6);
 
     if (peaks.length === 0 || peaks[0].amp < 0.005 || crestFactor < 2.6) {
+      this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
       if (this.lockedChordResult) {
         return this.holdResult(this.lockedChordResult, freqData, maxDb);
       }
@@ -1206,6 +1190,16 @@ export class DetectionEngine {
           };
         }
 
+        const noteMidi = Math.round(singleNote.midi);
+        if (this.pendingNoteMidi !== noteMidi) {
+          this.pendingNoteMidi = noteMidi; this.pendingNoteFrames = 1;
+        } else this.pendingNoteFrames = Math.min(2, this.pendingNoteFrames + 1);
+        if (this.pendingNoteFrames < 2) {
+          if (this.lockedNoteResult) return this.holdResult(this.lockedNoteResult, freqData, maxDb);
+          return { mode: 'idle', freshness: 'none', timestamp: now, chroma: new Float32Array(this.smoothedChroma),
+            peaks, ringingNotes: [], spectrum: freqData, signalLevelDb: maxDb, statusMessage: 'Checking note pitch. Let one string ring.' };
+        }
+
         // In Notes & Tuner or Auto mode, return single-note with full tuning info
         const noteRes: DetectionResult = {
           mode: 'single-note',
@@ -1237,9 +1231,12 @@ export class DetectionEngine {
         this.lastLockedChord = null;
         this.clearStrumAttempt();
         return noteRes;
-      } else if (this.lockedNoteResult && targetMode !== 'chords') {
-        // Hold the locked note if current frame pitch dips slightly
-        return this.holdResult(this.lockedNoteResult, freqData, maxDb);
+      } else if (targetMode !== 'chords') {
+        this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
+        if (this.lockedNoteResult) return this.holdResult(this.lockedNoteResult, freqData, maxDb);
+        if (targetMode === 'notes') return { mode: 'idle', freshness: 'none', timestamp: now,
+          chroma: new Float32Array(this.smoothedChroma), peaks, ringingNotes: [], spectrum: freqData, signalLevelDb: maxDb,
+          statusMessage: 'No stable single-note pitch yet. Pluck one string and reduce nearby noise.' };
       }
     }
 
@@ -1247,14 +1244,10 @@ export class DetectionEngine {
     // POLYPHONIC CHORD PROCESSING (>= 3 Distinct Active Pitch Classes)
     // --------------------------------------------------------------------------
     // Fit harmonic note evidence before folding it into pitch classes.
+    this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
     const rawChroma = this.buildChromaCQT(cleanAmps, sampleRate, peaks);
     for (let i = 0; i < 12; i++) {
       this.smoothedChroma[i] = 0.55 * this.smoothedChroma[i] + 0.45 * rawChroma[i];
-    }
-
-    if (targetMode === 'notes') {
-      const f0 = peaks[0]?.freq || 0;
-      return this.processSingleNote(f0, peaks, peaks[0]?.pitchClass, tuning);
     }
 
     // Strum capture state machine for chords
@@ -1388,6 +1381,7 @@ export class DetectionEngine {
   }
 
   reset(): void {
+    this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
     this.frameSignalPresent = false;
     this.smoothedChroma.fill(0);
     this.prevFrameBandEnergy = 0;

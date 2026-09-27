@@ -188,17 +188,18 @@ try {
   });
   check('notes are fresh on supported frames; silence, noise and pitch failure are held', () => {
     const { frame, engine } = fixture({ targetMode: 'notes' });
-    const first = frame(0, E);
+    assert.equal(frame(0, E).freshness, 'none');
+    const first = frame(32, E);
     assert.equal(first.note.pitch.note, 'E');
     assert.equal(first.freshness, 'fresh');
-    const next = frame(32, E);
+    const next = frame(64, E);
     assert.equal(next.freshness, 'fresh');
     assert.ok(next.timestamp > first.timestamp);
-    held(frame(64, null), next);
-    held(frame(96, E, -20, true), next);
+    held(frame(96, null), next);
+    held(frame(128, E, -20, true), next);
     engine.detectSingleNote = () => null;
-    held(frame(128, E), next);
-    assert.equal(frame(5129, null).freshness, 'none');
+    held(frame(160, E), next);
+    assert.equal(frame(5161, null).freshness, 'none');
   });
   check('calibration and trigger-mode changes discard unfinished attempts', () => {
     const { frame, engine } = fixture();

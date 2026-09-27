@@ -8,7 +8,7 @@
     "build": "tsc && vite build && node scripts/stamp-sw.mjs",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
-    "test:detection": "tsx scripts/detection-smoke.mjs && tsx scripts/detection-reliability.mjs && tsx scripts/input-health-smoke.mjs && tsx scripts/harmonic-detection-smoke.mjs",
+    "test:detection": "tsx scripts/detection-smoke.mjs && tsx scripts/detection-reliability.mjs && tsx scripts/input-health-smoke.mjs && tsx scripts/harmonic-detection-smoke.mjs && tsx scripts/note-pitch-smoke.mjs",
     "test:songs": "tsx scripts/song-reliability.mjs",
     "test:audio": "tsx scripts/audio-analysis-smoke.mjs",
     "test:practice": "tsx scripts/positions-practice-smoke.mjs",

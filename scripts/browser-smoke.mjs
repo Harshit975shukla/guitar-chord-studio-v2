@@ -19,6 +19,7 @@ import { checkLessons } from './lessons-browser-checks.mjs';
 import { checkPercussion } from './percussion-browser-checks.mjs';
 import { checkGuitarSamples } from './guitar-samples-browser-checks.mjs';
 import { checkInputHealth } from './input-health-browser-checks.mjs';
+import { checkNotes } from './note-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -136,7 +137,9 @@ try {
   });
   await show('detector', 'neck-3d');
   await until("!!window.testScenes['neck-3d']");
-  if (process.env.BROWSER_SUITE === 'input') {
+  if (process.env.BROWSER_SUITE === 'notes') {
+    await checkNotes({ check, evaluate, send, until, show });
+  } else if (process.env.BROWSER_SUITE === 'input') {
     await checkInputHealth({ check, evaluate, send, until, screenshot });
   } else if (process.env.BROWSER_SUITE === 'guitar') {
     await checkGuitarSamples({ check, evaluate, send, until, show, screenshot });
@@ -221,6 +224,7 @@ try {
   await checkPercussion({ check, evaluate, send, until, screenshot });
   await checkGuitarSamples({ check, evaluate, send, until, show, screenshot });
   await checkInputHealth({ check, evaluate, send, until, screenshot });
+  await checkNotes({ check, evaluate, send, until, show });
 
   await check('held results do not score, send MIDI, log chords or paint live pitches', async () => {
     const data = await evaluate(async () => {

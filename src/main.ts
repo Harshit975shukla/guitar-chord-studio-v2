@@ -197,6 +197,7 @@ let theoryChord = '';
 let guitarGeneration = 0;
 let livePickGeneration = 0;
 let instantGuitarRequest = 0;
+let tunerPreviousTarget: DetectionTargetMode | null = null;
 const inputHealth = new InputHealthMonitor();
 const rawInputBuffer = new Float32Array(2048);
 
@@ -636,7 +637,7 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
   // Update chord display
   updateChordDisplay(result);
   const isFresh = result.freshness === 'fresh';
-  const nextLiveMidi = isFresh && result.mode === 'single-note' && result.note ? result.note.pitch.midi : null;
+  const nextLiveMidi = isFresh && result.mode === 'single-note' && result.note ? Math.round(result.note.pitch.midi) : null;
   if (nextLiveMidi !== liveNeckMidi) {
     liveNeckMidi = nextLiveMidi;
     renderFretboard();
@@ -650,7 +651,7 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
       appState.midiManager.sendChord({ root: result.chord.root, quality: result.chord.quality }, appState.settings.midiConfig.noteVelocity);
     }
     if (appState.midiManager && appState.settings.midiConfig.sendSingleNotes && result.note) {
-      appState.midiManager.sendNoteOn(result.note.pitch.midi, appState.settings.midiConfig.noteVelocity);
+      appState.midiManager.sendNoteOn(Math.round(result.note.pitch.midi), appState.settings.midiConfig.noteVelocity);
     }
   
     // Log chord for session and update interactive fretboard
@@ -1425,6 +1426,14 @@ export function endSession(): void {
 // ============================================================================
 
 export function switchTab(tabId: string): void {
+  if (tabId !== 'tuner' && tunerPreviousTarget !== null) {
+    const previous = tunerPreviousTarget; tunerPreviousTarget = null;
+    if (appState.settings.targetMode === 'notes') setTargetMode(previous);
+  }
+  if (tabId === 'tuner' && appState.activeTab !== 'tuner') {
+    tunerPreviousTarget = appState.settings.targetMode;
+    setTargetMode('notes');
+  }
   if (appState.activeTab !== tabId) {
     guitarGeneration++; livePickGeneration++;
     if (appState.acousticBus) stopAcousticSources(appState.acousticBus);
@@ -1502,9 +1511,16 @@ function populateTunerPegs(): void {
     btn.style.justifyContent = 'center';
     btn.id = `tuner-peg-${idx}`;
     const octave = Math.floor(st.midi / 12) - 1;
-    btn.innerHTML = `<div><strong>${st.note}${octave}</strong><br><span style="font-size:0.7rem; color:var(--text-muted);">${st.freq.toFixed(1)}Hz</span></div>`;
+    btn.innerHTML = `<div><strong>${NOTE_NAMES[st.midi % 12]}${octave}</strong><br><span style="font-size:0.7rem; color:var(--text-muted);">${st.freq.toFixed(1)}Hz</span></div>`;
     btn.addEventListener('click', () => {
-      playTestSound();
+      const request = ++instantGuitarRequest;
+      void ensureGuitarAudio().then(() => {
+        if (request !== instantGuitarRequest || !appState.audioContext || !appState.acousticBus) return;
+        playAcousticString(appState.audioContext, appState.acousticBus, {
+          freq: 440 * 2 ** ((st.midi - 69) / 12), stringIndex: idx,
+          startTime: appState.audioContext.currentTime + .005, velocity: .85,
+        });
+      }).catch(showGuitarAudioError);
     });
     pegsContainer.appendChild(btn);
   });
@@ -1612,8 +1628,9 @@ function updateChordDisplay(result: DetectionResult): void {
     rootEl!.textContent = `${result.note.pitch.note}${result.note.pitch.octave}`;
     qualityEl!.textContent = 'Single Note';
     notesEl!.textContent = `${result.note.pitch.freq.toFixed(1)} Hz (${result.note.pitch.cents > 0 ? '+' : ''}${result.note.pitch.cents}¢)`;
-    if (intervalsEl) intervalsEl.textContent = SARGAM_NAMES[((result.note.pitch.midi % 12) + 12) % 12];
-    if (sargamEl) sargamEl.textContent = SARGAM_NAMES[((result.note.pitch.midi % 12) + 12) % 12];
+    const notePc = ((Math.round(result.note.pitch.midi) % 12) + 12) % 12;
+    if (intervalsEl) intervalsEl.textContent = SARGAM_NAMES[notePc];
+    if (sargamEl) sargamEl.textContent = SARGAM_NAMES[notePc];
     confidenceEl!.innerHTML = `<span style="color:${result.note.tunerVerdict === 'in-tune' ? '#10b981' : result.note.tunerVerdict === 'flat' ? '#38bdf8' : '#f43f5e'}">${result.note.tunerVerdict}</span>`;
 
     if (c1) c1.innerHTML = `#1 <strong>${result.note.pitch.note}${result.note.pitch.octave}</strong> (${result.note.pitch.freq.toFixed(1)}Hz)`;

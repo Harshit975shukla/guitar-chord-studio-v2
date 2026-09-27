@@ -4,7 +4,7 @@ export const GUITAR_SAMPLE_BANKS = {
 export type GuitarSampleBank = keyof typeof GUITAR_SAMPLE_BANKS;
 export interface GuitarSample { id: string; midi: number; stringIndex: number }
 
-// Musicca's identifiers count the open string as 1; 0 is one semitone below it.
+// Both 0 and 1 identify the open-string pitch; 0 is an alternate open-string recording.
 const groups = [
   { prefix: 'f', base: 63, frets: [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] },
   { prefix: 'h', base: 58, frets: [0, 1, 2, 3, 4, 5, 9] },
@@ -14,13 +14,15 @@ const groups = [
   { prefix: 'e', base: 39, frets: [0, 1, 2, 3, 4, 5] },
 ];
 export const GUITAR_SAMPLES: GuitarSample[] = groups.flatMap((group, stringIndex) =>
-  group.frets.map(fret => ({ id: `${group.prefix}${fret}`, midi: group.base + fret, stringIndex })));
+  group.frets.map(fret => ({ id: `${group.prefix}${fret}`, midi: group.base + Math.max(1, fret), stringIndex })));
 
 export function chooseGuitarSample(midi: number, stringIndex: number): GuitarSample {
   if (!Number.isFinite(midi) || !Number.isInteger(stringIndex) || stringIndex < 0 || stringIndex > 5) throw new Error('Invalid guitar sample pitch or string.');
   return GUITAR_SAMPLES.reduce((best, sample) => {
     const distance = Math.abs(sample.midi - midi), previous = Math.abs(best.midi - midi);
-    return distance < previous || (distance === previous && Math.abs(sample.stringIndex - stringIndex) < Math.abs(best.stringIndex - stringIndex)) ? sample : best;
+    const stringDistance = Math.abs(sample.stringIndex - stringIndex), previousStringDistance = Math.abs(best.stringIndex - stringIndex);
+    return distance < previous || (distance === previous && (stringDistance < previousStringDistance ||
+      (stringDistance === previousStringDistance && best.id.endsWith('0') && !sample.id.endsWith('0')))) ? sample : best;
   });
 }
 

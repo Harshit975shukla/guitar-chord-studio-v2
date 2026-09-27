@@ -21,9 +21,10 @@ await check('all 132 guitar recordings match their local provenance hashes', () 
     assert.equal(new URL(file.url).hostname, 'www.musicca.com');
   }
 });
-await check('recorded note mapping includes every semitone D-sharp2 through F5 and correct open strings', () => {
+await check('recorded note mapping covers E2 through F5 and both open-string takes', () => {
   assert.equal(GUITAR_SAMPLES.length, 44);
-  assert.deepEqual([...new Set(GUITAR_SAMPLES.map(s => s.midi))].sort((a, b) => a - b), Array.from({ length: 39 }, (_, i) => i + 39));
+  assert.deepEqual([...new Set(GUITAR_SAMPLES.map(s => s.midi))].sort((a, b) => a - b), Array.from({ length: 38 }, (_, i) => i + 40));
+  for (const prefix of ['e','a','d','g','h','f']) assert.equal(GUITAR_SAMPLES.find(s => s.id === `${prefix}0`).midi, GUITAR_SAMPLES.find(s => s.id === `${prefix}1`).midi);
   const open = [64, 59, 55, 50, 45, 40].map((midi, s) => chooseGuitarSample(midi, s).id);
   assert.deepEqual(open, ['f1', 'h1', 'g1', 'd1', 'a1', 'e1']);
   assert.equal(chooseGuitarSample(67, 0).id, 'h9', 'Musicca has no f4 recording');
@@ -34,7 +35,7 @@ await check('nearest-sample selection never octave-wraps pitches or chooses an u
     const sample = chooseGuitarSample(midi, s);
     const nearest = Math.min(...GUITAR_SAMPLES.map(p => Math.abs(p.midi - midi)));
     assert.equal(Math.abs(sample.midi - midi), nearest);
-    const exactString = GUITAR_SAMPLES.find(p => p.midi === midi && p.stringIndex === s);
+    const exactString = GUITAR_SAMPLES.find(p => p.midi === midi && p.stringIndex === s && !p.id.endsWith('0'));
     if (exactString) assert.equal(sample.id, exactString.id);
   }
   assert.throws(() => chooseGuitarSample(NaN, 0), /Invalid/);

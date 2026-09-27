@@ -133,7 +133,7 @@ async function runScenario(scenario: Scenario, bank: GuitarSampleBank, decoder: 
   Date.now = () => clock;
   try {
     const suspensions: Promise<void>[] = [];
-    for (let step = 1; step < DURATION / STEP; step++) {
+    for (let step = 1; step < Math.round(DURATION / STEP); step++) {
       suspensions.push(ctx.suspend(step * STEP).then(async () => {
         try {
         if (failure) return;
