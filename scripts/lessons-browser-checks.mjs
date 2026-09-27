@@ -86,12 +86,9 @@ export async function checkLessons({ check, evaluate, send, until, show, screens
       await until('lessonSources.length === 8');
       await until("document.getElementById('lesson-stop').disabled");
       assert.equal(await evaluate(async () => {
-        const { renderStringSamples } = await import('/src/audio/engine.ts');
         const expected = [50, 52, 53, 55, 57, 58, 60, 62], standard = [64, 59, 55, 50, 45, 40];
         return lessonSources.every((source, i) => {
-          const samples = renderStringSamples(source.buffer.sampleRate, { freq: 440 * 2 ** ((expected[i] - 69) / 12),
-            stringIndex: standard.findIndex(midi => expected[i] >= midi), model: appState.acousticBus.model, startTime: 0, velocity: .8 });
-          return source.buffer.getChannelData(0).every((sample, j) => sample === samples[j]);
+          return matchesRecordedNote(source, expected[i], standard.findIndex(midi => expected[i] >= midi));
         });
       }), true);
       const stringLabels = await evaluate(() => ({
@@ -107,12 +104,9 @@ export async function checkLessons({ check, evaluate, send, until, show, screens
       });
       await until('lessonSources.length === lessonExpectedShape.length && lessonSources.length > 0');
       assert.equal(await evaluate(async () => {
-        const { renderStringSamples } = await import('/src/audio/engine.ts');
         return lessonSources.every((source, i) => {
           const p = lessonExpectedShape[i];
-          const samples = renderStringSamples(source.buffer.sampleRate, { freq: 440 * 2 ** ((p.midi - 69) / 12), stringIndex: p.stringIndex,
-            model: appState.acousticBus.model, startTime: 0, velocity: .65 });
-          return source.buffer.getChannelData(0).every((sample, j) => sample === samples[j]);
+          return matchesRecordedNote(source, p.midi, p.stringIndex);
         });
       }), true);
       await evaluate(() => { document.getElementById('lesson-stop').click(); lessonSources.length = 0; appState.isListening = true; document.querySelector('#lesson-tones button').click(); });

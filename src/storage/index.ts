@@ -54,8 +54,16 @@ function setJSON<T>(key: string, value: T): void {
 // ============================================================================
 
 export function loadSettings(): UserSettings {
-  const loaded = getJSON<UserSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-  return { ...DEFAULT_SETTINGS, ...loaded };
+  const loaded = getJSON<UserSettings & { acousticModel?: unknown; guitarSoundSource?: unknown }>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS) ?? DEFAULT_SETTINGS;
+  const { acousticModel, guitarSoundSource, ...current } = loaded;
+  const bank = current.guitarSampleBank;
+  const validBank = bank === 'steel' || bank === 'classical' || bank === 'electric';
+  if (bank !== undefined && !validBank) console.warn('Unknown recorded guitar preference; restoring the steel-string default.');
+  const settings = { ...DEFAULT_SETTINGS, ...current, guitarSampleBank: validBank ? bank : DEFAULT_SETTINGS.guitarSampleBank };
+  if (acousticModel !== undefined || guitarSoundSource !== undefined || (bank !== undefined && !validBank)) {
+    setJSON(STORAGE_KEYS.SETTINGS, settings);
+  }
+  return settings;
 }
 
 export function saveSettings(settings: UserSettings): void {

@@ -1430,6 +1430,15 @@ export class SongStudio {
     this.updateTransportUI();
   }
 
+  pauseReferenceForCalibration(): void {
+    if (this.isPlaying && this.timingMode !== 'wait' && this.referenceAudio) {
+      this.stopPlayback();
+      this.status('Reference audio stopped for the room check. Stay quiet until calibration finishes.');
+    }
+    this.auditionGeneration++;
+    this.sources.forEach(source => source.stop()); this.sources.clear();
+  }
+
   private completePlayback(message: string): void {
     this.stopPlayback();
     this.playbackComplete = true;

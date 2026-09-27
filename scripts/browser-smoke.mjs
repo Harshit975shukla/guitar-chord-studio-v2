@@ -17,6 +17,8 @@ import { checkCircle } from './circle-browser-checks.mjs';
 import { checkCirclePractice } from './circle-practice-browser-checks.mjs';
 import { checkLessons } from './lessons-browser-checks.mjs';
 import { checkPercussion } from './percussion-browser-checks.mjs';
+import { checkGuitarSamples } from './guitar-samples-browser-checks.mjs';
+import { checkInputHealth } from './input-health-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -115,6 +117,13 @@ try {
     // Use the loaded module identity, including any Vite HMR timestamp.
     const moduleUrl = path => performance.getEntriesByType('resource').findLast(e => new URL(e.name).pathname === path).name;
     window.testMain = await import(moduleUrl('/src/main.ts'));
+    window.sampleInitialBank = appState.settings.guitarSampleBank;
+    window.recordedGuitar = await import(moduleUrl('/src/audio/guitarSamples.ts'));
+    window.matchesRecordedNote = (source, midi, stringIndex) => {
+      const expected = recordedGuitar.guitarSamplePlayback(appState.audioContext, appState.acousticBus.sampleBank, 440 * 2 ** ((midi - 69) / 12), stringIndex);
+      return source.buffer === expected.buffer && Math.abs(source.playbackRate.value - expected.rate) < .00001;
+    };
+    await appState.songStudio.onPlayRequested();
     const { Fretboard3D } = await import(moduleUrl('/src/ui/fretboard3d.ts'));
     window.testScenes = {};
     const update = Fretboard3D.prototype.update;
@@ -127,7 +136,11 @@ try {
   });
   await show('detector', 'neck-3d');
   await until("!!window.testScenes['neck-3d']");
-  if (process.env.BROWSER_SUITE === 'percussion') {
+  if (process.env.BROWSER_SUITE === 'input') {
+    await checkInputHealth({ check, evaluate, send, until, screenshot });
+  } else if (process.env.BROWSER_SUITE === 'guitar') {
+    await checkGuitarSamples({ check, evaluate, send, until, show, screenshot });
+  } else if (process.env.BROWSER_SUITE === 'percussion') {
     await checkPercussion({ check, evaluate, send, until, screenshot });
   } else {
   await check('live renderer retains preset state and scoped accessible help', async () => {
@@ -206,6 +219,8 @@ try {
   await checkCirclePractice({ check, evaluate, send, until, screenshot });
   await checkLessons({ check, evaluate, send, until, show, screenshot });
   await checkPercussion({ check, evaluate, send, until, screenshot });
+  await checkGuitarSamples({ check, evaluate, send, until, show, screenshot });
+  await checkInputHealth({ check, evaluate, send, until, screenshot });
 
   await check('held results do not score, send MIDI, log chords or paint live pitches', async () => {
     const data = await evaluate(async () => {

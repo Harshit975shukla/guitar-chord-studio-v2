@@ -65,14 +65,8 @@ export async function checkTwoOctaves({ check, evaluate, send, until, show, scre
         s.setBpm(240); await s.startScaleAudioRun(); advance(7500);
         const firstCycle = played.slice(0, 29);
         const running = s.isAudioRunning;
-        const { renderStringSamples } = await import('/src/audio/engine.ts');
         const waveformsMatch = firstCycle.every((p, i) => {
-          const buffer = sources[i].buffer;
-          const expected = renderStringSamples(buffer.sampleRate, {
-            freq: 440 * 2 ** ((p.midi - 69) / 12), stringIndex: p.string,
-            startTime: 0, velocity: .95, model: appState.acousticBus.model,
-          });
-          return buffer.getChannelData(0).every((sample, index) => sample === expected[index]);
+          return matchesRecordedNote(sources[i], p.midi, p.string);
         });
         document.getElementById('btn-scale-run').click();
         const count = played.length; advance(5000);

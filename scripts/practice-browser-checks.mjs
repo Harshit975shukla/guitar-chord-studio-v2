@@ -37,13 +37,10 @@ export async function checkPractice({ check, evaluate, send, until, show, screen
       await evaluate(() => appState.songStudio.startPlayback());
       await until('!appState.songStudio.isPlaying');
       const sound = await evaluate(async () => {
-        const { DetectionEngine } = await import('/src/detection/engine.ts');
-        const buffer = positionAudioSources[0]?.buffer;
-        return { count: positionAudioSources.length, freq: buffer
-          ? new DetectionEngine().fastAutocorrelate(buffer.getChannelData(0).slice(2205, 10397), buffer.sampleRate).freq : null };
+        return { count: positionAudioSources.length, matching: !!positionAudioSources[0] && matchesRecordedNote(positionAudioSources[0], 64, 0) };
       });
       assert.equal(sound.count, 1);
-      assert.ok(Math.abs(sound.freq - 329.63) < 1, `${register} sound ${sound.freq}`);
+      assert.equal(sound.matching, true, `${register} recorded pitch`);
     }
     const chords = await evaluate(() => {
       const s = appState.songStudio, out = [];
@@ -138,19 +135,12 @@ export async function checkPractice({ check, evaluate, send, until, show, screen
       await evaluate(() => appState.songStudio.startPlayback());
       await until('!appState.songStudio.isPlaying');
       const audio = await evaluate(async () => {
-        const { renderStringSamples } = await import('/src/audio/engine.ts');
         const states = [...birthdayNeckStates].sort((a, b) => a[0] - b[0]).map(([, state]) => state);
         return {
           count: positionAudioSources.length,
-          // Exact scheduled waveform checks avoid autocorrelation's possible
-          // subharmonic choices (notably B3 at 48 kHz).
+          // Compare the recorded source and playback rate, not a pitch estimator's harmonics.
           expectedWaveforms: positionAudioSources.map((source, index) => {
-            const expected = renderStringSamples(source.buffer.sampleRate, {
-              freq: 440 * 2 ** ((birthdayExpectedMidis[index] - 69) / 12),
-              stringIndex: states[index].frets.findIndex(f => f !== null),
-              model: appState.acousticBus.model, startTime: 0, velocity: .9,
-            });
-            return source.buffer.getChannelData(0).every((sample, i) => sample === expected[i]);
+            return matchesRecordedNote(source, birthdayExpectedMidis[index], states[index].frets.findIndex(f => f !== null));
           }),
           states,
           current: document.getElementById('song-current-target').textContent,

@@ -22,6 +22,7 @@ npm run test:practice
 npm run test:strumming
 npm run test:theory
 npm run test:percussion
+npm run test:guitar
 npm run preview
 ```
 
@@ -30,7 +31,7 @@ Microphone access requires HTTPS or localhost and browser permission. MIDI permi
 ## The live studio
 
 - **Start listening** starts microphone capture and room calibration. Stay quiet briefly, then play. Choose **Chords**, **Notes**, or **Auto** to set the listening target.
-- Try a chord without granting microphone access. Each section's 2D and 3D views share its voicing and the existing acoustic synthesizer. Library and song selections stay independent of live detection.
+- Try a chord without granting microphone access. Each section's 2D and 3D views share its voicing and the selected guitar sound source. Library and song selections stay independent of live detection.
 - **3D**: drag to orbit, click a string/fret to select and pluck it, or click a selected position again to mute it. Use the camera buttons or `+`, `−`, and `R` while the canvas is focused to zoom/reset.
 - **2D**: scroll horizontally through the neck. Each fret and string mute control is a native keyboard-accessible button.
 - Amber markers are roots, cream markers are selected notes, and green markers show positions matching the detected pitch. A microphone cannot identify a unique string/fret from pitch alone: detected chords show a **suggested voicing**, and live notes show **possible positions**, not measured finger placement.
@@ -39,9 +40,60 @@ Microphone access requires HTTPS or localhost and browser permission. MIDI permi
 
 ## Detection reliability
 
-Strum capture still collects resonance from **30 through 320 ms** and expires **after 350 ms**. Incomplete or rejected attempts now expire even through silence, noise and single-note gates, discard their temporary samples/votes, and wait for another attack. A renewed strong attack restarts its own capture window. Capture timing, sensitivity, chord thresholds and harmonic processing have not been retuned.
+**Strum capture** collects resonance from **30 through 320 ms** and expires **after 350 ms**. Incomplete or rejected attempts expire through silence, noise and single-note gates, discard temporary samples/votes, and wait for another attack. A renewed strong attack restarts its own capture window. This capture window is unchanged; calibrated level handling and chord evidence have been improved as described below. The saved trigger identifier remains `guitartuna` for compatibility, but this is our detector, not a GuitarTuna integration.
 
 Results distinguish **fresh**, **held** and **none**. A held note/chord retains its original evidence timestamp and last confidence, and is labeled **Last confirmed / held**. It can remain visible, but does not score practice or drills, emit MIDI, update session statistics, or paint a current live pitch/tuning verdict. Repeated genuinely supported frames and repeated strums still count as fresh; this is not chord-event deduplication. The existing five-second silence clearing behavior remains.
+
+### Microphone and room check
+
+The Live Studio **Microphone & room check** shows the actual input device, raw microphone RMS level, room reference and level above that reference. The raw analyser is before the app's sensitivity gain, so near-limit input can be distinguished from simply increasing software gain. Values are digital dBFS/level differences, not sound-pressure measurements, true signal-to-noise ratios, chord confidence or an accuracy score. Raw diagnostic frames are not recorded, persisted or uploaded.
+
+On startup and **Recheck room noise**, calibration first discards one FFT window plus settling frames, then collects the existing 45 reference frames (about two seconds overall at the normal processing rate). This prevents an already-muted strum still in the analyser from becoming the room profile. Mute strings and remain quiet. Guitar/percussion previews are blocked during the check; current guitar references and backing percussion are stopped. Song Wait mode can remain armed without playing a reference.
+
+Changing microphone sensitivity rescales the existing noise spectrum and RMS reference by the known gain change, then briefly ignores attack decisions while one analysis window settles. **Listening resumes automatically**; the previous mandatory-recheck block has been removed. If sensitivity changes during calibration, that measurement restarts automatically. A new input/analyser cannot reuse another input's profile.
+
+Calibration uses temporal medians and a bounded peak estimate so a brief loud event does not dominate the entire room reference. Sustained talking or playing through most of the measurement can still spoil it; quiet calibration remains important. Suspect input produces an advisory recheck warning, not a permanent detection lock.
+
+After calibration, the noise-gate margin is checked in individual frequency bins instead of against the loudest noise anywhere in the spectrum. The level floor follows measured noise RMS (with a small absolute floor), and quiet eligible input is normalized only inside analysis, with bounded gain. This does not change microphone monitoring, guitar playback volume or browser voice processing. Without a calibrated RMS reference, the conservative uncalibrated level floor remains.
+
+Chord evidence now comes from an original sparse non-negative harmonic fit: observed note candidates explain their partials before energy is folded into pitch classes. A coherent single-note harmonic series, including weak low body resonances, is not treated as a multi-note chord. Each quality must have its own required tones; diminished chords no longer depend on a major third or perfect fifth being present. Within equivalent suspended/augmented pitch sets, observed bass guides the suggested naming, while alternatives remain visible. This cannot resolve all musical-context ambiguities.
+
+Near-limit raw input suggests lowering the operating-system/interface input gain or moving the mic back; reducing app sensitivity cannot undo capture clipping. Weak input suggests moving the guitar closer and making a clear full strum, rather than amplifying the entire room. Prefer headphones, reduce nearby speech/music/fan noise where possible, and check for a voice-call headset or unwanted operating-system voice processing. A clean interface input is often preferable for electric guitar.
+
+Current chord targets cover **major, minor, 7, maj7, m7, sus2, sus4, power, diminished and augmented**. The library contains additional chord types that the detector does not yet target. Stationary-noise estimation cannot reliably remove arbitrary speech or other music, and some chord names share pitch collections. No “world-best” or perfect-accuracy claim is made. Improving comparative accuracy requires labeled real-guitar recordings across guitars, microphones and noise conditions, measuring exact supported chord identity, silent/noise false positives, rejection rates and time to a correct result against the same competitor inputs.
+
+`scripts/input-health-smoke.mjs` covers calibration settling, automatic gain recovery, robust profiles and input advice alongside the capture/freshness tests. `scripts/harmonic-detection-smoke.mjs` covers quiet chords, harmonic/body-resonance rejection and quality-specific evidence. The browser checks exercise raw input, level/headroom feedback, automatic sensitivity recovery, quiet-reference guards, microphone cleanup, preference migration and narrow layouts using generated microphone streams.
+
+### Recorded-input comparison and external references
+
+`scripts/detector-benchmark.mjs` compares against deployed commit `ae8a29f05a9821fa268b0c9eebe07b3a30f4b205`. It uses the browser's real offline audio graph (65 Hz high-pass, 2200 Hz low-pass, gain, 8192-point analyser) and default strum capture. Inputs are strums assembled from the authorized Musicca note recordings plus controlled noise—not human strum recordings or competitor measurements.
+
+With Node.js 22+, Vite and an isolated Chromium debugging endpoint running:
+
+```sh
+node scripts/detector-benchmark.mjs http://127.0.0.1:5173/ 9223 results.json --full
+node scripts/detector-benchmark.mjs http://127.0.0.1:5173/ 9223 additional-roots.json --holdout
+node scripts/check-detector-benchmark.mjs results.json additional-roots.json
+```
+
+The second suite changes roots, strum direction/spacing, noise seeds and sample rate (48 kHz rather than 44.1 kHz), and adds calibration transients and non-chord bursts. It is an additional stress suite, not a claim of independent real-world validation. Results include exact first answers, wrong answers, no answers, negative-input false positives, latency, processing timing, and hashes of detector/fixture sources.
+
+Measured before release on this controlled corpus:
+
+| Suite | Deployed exact first answers | Updated exact first answers |
+| --- | ---: | ---: |
+| 44.1 kHz, 765 chord cases | 347 (45.4%) | 627 (82.0%) |
+| Additional roots/strokes, 945 chord cases | 376 (39.8%) | 768 (81.3%) |
+| Non-chord inputs, 72 cases | 1 false positive | 0 false positives |
+
+Across chord cases, correct first answers increased from 723 to 1,395 and no-answer cases decreased from 771 to 28. Wrong first answers increased from 216 to 287 as coverage expanded; precision among answered cases nevertheless increased from 77.0% to 82.9%. Some individual clean voicings still regressed, so these results must not be presented as “better on every chord” or real-room accuracy. Median correct latency was about one 32 ms processing frame lower. A real recording collection across players/devices and an independent listening comparison are still needed.
+
+Relevant primary sources:
+
+- [Chord ai](https://www.chordai.net/) advertises on-device deep learning, microphone recognition and a broad chord vocabulary. Its model and training set are proprietary; its accuracy claims are not an independent ranking.
+- [GuitarTuna's tuning guidance](https://guitartuna.com/online-guitar-tuner) emphasizes clean input and steady plucks. Tuning a single string is not the same task as unconstrained chord recognition.
+- [NNLS Chroma / Chordino documentation](https://isophonics.net/nnls-chroma) describes harmonic note dictionaries, whitening and temporal chord smoothing. Chordino is explicitly described there as a simple, non-state-of-the-art transcription approach. We used the general harmonic-fit idea, not its source code or a downloaded model.
+- [mir_eval chord evaluation](https://mir-eval.readthedocs.io/latest/api/chord.html) explains why chord vocabulary, root/quality conventions and no-chord handling must be specified for a meaningful comparison.
 
 ## Shared fretboards
 
@@ -49,7 +101,7 @@ Results distinguish **fresh**, **held** and **none**. A held note/chord retains 
 
 Tuning/capo changes update each view's note labels and playback tuning. Shapes retain their fret positions relative to the capo; they are not promises of the named chord under every alternate tuning. Each section saves its view preference separately, defaults to 3D unless reduced motion is requested, and retains a keyboard-accessible 2D fallback.
 
-**Scales** shows the selected scale, not a chord voicing. Both views share the root, scale type, fret-register filter and note/degree labels. Amber marks roots, cream marks scale tones, blue marks the blues scale's ♭5, and green marks a playing/live note. Click or keyboard-play any fret: a synthesized pluck highlights its exact string/fret, including an explicitly labeled out-of-scale note. Live practice highlights matching pitch-class positions within the selected register, even in degree-label mode; it does not infer finger placement.
+**Scales** shows the selected scale, not a chord voicing. Both views share the root, scale type, fret-register filter and note/degree labels. Amber marks roots, cream marks scale tones, blue marks the blues scale's ♭5, and green marks a playing/live note. Click or keyboard-play any fret: its pluck highlights the exact string/fret, including an explicitly labeled out-of-scale note. Live practice highlights matching pitch-class positions within the selected register, even in degree-label mode; it does not infer finger placement.
 
 Scale patterns and sounding string labels follow the effective tuning/capo. In **Free play**, **Play up/down loop** starts on the lowest root from which a complete scale fits, climbs to the highest reachable root, and mirrors the same fingerings back to its exact starting point. It repeats until **Stop scale**, without double-striking either turnaround note. For D major in standard tuning with Full neck selected, that is D3 → D5 → D3; Open uses D3 → D4 → D3. The loop never starts on an arbitrary non-root scale tone.
 
@@ -89,7 +141,7 @@ The original Three.js scene is in `src/ui/fretboard3d.ts`. It generates its own 
 node scripts/browser-smoke.mjs http://127.0.0.1:5173/ 9223
 ```
 
-Run it against the Vite dev server and an isolated Chrome/Edge profile started with `--remote-debugging-port=9223`; it resets test-origin preferences/service-worker caches and creates/closes its own test tab. Service-worker registration is disabled in this isolated UI test tab to prevent update-driven reloads; PWA update behavior is not covered. It checks downstream freshness handling, all five views, voicing independence, song updates, 320px layout, pointer/camera controls, offscreen and loading cleanup, WebGL failure fallback and reduced-motion defaults. `scripts/scales-browser-checks.mjs` adds 96 scale/root/register/label combinations, tuning/capo, exact plucks, keyboard playing, clock-controlled run/highlight races and synthetic mic feedback. `scripts/songs-browser-checks.mjs` checks actual Web Audio start/stop scheduling, the three timing modes, cancellation, per-performance scoring, Play Along import/editor roundtrips and mobile layouts. `scripts/two-octave-browser-checks.mjs` checks planned notes, actual synthesized buffers, shift cues in both directions, guided completion, unavailable starts, cancellation and narrow layouts. `scripts/lessons-browser-checks.mjs` checks formulas, complete voicings, actual audio buffers, cancellation, explicit handoffs and mobile lesson controls. These use original fixtures and synthetic detection inputs, never microphone recordings. Optional `SCREENSHOT_DIR` saves inspection images.
+Run it against the Vite dev server and an isolated Chrome/Edge profile started with `--remote-debugging-port=9223`; it resets test-origin preferences/service-worker caches and creates/closes its own test tab. Service-worker registration is disabled in this isolated UI test tab to prevent update-driven reloads; PWA update behavior is not covered. It checks downstream freshness handling, all five views, voicing independence, song updates, 320px layout, pointer/camera controls, offscreen and loading cleanup, WebGL failure fallback and reduced-motion defaults. `scripts/scales-browser-checks.mjs` adds 96 scale/root/register/label combinations, tuning/capo, exact plucks, keyboard playing, clock-controlled run/highlight races and generated mic feedback. `scripts/songs-browser-checks.mjs` checks actual Web Audio start/stop scheduling, the three timing modes, cancellation, per-performance scoring, Play Along import/editor roundtrips and mobile layouts. `scripts/two-octave-browser-checks.mjs` checks planned notes, recorded buffers and playback rates, shift cues in both directions, guided completion, unavailable starts, cancellation and narrow layouts. `scripts/lessons-browser-checks.mjs` checks formulas, complete voicings, actual audio buffers, cancellation, explicit handoffs and mobile lesson controls. Playback uses the authorized guitar samples; detection inputs are generated fixtures, not real-room microphone recordings. Optional `SCREENSHOT_DIR` saves inspection images.
 
 ## Theory lessons
 
@@ -131,7 +183,7 @@ The selected-key panel shows the key signature in conventional sharp/flat order,
 
 Use **Hear scale**, **Hear a fifth**, chord **Hear** buttons and **Hear progression** to compare generic harmony examples. Natural-minor triads retain a minor v; the separate minor cadence explicitly raises the seventh to make a major V. For D minor, B♭ remains in the key signature while A major uses C♯ as an accidental. The expandable lessons explain fifths/fourths, relative versus parallel keys, signatures and cadences.
 
-Reference audio uses the existing synthesized guitar at concert pitch, independently of current capo/tuning. It starts only on request and stops on Stop, key/mode/spelling changes, navigation or page exit. Pending audio starts are invalidated too. Stop global microphone listening before auditioning: reference sound is refused while listening is active. Reference examples are not scored and do not add song content.
+Reference audio uses the selected guitar sound at concert pitch, independently of current capo/tuning. It starts only on request and stops on Stop, key/mode/spelling changes, navigation or page exit. Pending audio starts are invalidated too. Stop global microphone listening before auditioning: reference sound is refused while listening is active. Reference examples are not scored and do not add song content.
 
 ### Guitar Practice in the circle
 
@@ -204,7 +256,7 @@ Custom song saving, searching and loading share the canonical `guitar_studio_cus
 
 `npm run test:songs` exercises pure timeline integration, transport boundaries/cancellation, performance rearming and matching, exact catalog IDs/metadata, non-destructive storage compatibility and import/export roundtrips with deterministic original fixtures.
 
-`npm run test:practice` covers exact-pitch position mapping, chord tones/bass, unavailable positions, tuning/capo, one-octave guided runs and two-octave hand-shift plans across the supported roots/scales. `scripts/practice-browser-checks.mjs` verifies the corresponding controls, real synthesized pitch versus both necks, fresh/held/free/guided feedback, octave/order errors, reference-audio suppression, completion/restart and mobile layouts. As with the other checks, synthetic streams do not establish real-room microphone accuracy.
+`npm run test:practice` covers exact-pitch position mapping, chord tones/bass, unavailable positions, tuning/capo, one-octave guided runs and two-octave hand-shift plans across the supported roots/scales. `scripts/practice-browser-checks.mjs` verifies the corresponding controls, recorded pitch selection versus both necks, fresh/held/free/guided feedback, octave/order errors, reference-audio suppression, completion/restart and mobile layouts. As with the other checks, generated streams do not establish real-room microphone accuracy.
 
 ## Analyze Audio and recording permissions
 
@@ -212,7 +264,7 @@ In **More tools → Analyze Audio**, choose an **MP3 or WAV** recording, confirm
 
 Withdrawing confirmation cancels the worker, invalidates pending work/results, releases the preview URL and disables draft saving. Browser decoding that has already started cannot always be interrupted, but its result is discarded; a byte-read that completes after withdrawal cannot start decoding. Confirmation is not saved to local storage and is not a license grant, permission to redistribute music, or a blanket liability waiver. Existing bundled Play Along content still needs appropriate rights review before commercial distribution.
 
-The section supports up to **30 MB / 5 minutes** and rejects larger files rather than truncating them. After confirmation, browser-native decoding resamples the audio, then a cancellable Web Worker runs our own FFT and the app's existing chroma/chord-template helpers. No audio is uploaded, no AI service or account is required, and no new model, sample pack or third-party dependency is included.
+The section supports up to **30 MB / 5 minutes** and rejects larger files rather than truncating them. After confirmation, browser-native decoding resamples the audio, then a cancellable Web Worker runs our own FFT and the app's existing chroma/chord-template helpers. No audio is uploaded and the analyzer needs no AI service, account or third-party model. Guitar playback recordings are described separately below.
 
 The output uses **Suggested key** and **Estimated chords** headings. It is an **unverified draft**, not tablature or a licensed song arrangement. It includes estimated chord regions, silence, uncertain regions, template match scores (not accuracy percentages), and global major/minor key candidates. Relative keys can be ambiguous; modal music, key changes, vocals, dense mixes, unusual tunings and poor recordings can mislead this lightweight analyzer. An uncertain key stays unconfirmed in Play Along rather than being presented as C major.
 
@@ -230,11 +282,19 @@ Analysis can be cancelled, and leaving the section cancels in-flight work and pa
 
 **YouTube reference** accepts standard HTTPS video, short, live and youtu.be links. It loads YouTube's official privacy-enhanced embed only after **Load reference**; it does not auto-play. This does contact YouTube, unlike local file analysis. Cross-origin player audio cannot be read by this app, so a YouTube link alone does **not** generate chords or a scale. There is no ripping/downloading service or automatic synchronization. Use a matching recording you are allowed to analyze, and open the video on YouTube if embedding is unavailable. Removing the video or leaving the section unloads its player.
 
-## Original synthesized guitar sound
+## Recorded guitar
 
-The guitar still uses our own physical-model synthesis, **not copied Musicca samples**. All note and strum paths now default to the selected acoustic-bus model; changing nylon/steel/twelve-string also updates the body response. Deterministic excitation, DC removal, click-safe buffer edges, loop-filter pitch compensation and gentler resonant filtering replace the noisier/inconsistent paths. An 8 MB per-context LRU buffer cache avoids regenerating repeated notes. Timed notes release within their event boundary, and twelve-string octave sources are included in cancellation.
+In **Live studio → Sound & detection settings → Recorded instrument**, choose a Musicca steel-string, classical or electric guitar. Recorded guitar is the only guitar playback source, with steel-string as the default. These banks contain 44 recordings each (132 files, 2,888,700 compressed bytes total), covering every semitone from D♯2 through F5 with a few string-specific duplicates. A recording is reused for other string positions at the same pitch; out-of-range pitches use the nearest recording with an exact playback-rate conversion, never octave wrapping. These are single-attack banks, not multiple velocity layers or round-robin takes.
 
-These changes improve measurable consistency, tuning and release behavior; they do not establish equivalence to a professionally sampled acoustic guitar. Listening comparisons should use matched volume and the same notes/strums.
+The recordings are served from this app's own `public/audio/musicca-guitar` directory, not hotlinked to Musicca at runtime. They were downloaded for local development after the project owner explicitly reported permission and requested their use. **Musicca retains rights to the recordings.** `SOURCE.json` records the original URLs, sizes, SHA-256 hashes and the user-reported authorization; it is not a public license or independent verification of redistribution rights. Review applicable permission/attribution conditions before publishing or distributing this sample bank. No Musicca application code, unrelated sound banks, credentials or account data were copied.
+
+Only the requested instrument is fetched and decoded on first guitar playback. Loading is coalesced, progress/errors are visible, and a partial or failed bank is never treated as ready. The cache retains at most two decoded banks with a 64 MiB limit per bank (these stereo banks use roughly 48–52 MiB each at 48 kHz). Output devices above 48 kHz use a 48 kHz sample decoder to avoid multiplying memory use. The browser resamples buffers for the output device. Native decode work can finish after cancellation, but cancelled interactions cannot start late audio.
+
+Recorded plucks retain their recorded attacks and decay. They bypass the synthetic wood-resonance/EQ chain and use the shared level/compression output, with short click-safe attacks/releases and the existing strum ordering. Live Studio, Library, Scales, Play Along, Circle, Theory lessons and Ear Training all use the selected source. Loading completes before reference transports start. Stop, navigation, sound changes, tuning changes or Clear invalidate pending guitar requests; rapid instant-play requests during loading do not burst into a queued pile of notes. Ear Training now waits for audio readiness and owns/cancels its reference timers and sources.
+
+The old guitar synthesizer, its wood-resonance processing and its selectable models have been removed. Existing saved synth preferences migrate to a valid recorded instrument without losing other settings. Missing recordings stay silent and show an error; **Load / retry recordings** retries without automatic playback. Percussion, metronome clicks and the optional MIDI monitor are separate features and are not removed. Automated pitch/routing/level checks do not establish subjective realism.
+
+`node scripts/download-guitar-samples.mjs --authorized` retrieves only the explicitly listed guitar files and writes provenance; run it only with the necessary permission. `npm run test:guitar` verifies file integrity, mapping, cache behavior, load failures and exact pitch conversion. Browser playback checks compare the expected recorded buffers and playback rates across every guitar-playing section, including cancellation, explicit retry, output headroom and narrow controls. Set `BROWSER_SUITE=guitar` for the sample-focused cases or `BROWSER_SUITE=input` for microphone diagnostics.
 
 `npm run test:audio` checks synthesis repeatability, pitch, waveform bounds, offline chord/key suggestions, silence/noise rejection, draft timing and YouTube URL validation using original synthetic signals. `scripts/analysis-browser-checks.mjs` adds per-file confirmation and keyboard access, blocked preview/decoding before permission, withdrawal during pending reads, actual browser MP3 decoding, WAV-to-worker-to-draft flow, no-upload checks, cancellation/errors, retained Play Along songs, model/cache/release checks, safe reference embeds and 320px controls. YouTube media availability and real-song recognition accuracy remain dependent on the recording/device and are not established by synthetic checks.
 

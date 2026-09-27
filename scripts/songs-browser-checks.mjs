@@ -25,7 +25,7 @@ export async function checkSongs({ check, evaluate, send, until, show, screensho
       const source = create();
       const start = source.start.bind(source), stop = source.stop.bind(source);
       const record = { start: null, stops: [] };
-      source.start = time => { record.start = time; scheduledSongAudio.push(record); start(time); };
+      source.start = (time, ...rest) => { record.start = time; scheduledSongAudio.push(record); start(time, ...rest); };
       source.stop = time => { record.stops.push(time ?? ctx.currentTime); stop(time); };
       return source;
     };

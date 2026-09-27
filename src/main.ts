@@ -22,7 +22,6 @@ import {
   NoteName,
   SARGAM_NAMES,
   AudioEngineConfig,
-  AcousticModel,
   StrumStyle,
 } from './types';
 
@@ -58,14 +57,15 @@ import {
 
 import {
   createAcousticBus,
-  updateAcousticBusSettings,
   strumChord,
   playTestChord,
   playInTuneChime,
   playMetronomeClick,
   playAcousticString,
   AcousticBus,
+  stopAcousticSources,
 } from './audio/engine';
+import { GUITAR_SAMPLE_BANKS, loadGuitarBank, type GuitarSampleBank } from './audio/guitarSamples';
 
 import { 
   DetectionEngine, 
@@ -93,6 +93,7 @@ import { CircleOfFifths } from './ui/circleOfFifths';
 import { TheoryLessons } from './ui/theoryLessons';
 import { CHORD_LESSONS } from './theory/lessons';
 import { scaleRootPc } from './scales/theory';
+import { InputHealthMonitor } from './detection/inputHealth';
 
 // ============================================================================
 // Global State
@@ -103,6 +104,8 @@ interface AppState {
   audioContext: AudioContext | null;
   acousticBus: AcousticBus | null;
   micStream: MediaStream | null;
+  micSource: MediaStreamAudioSourceNode | null;
+  inputAnalyser: AnalyserNode | null;
   analyser: AnalyserNode | null;
   micGainNode: GainNode | null;
   highpassFilter: BiquadFilterNode | null;
@@ -151,6 +154,8 @@ let appState: AppState = {
   audioContext: null,
   acousticBus: null,
   micStream: null,
+  micSource: null,
+  inputAnalyser: null,
   analyser: null,
   micGainNode: null,
   highpassFilter: null,
@@ -189,6 +194,11 @@ let liveNeckMidi: number | null = null;
 let neckCaption = 'Explore the fretboard';
 let microphonePending = false;
 let theoryChord = '';
+let guitarGeneration = 0;
+let livePickGeneration = 0;
+let instantGuitarRequest = 0;
+const inputHealth = new InputHealthMonitor();
+const rawInputBuffer = new Float32Array(2048);
 
 export async function initializeApp(): Promise<void> {
   // 1. Load settings
@@ -232,7 +242,7 @@ export async function initializeApp(): Promise<void> {
   
   // 8. Initialize UI
   prepareStudio();
-  neckController = new NeckController(onFretCellClick, chord => { void loadChordPreset(chord, true); });
+  neckController = new NeckController(onFretCellClick, chord => { void loadChordPreset(chord, true).catch(showGuitarAudioError); });
   initializeUI();
   updateMicUI(false);
   
@@ -242,10 +252,11 @@ export async function initializeApp(): Promise<void> {
     if (started && appState.activeTab === 'songs') setTargetMode('auto');
     return started;
   };
-  appState.songStudio.onPlayRequested = async () => {
-    await ensureAudioContext();
-  };
-  appState.scalesStudio.onPlayRequested = ensureAudioContext;
+  appState.songStudio.onPlayRequested = ensureGuitarAudio;
+  appState.scalesStudio.onPlayRequested = ensureGuitarAudio;
+  appState.trainerStudio.onPlayRequested = ensureGuitarAudio;
+  window.addEventListener('pagehide', stopGuitarPlayback);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopGuitarPlayback(); });
   appState.scalesStudio.onMicStartRequested = async () => {
     const started = appState.isListening || await startMicrophone();
     if (started && appState.activeTab === 'scales') setTargetMode('notes');
@@ -294,6 +305,7 @@ function applySettingsToState(): void {
 }
 
 function updateEffectiveTuning(): void {
+  guitarGeneration++; livePickGeneration++; instantGuitarRequest++;
   let tuning = appState.activeTuning.strings;
   if (appState.capoState.enabled) {
     tuning = applyCapo(appState.activeTuning, appState.capoState);
@@ -335,7 +347,7 @@ async function ensureAudioContext(): Promise<void> {
     
     // Create acoustic bus
     const engineConfig: AudioEngineConfig = {
-      model: appState.settings.acousticModel,
+      bank: appState.settings.guitarSampleBank,
       masterVolume: 1.0,
       strumStyle: 'down',
       sampleRate: appState.audioContext.sampleRate,
@@ -388,6 +400,10 @@ export async function startMicrophone(): Promise<boolean> {
       if (appState.micStream === stream) stopMicrophone();
     }, { once: true }));
     const source = appState.audioContext.createMediaStreamSource(stream);
+    appState.micSource = source;
+    appState.inputAnalyser = appState.audioContext.createAnalyser();
+    appState.inputAnalyser.fftSize = rawInputBuffer.length;
+    source.connect(appState.inputAnalyser);
     
     // Hardware filters (matches v1 proven audio pipeline)
     appState.highpassFilter = appState.audioContext.createBiquadFilter();
@@ -428,7 +444,8 @@ export async function startMicrophone(): Promise<boolean> {
     appState.isListening = true;
     appState.detectionEngine.reset();
     
-    // Automatically perform a 1.5s room noise calibration on microphone startup
+    // Let the input settle, then collect a quiet room reference.
+    prepareRoomCalibration();
     appState.detectionEngine.startNoiseCalibration();
     updateCalibrationUI(true);
     
@@ -437,9 +454,13 @@ export async function startMicrophone(): Promise<boolean> {
     
     // Update UI
     updateMicUI(true);
+    document.getElementById('input-device')!.textContent = stream.getAudioTracks()[0]?.label || 'Browser default microphone';
+    (document.getElementById('btn-input-recheck') as HTMLButtonElement).disabled = false;
     
     return true;
   } catch (error) {
+    disposeMicrophoneInput();
+    appState.isListening = false;
     console.error('Failed to start microphone:', error);
     const name = (error as any)?.name || '';
     let msg: string;
@@ -470,10 +491,7 @@ export async function startMicrophone(): Promise<boolean> {
 export function stopMicrophone(): void {
   if (!appState.isListening) return;
   
-  if (appState.micStream) {
-    appState.micStream.getTracks().forEach(track => track.stop());
-    appState.micStream = null;
-  }
+  disposeMicrophoneInput();
   
   if (appState.animationFrameId) {
     cancelAnimationFrame(appState.animationFrameId);
@@ -489,9 +507,57 @@ export function stopMicrophone(): void {
     setDrillStatus('Microphone stopped. Start again to retry, or use rhythm practice without chord checking.');
   }
   appState.detectionEngine.reset();
+  appState.detectionEngine.clearNoiseCalibration();
+  inputHealth.reset();
+  document.getElementById('input-check-status')!.textContent = 'Start listening to check the microphone input and room reference.';
+  document.getElementById('input-check')!.dataset.state = 'off';
+  for (const id of ['input-level','input-room','input-above-room','input-device']) document.getElementById(id)!.textContent = '—';
+  (document.getElementById('btn-input-recheck') as HTMLButtonElement).disabled = true;
+  document.getElementById('noise-status-text')!.textContent = 'Off · start listening to measure the room';
   updateMicUI(false);
   liveNeckMidi = null;
   renderFretboard();
+}
+
+function disposeMicrophoneInput(): void {
+  const stream = appState.micStream;
+  appState.micStream = null;
+  stream?.getTracks().forEach(track => track.stop());
+  for (const node of [appState.micSource, appState.inputAnalyser, appState.highpassFilter, appState.lowpassFilter, appState.micGainNode, appState.analyser]) node?.disconnect();
+  appState.micSource = null; appState.inputAnalyser = null; appState.highpassFilter = null;
+  appState.lowpassFilter = null; appState.micGainNode = null; appState.analyser = null;
+}
+
+function prepareRoomCalibration(): void {
+  guitarGeneration++; livePickGeneration++; instantGuitarRequest++;
+  if (appState.acousticBus) stopAcousticSources(appState.acousticBus);
+  appState.scalesStudio.stopScaleAudioRun();
+  appState.trainerStudio.stopAudio();
+  appState.songStudio.pauseReferenceForCalibration();
+  circleOfFifths?.stop(); theoryLessons?.stop(); percussionPlayer?.stop();
+  stopMetronome();
+  inputHealth.reset();
+}
+
+function updateInputHealth(result: DetectionResult): void {
+  if (!appState.inputAnalyser) return;
+  appState.inputAnalyser.getFloatTimeDomainData(rawInputBuffer);
+  const profile = appState.detectionEngine.getNoiseProfile();
+  const reading = inputHealth.update({
+    samples: rawInputBuffer, calibrating: result.isCalibrating === true,
+    calibrationComplete: result.calibrationComplete === true,
+    calibrated: profile?.calibrated === true,
+    needsCalibration: appState.detectionEngine.needsNoiseCalibration(),
+    settling: appState.detectionEngine.isInputSettling(),
+    warning: profile?.warning, signalPresent: result.performance?.signalPresent === true,
+    spectralDb: result.signalLevelDb, gateDb: appState.detectionEngine.getGateThresholdDb(),
+  });
+  document.getElementById('input-check')!.dataset.state = reading.state;
+  const status = document.getElementById('input-check-status')!;
+  if (status.textContent !== reading.message) status.textContent = reading.message;
+  document.getElementById('input-level')!.textContent = `${Math.round(reading.inputDb)} dBFS`;
+  document.getElementById('input-room')!.textContent = reading.roomDb === null ? 'Not measured' : `${Math.round(reading.roomDb)} dBFS`;
+  document.getElementById('input-above-room')!.textContent = reading.aboveRoomDb === null ? '—' : `${Math.round(reading.aboveRoomDb)} dB`;
 }
 
 let lastDspTimestamp = 0;
@@ -521,6 +587,7 @@ function startDetectionLoop(): void {
         );
         
         if (result) {
+          updateInputHealth(result);
           handleDetectionResult(result, freqData);
         }
       }
@@ -556,14 +623,14 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
   if (result.calibrationComplete) {
     updateCalibrationUI(false);
     if (result.calibratedDb !== undefined) {
-      completeNoiseCalibrationUI(result.calibratedDb);
+      completeNoiseCalibrationUI(result.calibratedDb, result.calibrationWarning);
     }
     const nameEl = document.getElementById('display-chord-name');
     if (nameEl && (!appState.currentChord || nameEl.textContent?.includes('Calibrating'))) {
-      nameEl.textContent = 'Ready';
+      nameEl.textContent = result.calibrationWarning ? 'Recheck room' : 'Ready';
     }
     const substatusEl = document.getElementById('live-detector-substatus');
-    if (substatusEl) substatusEl.innerHTML = `✅ Room Noise Calibrated (${Math.round(result.calibratedDb || -60)} dB) • Strum any chord or pluck any string`;
+    if (substatusEl) substatusEl.textContent = result.statusMessage || 'Room reference captured. Strum a chord or pluck a string.';
   }
 
   // Update chord display
@@ -636,44 +703,97 @@ function logChordDetection(chord: any): void {
 // Audio Engine Controls
 // ============================================================================
 
-export async function strumCurrentChord(style: StrumStyle = 'down'): Promise<void> {
+function guitarAudioStatus(message: string): void {
+  const status = document.getElementById('guitar-audio-status');
+  if (status) status.textContent = message;
+  const banner = document.getElementById('guitar-playback-status');
+  if (banner) { banner.textContent = message; banner.hidden = !message; }
+}
+
+function showGuitarAudioError(error: unknown): void {
+  console.error('Guitar audio unavailable:', error);
+  guitarAudioStatus(error instanceof Error ? error.message : String(error));
+}
+
+async function ensureGuitarAudio(): Promise<void> {
+  if (appState.isListening && appState.detectionEngine.isNoiseCalibrating()) throw new Error('The room check is running. Keep the guitar and speakers quiet until it finishes.');
+  const generation = guitarGeneration;
   await ensureAudioContext();
+  if (!appState.audioContext || !appState.acousticBus) throw new Error('Audio could not be initialized.');
+  if (generation !== guitarGeneration) throw new Error('Guitar playback cancelled after changing the sound or leaving the tool.');
+  const bank = appState.acousticBus.sampleBank;
+    try {
+      await loadGuitarBank(appState.audioContext, bank, (done, total) => {
+        if (generation === guitarGeneration) guitarAudioStatus(`Loading ${GUITAR_SAMPLE_BANKS[bank]} recordings: ${done}/${total}…`);
+      });
+    } catch (error) {
+      if (generation === guitarGeneration) showGuitarAudioError(error);
+      throw error;
+    }
+    if (generation !== guitarGeneration || appState.acousticBus.sampleBank !== bank) throw new Error('Guitar playback cancelled after changing the sound or leaving the tool.');
+    guitarAudioStatus(`${GUITAR_SAMPLE_BANKS[bank]} ready · recordings by Musicca.`);
+}
+
+function stopGuitarPlayback(): void {
+  guitarGeneration++; livePickGeneration++; instantGuitarRequest++;
+  appState.songStudio.stopPlayback();
+  appState.scalesStudio.stopScaleAudioRun();
+  appState.trainerStudio.stopAudio();
+  circleOfFifths?.stop();
+  theoryLessons?.stop();
+  if (appState.acousticBus) stopAcousticSources(appState.acousticBus);
+}
+
+export function setGuitarSampleBank(bank: GuitarSampleBank): void {
+  if (!Object.hasOwn(GUITAR_SAMPLE_BANKS, bank)) throw new Error('Choose a supported recorded guitar.');
+  stopGuitarPlayback();
+  appState.settings.guitarSampleBank = bank;
+  saveSettings(appState.settings);
+  if (appState.acousticBus) appState.acousticBus.sampleBank = bank;
+  (document.getElementById('guitar-sample-bank') as HTMLSelectElement).value = bank;
+  guitarAudioStatus(`${GUITAR_SAMPLE_BANKS[bank]} selected. Play a note or chord to load the recordings.`);
+}
+
+export async function strumCurrentChord(style: StrumStyle = 'down'): Promise<void> {
+  const request = ++instantGuitarRequest;
+  const frets = [...appState.currentFretboardState], tuning = appState.effectiveTuning.map(s => ({ ...s }));
+  await ensureGuitarAudio();
+  if (request !== instantGuitarRequest) return;
   if (!appState.audioContext || !appState.acousticBus) return;
   
   strumChord(appState.audioContext, appState.acousticBus, {
-    frets: appState.currentFretboardState,
+    frets,
     style,
     velocity: 0.85,
-    tuning: appState.effectiveTuning,
-    model: appState.settings.acousticModel,
+    tuning,
   });
 }
 
 export async function playTestSound(): Promise<void> {
-  await ensureAudioContext();
+  const request = ++instantGuitarRequest;
+  await ensureGuitarAudio();
+  if (request !== instantGuitarRequest) return;
   if (!appState.audioContext || !appState.acousticBus) return;
   playTestChord(appState.audioContext, appState.acousticBus);
 }
 
-export function setAcousticModel(model: AcousticModel): void {
-  appState.settings.acousticModel = model;
-  saveSettings(appState.settings);
-  
-  if (appState.acousticBus) {
-    updateAcousticBusSettings(appState.acousticBus, model);
-  }
-  
-  // Play preview
-  strumCurrentChord('down');
-}
-
 export function updateMicGain(gain: number): void {
+  const changed = gain !== appState.settings.micGain;
   appState.settings.micGain = gain;
   saveSettings(appState.settings);
   if (appState.micGainNode) {
     appState.micGainNode.gain.value = gain;
   }
   appState.detectionEngine.setConfig({ micGainMultiplier: gain });
+  if (changed && appState.isListening) {
+    if (appState.detectionEngine.isNoiseCalibrating()) {
+      inputHealth.reset(); updateCalibrationUI(true);
+    } else {
+      const profile = appState.detectionEngine.getNoiseProfile();
+      if (profile) completeNoiseCalibrationUI(profile.measuredNoiseFloorDb, profile.warning);
+      document.getElementById('noise-status-text')!.textContent = profile ? 'Room reference adjusted to sensitivity' : 'No room reference · recheck when ready';
+    }
+  }
 }
 
 export function updateNoiseGate(db: number): void {
@@ -736,11 +856,11 @@ export function setTargetMode(mode: DetectionTargetMode): void {
   }
   if (explainer) {
     if (mode === 'chords') {
-      explainer.textContent = 'Focuses 100% on chords with strict certainty (no note confusion)';
+      explainer.textContent = 'Checks chord identity. Incomplete or noisy strums may stay unconfirmed.';
     } else if (mode === 'notes') {
-      explainer.textContent = 'Focuses 100% on single notes & chromatic tuner (no chord guessing)';
+      explainer.textContent = 'Single-note pitch and tuning. Pluck one string and let it ring.';
     } else {
-      explainer.textContent = 'Smart auto-discriminator between chords and single notes';
+      explainer.textContent = 'Attempts to distinguish notes from chords. Choose Chords or Notes when you know the task.';
     }
   }
   if (tuningGauge) {
@@ -764,6 +884,7 @@ export function startNoiseCalibration(): void {
     document.getElementById('live-detector-substatus')!.textContent = 'Start listening first; room calibration begins automatically.';
     return;
   }
+  prepareRoomCalibration();
   appState.detectionEngine.startNoiseCalibration();
   updateCalibrationUI(true);
 }
@@ -801,6 +922,8 @@ export function setFretboardState(frets: (number | null)[]): void {
 }
 
 export function clearFretboard(): void {
+  guitarGeneration++; livePickGeneration++; instantGuitarRequest++;
+  if (appState.acousticBus) stopAcousticSources(appState.acousticBus);
   appState.currentChord = null;
   liveNeckMidi = null;
   neckCaption = 'Explore the fretboard';
@@ -1302,6 +1425,10 @@ export function endSession(): void {
 // ============================================================================
 
 export function switchTab(tabId: string): void {
+  if (appState.activeTab !== tabId) {
+    guitarGeneration++; livePickGeneration++;
+    if (appState.acousticBus) stopAcousticSources(appState.acousticBus);
+  }
   appState.activeTab = tabId;
 
   // Stop transport players when navigating away from their own tab, so their
@@ -1323,6 +1450,7 @@ export function switchTab(tabId: string): void {
   libraryNeck?.setActive(tabId === 'chords');
   appState.songStudio.setActive(tabId === 'songs');
   appState.scalesStudio.setActive(tabId === 'scales');
+  appState.trainerStudio.setActive(tabId === 'trainer');
   audioAnalysis?.setActive(tabId === 'analysis');
   circleOfFifths?.setActive(tabId === 'fifths');
   theoryLessons?.setActive(tabId === 'theory');
@@ -1410,27 +1538,27 @@ function updateCalibrationUI(calibrating: boolean): void {
   
   if (calibrating) {
     const textEl = btn?.querySelector('#calibrate-btn-text');
-    if (textEl) textEl.textContent = 'Measuring Silence... (1.5s)';
+    if (textEl) textEl.textContent = 'Measuring silence… (~2s)';
     if (status) status.textContent = 'Calibrating Ambient Room Noise • Stay Silent...';
     if (indicator) indicator.className = 'status-dot calibrating';
     const badge = document.getElementById('noise-reduction-badge');
     if (badge) badge.className = 'badge';
     const noiseStatusText = document.getElementById('noise-status-text');
     if (noiseStatusText) {
-      noiseStatusText.textContent = 'Calibrating (1.5s)...';
+      noiseStatusText.textContent = 'Checking room (~2s)…';
       noiseStatusText.style.color = '#ffd54f';
     }
   } else {
     const textEl = btn?.querySelector('#calibrate-btn-text');
-    if (textEl) textEl.textContent = 'Re-Calibrate Room Noise (1.5s)';
+    if (textEl) textEl.textContent = 'Recheck room noise (~2s)';
     if (indicator) indicator.className = 'status-dot listening';
   }
 }
 
-function completeNoiseCalibrationUI(measuredDb: number): void {
+function completeNoiseCalibrationUI(measuredDb: number, warning?: string): void {
   const noiseStatusText = document.getElementById('noise-status-text');
   if (noiseStatusText) {
-    noiseStatusText.textContent = `Active (${Math.round(measuredDb)} dB Subtracted)`;
+    noiseStatusText.textContent = warning ? 'Recheck recommended' : `Room reference: ${Math.round(measuredDb)} dB`;
     noiseStatusText.style.color = '#38bdf8';
   }
   const noiseFloorLabel = document.getElementById('noise-floor-label');
@@ -1439,7 +1567,7 @@ function completeNoiseCalibrationUI(measuredDb: number): void {
   }
   const noiseBadge = document.getElementById('noise-reduction-badge');
   if (noiseBadge) {
-    noiseBadge.className = 'badge calibrated';
+    noiseBadge.className = warning ? 'badge' : 'badge calibrated';
   }
   const noisePct = Math.max(0, Math.min(100, (measuredDb + 75) * 1.66));
   const marker = document.getElementById('noise-floor-marker');
@@ -1448,7 +1576,7 @@ function completeNoiseCalibrationUI(measuredDb: number): void {
   }
   const status = document.getElementById('status-text');
   if (status) {
-    status.textContent = `Calibrated (${Math.round(measuredDb)} dB) • Strum Guitar`;
+    status.textContent = warning ? 'Room check needs review' : `Room reference captured (${Math.round(measuredDb)} dB)`;
   }
   const indicator = document.getElementById('status-indicator');
   if (indicator) {
@@ -1628,18 +1756,27 @@ function updateLevelMeter(freqData: Float32Array): void {
   const gateDb = appState.detectionEngine.getGateThresholdDb();
   const gatePct = Math.max(0, Math.min(100, (gateDb + 75) * 1.66));
   const gateMarker = document.getElementById('gate-marker');
-  if (gateMarker) gateMarker.style.left = `${gatePct}%`;
+  if (gateMarker) {
+    gateMarker.hidden = !!noiseProfile?.calibrated;
+    gateMarker.style.left = `${gatePct}%`;
+  }
 
   const qualityLabel = document.getElementById('signal-quality-label');
   if (qualityLabel) {
-    if (maxDb > gateDb) {
-      qualityLabel.textContent = 'Active (Guitar)';
+    if (appState.detectionEngine.isNoiseCalibrating()) {
+      qualityLabel.textContent = 'Room check';
+      qualityLabel.style.color = 'var(--accent-gold)';
+    } else if (appState.detectionEngine.isInputSettling()) {
+      qualityLabel.textContent = 'Adjusting sensitivity';
+      qualityLabel.style.color = 'var(--accent-gold)';
+    } else if (appState.detectionEngine.getInputSignalPresent()) {
+      qualityLabel.textContent = 'Signal above gate';
       qualityLabel.style.color = '#10b981';
     } else if (noiseProfile?.calibrated && maxDb > noiseProfile.measuredNoiseFloorDb) {
-      qualityLabel.textContent = 'Room Noise Filtered';
+      qualityLabel.textContent = 'Below signal gate';
       qualityLabel.style.color = '#94a3b8';
     } else {
-      qualityLabel.textContent = 'Silence';
+      qualityLabel.textContent = 'Waiting for input';
       qualityLabel.style.color = '#64748b';
     }
   }
@@ -1738,6 +1875,7 @@ function initializeUI(): void {
   try { updateTuningUI(); } catch (e) { console.warn('updateTuningUI:', e); }
   try { renderPresetChips(); } catch (e) { console.warn('renderPresetChips:', e); }
   percussionPlayer = new PercussionPlayer(async () => {
+    if (appState.isListening && appState.detectionEngine.isNoiseCalibrating()) throw new Error('Wait for the room check to finish before playing percussion.');
     await ensureAudioContext();
     if (!appState.audioContext) throw new Error('Audio could not be initialized. Check browser audio settings.');
     return appState.audioContext;
@@ -1811,6 +1949,8 @@ function initFretboard(): void {
 }
 
 function onFretCellClick(stringIndex: number, fretIndex: number): void {
+  const pick = ++livePickGeneration;
+  const request = ++instantGuitarRequest;
   const current = appState.currentFretboardState[stringIndex];
   if (current === fretIndex) {
     appState.currentFretboardState[stringIndex] = null;
@@ -1820,16 +1960,17 @@ function onFretCellClick(stringIndex: number, fretIndex: number): void {
   liveNeckMidi = null;
   updateEditedChord();
   if (appState.currentFretboardState[stringIndex] !== null) {
-    void ensureAudioContext().then(() => {
+    const midi = appState.effectiveTuning[stringIndex].midi + fretIndex;
+    void ensureGuitarAudio().then(() => {
+      if (pick !== livePickGeneration || request !== instantGuitarRequest || appState.currentFretboardState[stringIndex] !== fretIndex) return;
       if (!appState.audioContext || !appState.acousticBus) return;
       playAcousticString(appState.audioContext, appState.acousticBus, {
-        freq: 440 * Math.pow(2, (appState.effectiveTuning[stringIndex].midi + fretIndex - 69) / 12),
+        freq: 440 * Math.pow(2, (midi - 69) / 12),
         startTime: appState.audioContext.currentTime,
         stringIndex,
         velocity: 0.75,
-        model: appState.settings.acousticModel,
       });
-    }).catch(error => console.warn('Note playback unavailable:', error));
+    }).catch(showGuitarAudioError);
   }
 }
 
@@ -1925,19 +2066,18 @@ function initTabButtons(): void {
     chip.addEventListener('click', () => {
       const element = chip as HTMLElement;
       const chord = element.textContent?.trim();
-      if (chord) loadChordPreset(chord, true);
+      if (chord) void loadChordPreset(chord, true).catch(showGuitarAudioError);
     });
   });
   
   // Sound buttons
-  document.querySelectorAll('.sound-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const button = btn as HTMLElement;
-      if (button.id === 'btn-sound-dreadnought') setAcousticModel('dreadnought');
-      else if (button.id === 'btn-sound-nylon') setAcousticModel('nylon');
-      else if (button.id === 'btn-sound-twelve') setAcousticModel('twelve');
-    });
+  (document.getElementById('guitar-sample-bank') as HTMLSelectElement).addEventListener('change', event => {
+    const bank = (event.target as HTMLSelectElement).value;
+    if (bank === 'steel' || bank === 'classical' || bank === 'electric') setGuitarSampleBank(bank);
   });
+  document.getElementById('guitar-stop-audio')!.addEventListener('click', () => { stopGuitarPlayback(); guitarAudioStatus('Guitar playback stopped.'); });
+  document.getElementById('guitar-retry-audio')!.addEventListener('click', () => { void ensureGuitarAudio().catch(showGuitarAudioError); });
+  setGuitarSampleBank(appState.settings.guitarSampleBank);
   
   // Strum style buttons
   const strumButtons = {
@@ -1953,14 +2093,14 @@ function initTabButtons(): void {
   
   Object.entries(strumButtons).forEach(([id, style]) => {
     const btn = document.getElementById(id);
-    if (btn) btn.addEventListener('click', () => strumCurrentChord(style as StrumStyle));
+    if (btn) btn.addEventListener('click', () => { void strumCurrentChord(style as StrumStyle).catch(showGuitarAudioError); });
   });
   
   // Compare buttons
   const amBtn = document.getElementById('btn-preset-am');
   const am7Btn = document.getElementById('btn-preset-am7');
-  if (amBtn) amBtn.addEventListener('click', () => loadChordPreset('Am', true));
-  if (am7Btn) am7Btn.addEventListener('click', () => loadChordPreset('Am7', true));
+  if (amBtn) amBtn.addEventListener('click', () => { void loadChordPreset('Am', true).catch(showGuitarAudioError); });
+  if (am7Btn) am7Btn.addEventListener('click', () => { void loadChordPreset('Am7', true).catch(showGuitarAudioError); });
   
   // Control buttons
   const toggleMic = document.getElementById('btn-toggle-mic');
@@ -1971,12 +2111,13 @@ function initTabButtons(): void {
   
   const calibrateBtn = document.getElementById('btn-calibrate-noise');
   if (calibrateBtn) calibrateBtn.addEventListener('click', startNoiseCalibration);
+  document.getElementById('btn-input-recheck')!.addEventListener('click', startNoiseCalibration);
   
   const clearBtn = document.getElementById('btn-clear-fretboard');
   if (clearBtn) clearBtn.addEventListener('click', clearFretboard);
   
   const testSpeaker = document.getElementById('btn-test-speaker');
-  if (testSpeaker) testSpeaker.addEventListener('click', playTestSound);
+  if (testSpeaker) testSpeaker.addEventListener('click', () => { void playTestSound().catch(showGuitarAudioError); });
   
   const clearHistory = document.getElementById('btn-clear-history');
   if (clearHistory) clearHistory.addEventListener('click', () => {
@@ -2156,15 +2297,19 @@ function renderChordLibrary(): void {
   if (!libraryNeck) {
     libraryNeck = new LibraryNeck(document.getElementById('library-neck')!, appState.effectiveTuning,
       async (frets, style) => {
-        await ensureAudioContext();
+        const request = ++instantGuitarRequest;
+        await ensureGuitarAudio();
+        if (request !== instantGuitarRequest) return;
         if (appState.audioContext && appState.acousticBus) {
           strumChord(appState.audioContext, appState.acousticBus, {
-            frets, style, velocity: 0.85, tuning: appState.effectiveTuning, model: appState.settings.acousticModel,
+            frets, style, velocity: 0.85, tuning: appState.effectiveTuning,
           });
         }
       },
       async (s, f) => {
-        await ensureAudioContext();
+        const request = ++instantGuitarRequest;
+        await ensureGuitarAudio();
+        if (request !== instantGuitarRequest) return;
         if (appState.audioContext && appState.acousticBus) {
           playAcousticString(appState.audioContext, appState.acousticBus, {
             freq: 440 * Math.pow(2, (appState.effectiveTuning[s].midi + f - 69) / 12),
@@ -2626,7 +2771,7 @@ function initSongToolsUI(): void {
 function initCircleOfFifths(): void {
   circleOfFifths = new CircleOfFifths(async () => {
     if (appState.isListening) throw new Error('Stop microphone listening in Live studio before playing theory references. You can still explore the circle silently.');
-    await ensureAudioContext();
+    await ensureGuitarAudio();
     if (appState.isListening) throw new Error('Microphone listening is active. Stop listening before playing a reference.');
     if (!appState.audioContext || !appState.acousticBus) throw new Error('Audio could not be initialized.');
     return { context: appState.audioContext, bus: appState.acousticBus };
@@ -2654,7 +2799,7 @@ function initTheoryLessons(): void {
   theoryLessons = new TheoryLessons(document.getElementById('theory-lessons')!, appState.effectiveTuning, {
     audio: async () => {
       if (appState.isListening || microphonePending) throw new Error('Stop microphone listening in Live studio before playing a lesson reference.');
-      await ensureAudioContext();
+      await ensureGuitarAudio();
       if (appState.isListening || microphonePending) throw new Error('Microphone listening is active. Stop listening before playing a reference.');
       if (!appState.audioContext || !appState.acousticBus) throw new Error('Audio could not be initialized. Check browser audio settings.');
       return { context: appState.audioContext, bus: appState.acousticBus };
@@ -2734,18 +2879,18 @@ declare global {
 if (typeof window !== 'undefined') {
   window.initializeApp = initializeApp;
   window.switchTab = switchTab;
-  window.strumCurrentChord = strumCurrentChord;
-  window.loadChordPreset = (chord: string, autoPlay: boolean = true) => loadChordPreset(chord, autoPlay);
+  window.strumCurrentChord = style => strumCurrentChord(style).catch(showGuitarAudioError);
+  window.loadChordPreset = (chord: string, autoPlay: boolean = true) => loadChordPreset(chord, autoPlay).catch(showGuitarAudioError);
   window.setTargetMode = setTargetMode;
   window.setTriggerMode = setTriggerMode;
   // Inspect loads the chord onto the detector fretboard, strums it, and switches to it
   window.inspectChordPreset = (chord: string) => {
-    loadChordPreset(chord, true);
     switchTab('detector');
+    void loadChordPreset(chord, true).catch(showGuitarAudioError);
   };
   // Strum loads the chord's voicing, then strums it
   window.strumChordPreset = (chord: string) => {
-    loadChordPreset(chord, true);
+    void loadChordPreset(chord, true).catch(showGuitarAudioError);
   };
   window.appState = appState;
 

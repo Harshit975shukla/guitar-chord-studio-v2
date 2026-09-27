@@ -8,13 +8,14 @@
     "build": "tsc && vite build && node scripts/stamp-sw.mjs",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
-    "test:detection": "tsx scripts/detection-smoke.mjs && tsx scripts/detection-reliability.mjs",
+    "test:detection": "tsx scripts/detection-smoke.mjs && tsx scripts/detection-reliability.mjs && tsx scripts/input-health-smoke.mjs && tsx scripts/harmonic-detection-smoke.mjs",
     "test:songs": "tsx scripts/song-reliability.mjs",
     "test:audio": "tsx scripts/audio-analysis-smoke.mjs",
     "test:practice": "tsx scripts/positions-practice-smoke.mjs",
     "test:strumming": "tsx scripts/strumming-smoke.mjs",
     "test:theory": "tsx scripts/circle-smoke.mjs && tsx scripts/lessons-smoke.mjs",
-    "test:percussion": "tsx scripts/percussion-smoke.mjs"
+    "test:percussion": "tsx scripts/percussion-smoke.mjs",
+    "test:guitar": "tsx scripts/guitar-samples-smoke.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",

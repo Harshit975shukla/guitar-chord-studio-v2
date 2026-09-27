@@ -999,7 +999,7 @@
                 <span style="font-weight:700; color:var(--accent-gold); display:flex; align-items:center; gap:8px; font-size:0.95rem;">
                   <span>🎯</span> Listening Target:
                 </span>
-                <span style="font-size:0.75rem; color:var(--text-muted);" id="target-mode-explainer">Focuses 100% on chords with strict certainty (no note confusion)</span>
+                <span style="font-size:0.75rem; color:var(--text-muted);" id="target-mode-explainer">Checks chord identity. Incomplete or noisy strums may stay unconfirmed.</span>
               </div>
               <div class="mode-toggle-group" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px; padding:4px;">
                 <button class="mode-pill active" id="btn-target-chords" aria-pressed="true" style="padding: 10px 14px; font-weight:700; font-size:0.82rem;">🎸 Chords Only</button>
@@ -1033,10 +1033,10 @@
                 <span>Detection Mode:</span>
               </div>
               <div class="mode-toggle-group">
-                <button class="mode-pill active" id="btn-trigger-guitartuna" aria-pressed="true">🎸 GuitarTuna Trigger</button>
+                <button class="mode-pill active" id="btn-trigger-guitartuna" aria-pressed="true">Strum capture</button>
                 <button class="mode-pill" id="btn-trigger-continuous" aria-pressed="false">⏱️ Continuous</button>
               </div>
-              <span style="font-size:0.7rem;">GuitarTuna mode only fires on real guitar strums!</span>
+              <span style="font-size:0.7rem;">Waits for a clear attack. Background sounds can still trigger it.</span>
             </div>
           </div>
         </section>
@@ -1069,12 +1069,10 @@
           </div>
         </section>
 
-        <!-- GUITARTUNA TECH EXPLAINER -->
+        <!-- DETECTOR EXPLAINER -->
         <section class="diag-box" aria-label="How noise cancellation works">
-          <strong>💡 How GuitarTuna Cancels Background Noise & What We Implemented:</strong><br>
-          1. <strong>Spectral Noise Subtraction:</strong> When you click <em>"Calibrate Room Noise"</em>, the app takes a 2-second fingerprint of your fan, AC, or ambient hum. It then subtracts that exact noise footprint from every live microphone frame.<br>
-          2. <strong>Hardware Bandpass Filtering:</strong> Web Audio Biquad filters cut off low room rumbles (&lt; 75 Hz) and high-frequency clicks (&gt; 1300 Hz), focusing exclusively on the 6 guitar strings.<br>
-          3. <strong>Strum Onset Triggering (Attack Detection):</strong> Instead of constantly analyzing noisy air, the engine sleeps until you strike a chord. The sudden energy surge triggers analysis during the clean 150ms–400ms ringing sustain phase, then locks the result!
+          <strong>Make room for a clean take.</strong>
+          <p>A quiet room check estimates steady noise. Frequency-specific gates, harmonic note fitting and strum capture help reject unsupported chord guesses. They do not guarantee recognition through speech or other music. This is our detector, not a GuitarTuna integration.</p>
         </section>
       </div>
 
@@ -1092,16 +1090,19 @@
           </div>
         </div>
 
-        <!-- SOUND SYNTHESIZER TYPE -->
+        <!-- RECORDED GUITAR -->
         <div class="card">
-          <div class="card-header"><div class="card-title"><span>🔊</span> Acoustic Sound Engine</div></div>
+          <div class="card-header"><div class="card-title"><span>🔊</span> Guitar recordings · Musicca</div></div>
           <div class="sound-style-box">
-            <div class="label">Acoustic Guitar Model:</div>
-            <div class="sound-buttons">
-              <button class="sound-btn active" id="btn-sound-dreadnought" aria-pressed="true">🎸 Dreadnought Steel</button>
-              <button class="sound-btn" id="btn-sound-nylon" aria-pressed="false">🪕 Spanish Nylon</button>
-              <button class="sound-btn" id="btn-sound-twelve" aria-pressed="false">✨ 12-String Shimmer</button>
+            <div class="guitar-sound-selectors">
+              <label id="guitar-sample-options" for="guitar-sample-bank">Recorded instrument
+                <select id="guitar-sample-bank"><option value="steel">Steel-string guitar</option><option value="classical">Classical guitar</option><option value="electric">Electric guitar</option></select>
+              </label>
             </div>
+            <p id="guitar-audio-status" class="song-data-status">Recorded guitar selected. Play a note or chord to load it.</p>
+            <p class="guitar-sound-note">Recordings by <a href="https://www.musicca.com/guitar" target="_blank" rel="noopener noreferrer">Musicca</a>. Notes share recordings where needed; pitches outside D♯2–F5 are shifted. These banks have one recorded attack per entry, not soft/hard layers or alternate takes. Source and permission notes accompany the local files.</p>
+            <button id="guitar-stop-audio" class="btn btn-secondary">Stop guitar audio</button>
+            <button id="guitar-retry-audio" class="btn btn-secondary">Load / retry recordings</button>
             <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
               <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Strum Style:</span>
               <button class="btn btn-secondary" style="padding:4px 8px; font-size:0.75rem;" id="btn-strum-style-down">⬇️ Down</button>
@@ -1489,6 +1490,7 @@
       </div>
 
       <div class="trainer-card-hero" id="quiz-hero-card">
+        <p id="quiz-audio-status" class="song-data-status" role="status"></p>
         <div style="display:inline-block; font-size:0.8rem; font-weight:800; color:var(--accent-gold); text-transform:uppercase; letter-spacing:2px; background:rgba(255,179,0,0.1); padding:4px 14px; border-radius:30px; margin-bottom:12px;" id="quiz-challenge-badge">
           🎯 Ear Training Challenge
         </div>

@@ -138,6 +138,24 @@ body.studio-redesign { background: var(--bg-dark); padding-bottom: 36px; overflo
 .studio-redesign .pane-neck-flat .finger-dot.root-note { background: #eabb7f; }
 .neck-play-controls select { max-width: 100%; min-width: 0; }
 .neck-play-controls label { align-self: center; font-size: 11px; color: var(--text-muted); }
+.guitar-sound-selectors { display: flex; flex-wrap: wrap; gap: 12px; }
+.guitar-sound-selectors label { display: grid; gap: 7px; min-width: 0; max-width: 100%; font-size: 12px; color: var(--text-muted); }
+.guitar-sound-selectors select { min-height: 44px; width: 100%; max-width: 100%; background: var(--bg-dark); color: var(--text-main); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px; }
+.guitar-sound-note { color: var(--text-muted); font-size: 12px; line-height: 1.7; max-width: 75ch; margin: 12px 0; }
+.guitar-sound-note a { color: var(--accent-gold); text-decoration: underline; }
+.input-check { grid-column: 1 / -1; }
+.input-check-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.input-check h3 { font-size: 17px; font-weight: 550; }
+#input-check-status { margin-top: 14px; font-size: 14px; line-height: 1.7; max-width: 80ch; }
+.input-check[data-state="headroom"] #input-check-status, .input-check[data-state="recheck"] #input-check-status { color: var(--accent-gold); }
+.input-check-readings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(175px, 100%), 1fr)); gap: 14px; margin-top: 16px; }
+.input-check-readings div { min-width: 0; }
+.input-check dt { color: var(--text-muted); font-size: 12px; }
+.input-check dd { margin-top: 5px; font-size: 13px; overflow-wrap: anywhere; }
+.input-check details { margin-top: 18px; border-top: 1px solid var(--border-light); padding-top: 14px; }
+.input-check summary { cursor: pointer; font-size: 14px; }
+.input-check details p { color: var(--text-muted); font-size: 13px; line-height: 1.8; margin-top: 10px; max-width: 75ch; }
+.guitar-playback-status { color: var(--text-muted); font-size: 12px; line-height: 1.7; margin: -12px 0 20px; overflow-wrap: anywhere; }
 .studio-redesign .scale-select-grid { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
 .scale-control-group { min-width: 0; }
 .scale-formula-row, .scale-tempo-control { flex-wrap: wrap; }

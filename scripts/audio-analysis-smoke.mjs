@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { ANALYSIS_RATE, analyzePcm, analysisToSong, suggestKeys } from '../src/analysis/audioAnalysis.ts';
 import { youtubeVideoId } from '../src/analysis/youtube.ts';
-import { renderStringSamples } from '../src/audio/engine.ts';
-import { DetectionEngine } from '../src/detection/engine.ts';
 import { compileTiming } from '../src/songs/timing.ts';
 
 let checks = 0;
@@ -12,23 +10,6 @@ function tones(freqs, seconds) {
   for (let i = 0; i < samples.length; i++) for (const f of freqs) samples[i] += .08 * Math.sin(2 * Math.PI * f * i / ANALYSIS_RATE);
   return samples;
 }
-check('original string synthesis is deterministic, bounded and click-safe at buffer ends', () => {
-  for (const model of ['nylon', 'dreadnought', 'twelve']) {
-    const params = { freq: 220, stringIndex: 4, model, velocity: .9, startTime: 0 };
-    const samples = renderStringSamples(44100, params);
-    assert.deepEqual(samples, renderStringSamples(44100, params));
-    assert.equal(Math.abs(samples[0]), 0); assert.equal(Math.abs(samples.at(-1)), 0);
-    assert.ok(samples.every(n => Number.isFinite(n) && Math.abs(n) <= .801));
-  }
-});
-check('loop-filter compensation keeps guitar pitches within five cents across models', () => {
-  for (const model of ['nylon', 'dreadnought', 'twelve']) for (const freq of [82.4069, 110, 196, 329.63, 440]) {
-    const samples = renderStringSamples(44100, { freq, stringIndex: 2, model, velocity: 1, startTime: 0 });
-    const found = new DetectionEngine().fastAutocorrelate(samples.subarray(2205, 2205 + 8192), 44100);
-    assert.ok(Math.abs(1200 * Math.log2(found.freq / freq)) < 5, `${model} ${freq}: ${found.freq}`);
-  }
-  assert.throws(() => renderStringSamples(44100, { freq: NaN, stringIndex: 0, velocity: 1, startTime: 0 }));
-});
 check('offline FFT/chroma recognizes original C triad and provides cautious key candidates', () => {
   const progress = [];
   const result = analyzePcm(tones([130.81, 164.81, 196], 3), p => progress.push(p));

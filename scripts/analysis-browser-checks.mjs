@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
 
 export async function checkAudioAnalysis({ check, evaluate, send, until, show, screenshot, requests }) {
-  await check('original sound engine follows bus model, caches notes and releases without clipping', async () => {
+  await check('recorded guitar follows the selected bank, caches notes and releases without clipping', async () => {
     const results = await evaluate(async () => {
       const url = performance.getEntriesByType('resource').findLast(e => new URL(e.name).pathname === '/src/audio/engine.ts').name;
       const engine = await import(url);
+      const { loadGuitarBank } = await import('/src/audio/guitarSamples.ts');
       const tuning = appState.effectiveTuning;
       const results = [];
-      for (const model of ['dreadnought', 'nylon', 'twelve']) {
+      for (const bank of ['steel', 'classical', 'electric']) {
         const ctx = new OfflineAudioContext(2, 44100, 44100);
-        const bus = engine.createAcousticBus(ctx, { model, masterVolume: 1, strumStyle: 'down', sampleRate: 44100 });
+        await loadGuitarBank(ctx, bank);
+        const bus = engine.createAcousticBus(ctx, { bank, masterVolume: 1, strumStyle: 'down', sampleRate: 44100 });
         const a = engine.playAcousticString(ctx, bus, { freq: 220, stringIndex: 4, startTime: .8, velocity: .5 });
         const b = engine.playAcousticString(ctx, bus, { freq: 220, stringIndex: 4, startTime: .8, velocity: .5 });
         a.stop(0); b.stop(0);
@@ -19,23 +21,18 @@ export async function checkAudioAnalysis({ check, evaluate, send, until, show, s
         let peak = 0, tail = 0;
         for (const n of output.getChannelData(0)) peak = Math.max(peak, Math.abs(n));
         for (const n of output.getChannelData(0).slice(-1000)) tail = Math.max(tail, Math.abs(n));
-        results.push({ model, cached: a.buffer === b.buffer, seconds: a.buffer.duration, voices: sources.length, peak, tail });
+        results.push({ bank, cached: a.buffer === b.buffer, seconds: a.buffer.duration, voices: sources.length, peak, tail });
       }
-      const ctx = new OfflineAudioContext(1, 44100, 44100);
-      const bus = engine.createAcousticBus(ctx, { model: 'dreadnought', masterVolume: 1, strumStyle: 'down', sampleRate: 44100 });
-      const old = bus.convolver.buffer;
-      engine.updateAcousticBusSettings(bus, 'nylon');
-      results.push({ changed: old !== bus.convolver.buffer, model: bus.model });
       return results;
     });
     for (const result of results.slice(0, 3)) {
       assert.equal(result.cached, true);
-      assert.ok(Math.abs(result.seconds - (result.model === 'nylon' ? 3.2 : 2.8)) < .001);
-      assert.equal(result.voices, result.model === 'twelve' ? 8 : 5);
+      assert.ok(result.seconds > .1 && result.seconds < 20);
+      assert.equal(result.voices, 5);
       assert.ok(result.peak > .001 && result.peak < 1, `Output peak: ${result.peak}`);
       assert.ok(result.tail < .0001);
     }
-    assert.deepEqual(results.at(-1), { changed: true, model: 'nylon' });
+    assert.deepEqual(results.map(result => result.bank), ['steel','classical','electric']);
   });
 
   await evaluate(() => {

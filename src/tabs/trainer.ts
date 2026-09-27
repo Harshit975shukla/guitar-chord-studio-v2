@@ -61,6 +61,12 @@ export class TrainerStudio {
   private tuning: StringTuning[] = STANDARD_TUNING;
   private audioContext: AudioContext | null = null;
   private acousticBus: AcousticBus | null = null;
+  private active = false;
+  private audioGeneration = 0;
+  private audioPending = false;
+  private timers = new Set<number>();
+  private sources = new Set<AudioBufferSourceNode>();
+  public onPlayRequested?: () => Promise<void>;
 
   constructor() {}
 
@@ -70,7 +76,52 @@ export class TrainerStudio {
   }
 
   setTuning(tuning: StringTuning[]): void {
+    this.stopAudio();
     this.tuning = tuning;
+  }
+
+  setActive(active: boolean): void {
+    this.active = active;
+    if (!active) { this.stopAudio(); this.targetChord = null; }
+  }
+
+  stopAudio(): void {
+    this.audioGeneration++; this.audioPending = false;
+    this.timers.forEach(id => window.clearTimeout(id)); this.timers.clear();
+    this.sources.forEach(source => source.stop()); this.sources.clear();
+    this.isCadencePlaying = false; this.isCooldown = false;
+    document.getElementById('quiz-hero-card')?.classList.remove('hit-match');
+  }
+
+  private schedule(action: () => void, milliseconds: number): void {
+    const generation = this.audioGeneration;
+    const id = window.setTimeout(() => {
+      this.timers.delete(id);
+      if (generation === this.audioGeneration && this.active) action();
+    }, milliseconds);
+    this.timers.add(id);
+  }
+
+  private async prepareAudio(action: () => void): Promise<void> {
+    if (!this.active) return;
+    const generation = this.audioGeneration;
+    const status = document.getElementById('quiz-audio-status');
+    this.audioPending = true;
+    if (status) status.textContent = 'Preparing guitar audio…';
+    try {
+      await this.onPlayRequested?.();
+      if (generation !== this.audioGeneration || !this.active) return;
+      if (!this.audioContext || !this.acousticBus) throw new Error('Guitar audio is not ready. Replay to try again.');
+      this.audioPending = false;
+      if (status) status.textContent = '';
+      action();
+    } catch (error) {
+      if (generation === this.audioGeneration) {
+        this.stopAudio();
+        console.error('Ear training audio unavailable:', error);
+        if (status) status.textContent = `Audio unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
   }
 
   init(): void {
@@ -169,9 +220,13 @@ export class TrainerStudio {
   }
 
   playCadenceAndStartQuiz(): void {
-    if (this.isCadencePlaying || !this.audioContext || !this.acousticBus) return;
-
+    if (this.isCadencePlaying || !this.active) return;
+    this.stopAudio();
     this.isCadencePlaying = true;
+    void this.prepareAudio(() => this.startCadence());
+  }
+
+  private startCadence(): void {
     const keyInfo = KEY_CONFIGS[this.keyContext] || KEY_CONFIGS.C;
     const cadenceChords = keyInfo.cadence;
     const cadenceText = document.getElementById('quiz-cadence-text');
@@ -181,7 +236,7 @@ export class TrainerStudio {
     const playNextCadenceChord = () => {
       if (step < cadenceChords.length) {
         const chord = cadenceChords[step];
-        this.strumChordByName(chord);
+        this.strumChordByName(chord, .7);
 
         if (cadenceText) {
           const playedSoFar = cadenceChords.slice(0, step + 1).map(c => `<strong>${c}</strong>`).join(' → ');
@@ -195,14 +250,14 @@ export class TrainerStudio {
         }
 
         step++;
-        window.setTimeout(playNextCadenceChord, 750);
+        this.schedule(playNextCadenceChord, 750);
       } else {
         // Cadence complete!
         this.isCadencePlaying = false;
         if (cadenceText) {
           cadenceText.innerHTML = `✅ Ear calibrated in <strong>${keyInfo.name}</strong>! Starting quiz...`;
         }
-        window.setTimeout(() => {
+        this.schedule(() => {
           this.nextQuizChord();
         }, 800);
       }
@@ -212,6 +267,8 @@ export class TrainerStudio {
   }
 
   nextQuizChord(): void {
+    this.stopAudio();
+    if (!this.active) return;
     const keyInfo = KEY_CONFIGS[this.keyContext] || KEY_CONFIGS.C;
     let pool = keyInfo.beginnerPool;
     if (this.difficulty === 'intermediate') pool = keyInfo.intermediatePool;
@@ -260,9 +317,10 @@ export class TrainerStudio {
       }
 
       // Play the mystery chord sound after brief pause
-      window.setTimeout(() => {
+      this.schedule(() => {
         if (this.targetChord) {
-          this.strumChordByName(this.targetChord);
+          const chord = this.targetChord;
+          void this.prepareAudio(() => this.strumChordByName(chord));
         }
       }, 400);
     } else {
@@ -290,7 +348,7 @@ export class TrainerStudio {
   }
 
   handleChoice(chosenChord: string, btnIdx: number): void {
-    if (this.isCooldown || !this.targetChord) return;
+    if (this.isCooldown || this.audioPending || !this.targetChord) return;
     const btn = document.getElementById(`quiz-choice-${btnIdx}`);
     const pill = document.getElementById('quiz-feedback-pill');
     const targetName = document.getElementById('quiz-target-chord-name');
@@ -313,7 +371,7 @@ export class TrainerStudio {
       if (targetName) targetName.innerHTML = `✅ ${this.targetChord}`;
       if (heroCard) {
         heroCard.classList.add('hit-match');
-        setTimeout(() => heroCard.classList.remove('hit-match'), 800);
+        this.schedule(() => heroCard.classList.remove('hit-match'), 800);
       }
 
       if (pill) {
@@ -327,7 +385,7 @@ export class TrainerStudio {
         playInTuneChime(this.audioContext);
       }
 
-      window.setTimeout(() => {
+      this.schedule(() => {
         this.isCooldown = false;
         this.nextQuizChord();
       }, 1300);
@@ -338,7 +396,7 @@ export class TrainerStudio {
       if (btn) {
         btn.style.background = 'rgba(239, 68, 68, 0.3)';
         btn.style.borderColor = '#ef4444';
-        setTimeout(() => {
+        this.schedule(() => {
           btn.style.background = 'rgba(0,0,0,0.4)';
           btn.style.borderColor = 'var(--border-light)';
         }, 800);
@@ -355,7 +413,9 @@ export class TrainerStudio {
 
   replayMysteryChord(): void {
     if (this.targetChord) {
-      this.strumChordByName(this.targetChord);
+      this.stopAudio();
+      const chord = this.targetChord;
+      void this.prepareAudio(() => this.strumChordByName(chord));
     }
   }
 
@@ -402,7 +462,7 @@ export class TrainerStudio {
       if (targetName) targetName.innerHTML = `✅ ${target}`;
       if (heroCard) {
         heroCard.classList.add('hit-match');
-        setTimeout(() => heroCard.classList.remove('hit-match'), 800);
+        this.schedule(() => heroCard.classList.remove('hit-match'), 800);
       }
 
       if (pill) {
@@ -416,7 +476,7 @@ export class TrainerStudio {
         playInTuneChime(this.audioContext);
       }
 
-      window.setTimeout(() => {
+      this.schedule(() => {
         this.isCooldown = false;
         this.nextQuizChord();
       }, 1300);
@@ -433,17 +493,21 @@ export class TrainerStudio {
     if (bestStreakEl) bestStreakEl.textContent = `🏆 ${this.bestStreak}`;
   }
 
-  private strumChordByName(chordSymbol: string): void {
-    if (!this.audioContext || !this.acousticBus) return;
+  private strumChordByName(chordSymbol: string, duration = 1.5): void {
+    if (!this.audioContext || !this.acousticBus) throw new Error('Guitar audio is not ready.');
     const frets = this.getVoicingFrets(chordSymbol);
-    if (!frets) return;
+    if (!frets) throw new Error(`No playable voicing for ${chordSymbol} in this tuning.`);
 
-    strumChord(this.audioContext, this.acousticBus, {
+    const sources = strumChord(this.audioContext, this.acousticBus, {
       frets,
       style: 'down',
       velocity: 0.88,
       tuning: this.tuning,
-      model: 'dreadnought',
+      endTime: this.audioContext.currentTime + duration,
+    });
+    sources.forEach(source => {
+      this.sources.add(source);
+      source.addEventListener('ended', () => this.sources.delete(source), { once: true });
     });
   }
 

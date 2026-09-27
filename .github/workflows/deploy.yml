@@ -52,6 +52,9 @@ jobs:
       - name: Percussion sound and level regression tests
         run: npm run test:percussion
 
+      - name: Guitar sample mapping and integrity tests
+        run: npm run test:guitar
+
       - name: Build
         run: npm run build
 

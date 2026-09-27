@@ -68,16 +68,10 @@ export async function checkCircle({ check, evaluate, send, until, screenshot }) 
       await until('circleSources.length === 8');
       await until("document.getElementById('fifths-stop').disabled");
       const sounds = await evaluate(async () => {
-        const { renderStringSamples } = await import('/src/audio/engine.ts');
         const expected = [50, 52, 53, 55, 57, 58, 60, 62];
         const standard = [64, 59, 55, 50, 45, 40];
         return { count: circleSources.length, capo: appState.capoState.fret, matching: circleSources.every((source, i) => {
-          const samples = renderStringSamples(source.buffer.sampleRate, {
-            freq: 440 * 2 ** ((expected[i] - 69) / 12),
-            stringIndex: standard.findIndex(midi => expected[i] >= midi && expected[i] - midi <= 12),
-            model: appState.acousticBus.model, startTime: 0, velocity: .8,
-          });
-          return source.buffer.getChannelData(0).every((sample, j) => sample === samples[j]);
+          return matchesRecordedNote(source, expected[i], standard.findIndex(midi => expected[i] >= midi && expected[i] - midi <= 12));
         }) };
       });
       assert.equal(sounds.count, 8); assert.equal(sounds.matching, true); assert.equal(sounds.capo, 2);
@@ -85,12 +79,9 @@ export async function checkCircle({ check, evaluate, send, until, screenshot }) 
       await until('circleSources.length === 12');
       await until("document.getElementById('fifths-stop').disabled");
       const chordAudio = await evaluate(async () => {
-        const { renderStringSamples } = await import('/src/audio/engine.ts');
         const expected = [50, 53, 57, 55, 58, 62, 57, 61, 64, 50, 53, 57], tuning = [64, 59, 55, 50, 45, 40];
         return circleSources.every((source, i) => {
-          const samples = renderStringSamples(source.buffer.sampleRate, { freq: 440 * 2 ** ((expected[i] - 69) / 12),
-            stringIndex: tuning.findIndex(midi => expected[i] >= midi && expected[i] - midi <= 12), model: appState.acousticBus.model, startTime: 0, velocity: .65 });
-          return source.buffer.getChannelData(0).every((sample, j) => sample === samples[j]);
+          return matchesRecordedNote(source, expected[i], tuning.findIndex(midi => expected[i] >= midi && expected[i] - midi <= 12));
         });
       });
       assert.equal(chordAudio, true, 'minor cadence must play major A, including C sharp');

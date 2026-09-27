@@ -30,7 +30,6 @@ export type {
   MidiDevice,
   MidiConfig,
   AudioEngineConfig,
-  AcousticModel,
   StrumStyle,
   SynthVoice,
   UserSettings,

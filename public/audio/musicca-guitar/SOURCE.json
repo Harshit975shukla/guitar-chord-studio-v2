@@ -1,0 +1,932 @@
+{
+  "source": "Musicca",
+  "referencePage": "https://www.musicca.com/guitar",
+  "permission": "User reported permission and explicitly authorized downloading these guitar recordings on 2026-09-27. No independent verification of redistribution terms; review those terms before publishing.",
+  "scope": "Only the three guitar sound banks referenced by the public virtual-guitar player. No Musicca application code, other instruments or account data included.",
+  "files": [
+    {
+      "bank": "steel",
+      "id": "f0",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f0.mp3",
+      "bytes": 26880,
+      "sha256": "d5478aed49f69f3e7264e6b872f6fdb981aa77f48ed1df96186808152ac17876"
+    },
+    {
+      "bank": "steel",
+      "id": "f1",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f1.mp3",
+      "bytes": 25344,
+      "sha256": "a69efed507452dfa4d0f7dbadf8e2e7558be36af55cb371dda3b9ee8c3e38ad4"
+    },
+    {
+      "bank": "steel",
+      "id": "f2",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f2.mp3",
+      "bytes": 25344,
+      "sha256": "dfb9fe0c590f4524dca1150c5b3eeba412b33efb9bbf365b73e24693cae8bfca"
+    },
+    {
+      "bank": "steel",
+      "id": "f3",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f3.mp3",
+      "bytes": 25728,
+      "sha256": "1f2929ff0f0bba30cdd326e856c03e1aac6167b37a75dc9547027502701ad51a"
+    },
+    {
+      "bank": "steel",
+      "id": "f5",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f5.mp3",
+      "bytes": 26688,
+      "sha256": "fc45ca394e1955defca66cbef3689b66c914656a03c04fcac035734ac5439c90"
+    },
+    {
+      "bank": "steel",
+      "id": "f6",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f6.mp3",
+      "bytes": 25536,
+      "sha256": "b045aa0dcc09d5c67c15ab86fd0d70365bb521d179e47df0f1a5f223c631526e"
+    },
+    {
+      "bank": "steel",
+      "id": "f7",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f7.mp3",
+      "bytes": 25920,
+      "sha256": "a774d2ae5772a83db3be95c48d0219c21f5ccbdc45cd21ff6619e20f172fc732"
+    },
+    {
+      "bank": "steel",
+      "id": "f8",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f8.mp3",
+      "bytes": 26112,
+      "sha256": "43b4a63395302220d146b7bf7101ec9ea315b327f4f8b6d22af920c67860fda8"
+    },
+    {
+      "bank": "steel",
+      "id": "f9",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f9.mp3",
+      "bytes": 25728,
+      "sha256": "54f568cbc5a0c45a8dc8ee5fe5c671be4ac7a95fd63097c3eec19dc9dbd03cd2"
+    },
+    {
+      "bank": "steel",
+      "id": "f10",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f10.mp3",
+      "bytes": 25536,
+      "sha256": "ac469ade73e5db94ff261334bf14ce14353d4f2219a36377fe09f0d66d9d6f2a"
+    },
+    {
+      "bank": "steel",
+      "id": "f11",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f11.mp3",
+      "bytes": 25536,
+      "sha256": "82c97317f1c1a6a569326e6975b0ee024068b27ff035ecd5532158538cba93d7"
+    },
+    {
+      "bank": "steel",
+      "id": "f12",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f12.mp3",
+      "bytes": 26304,
+      "sha256": "917afb1c2dede18a2d9e908f036b8f83375d4ef37d7e50a7cfe5b2e6f6cb4bb8"
+    },
+    {
+      "bank": "steel",
+      "id": "f13",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f13.mp3",
+      "bytes": 25536,
+      "sha256": "0fc009eb7b4840950a4e9e8a61b32c96777d5d99abd3f083f62446dab32a486c"
+    },
+    {
+      "bank": "steel",
+      "id": "f14",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/f14.mp3",
+      "bytes": 25920,
+      "sha256": "869d75b6802b3eb289937871e35f6752af5d1451fce4294b2bb6a411be84fcd2"
+    },
+    {
+      "bank": "steel",
+      "id": "h0",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/h0.mp3",
+      "bytes": 27840,
+      "sha256": "df9a58d65afc1ba927bded956a129ad7c9199fec3b26a6afcb95b1e59f2220ce"
+    },
+    {
+      "bank": "steel",
+      "id": "h1",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/h1.mp3",
+      "bytes": 26112,
+      "sha256": "00285d48bc209330f74babe9b9013b5ccadfc8d7ad1316968582fac0f061606e"
+    },
+    {
+      "bank": "steel",
+      "id": "h2",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/h2.mp3",
+      "bytes": 25728,
+      "sha256": "211574708aa1262a5525063b6bb0feef930b28ec924a59e7c10f2ec72b0eae94"
+    },
+    {
+      "bank": "steel",
+      "id": "h3",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/h3.mp3",
+      "bytes": 26880,
+      "sha256": "db0f4fd029a69f9f417825e7188e776f5c6fd8c10e2571d31570c591dbf93d2a"
+    },
+    {
+      "bank": "steel",
+      "id": "h4",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/h4.mp3",
+      "bytes": 26304,
+      "sha256": "67e6637c58a8c5d10909c82de98778ef33bfc60b7bd097656bf3217752af918e"
+    },
+    {
+      "bank": "steel",
+      "id": "h5",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/h5.mp3",
+      "bytes": 25536,
+      "sha256": "0f887a79a98393378f760d608c7cf19b25f1268fd08c0ab5e6b919b6f4865a84"
+    },
+    {
+      "bank": "steel",
+      "id": "h9",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/h9.mp3",
+      "bytes": 25344,
+      "sha256": "47c7ed311566bf04cfe2e992696594e5155ba7a6dc4c6967e4153e27815e3826"
+    },
+    {
+      "bank": "steel",
+      "id": "g0",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/g0.mp3",
+      "bytes": 26304,
+      "sha256": "5d93364cf2807ac74c468db451d52ed9bb758b16b5859158e800a6f3aabf6421"
+    },
+    {
+      "bank": "steel",
+      "id": "g1",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/g1.mp3",
+      "bytes": 26112,
+      "sha256": "d11cf950294e600065a8f4061fa066e708c997602662ef134dbcfa804b884dfb"
+    },
+    {
+      "bank": "steel",
+      "id": "g2",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/g2.mp3",
+      "bytes": 25920,
+      "sha256": "eeab15a0636c174800abf3ee38e9398c0110810a8569d1ffedc31e80d491f3c2"
+    },
+    {
+      "bank": "steel",
+      "id": "g3",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/g3.mp3",
+      "bytes": 25920,
+      "sha256": "70db5714fc850e6e04234141edcefe443ad9239b22fe36fda6d21e56ce0b7c49"
+    },
+    {
+      "bank": "steel",
+      "id": "g4",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/g4.mp3",
+      "bytes": 25728,
+      "sha256": "ae04ae8bece9649f9f9c85bf93f06df647c5a5f68d0586e476cd28c0bef5740c"
+    },
+    {
+      "bank": "steel",
+      "id": "d0",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/d0.mp3",
+      "bytes": 27648,
+      "sha256": "a7382da7af82367c65c8759bbf59bac3edaa5539acb299ae0f07705300783ed8"
+    },
+    {
+      "bank": "steel",
+      "id": "d1",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/d1.mp3",
+      "bytes": 25728,
+      "sha256": "9e21e4d926ed68f2a3d74ca72f8f9939fcb16b20f88a4abf3170332a2a16b248"
+    },
+    {
+      "bank": "steel",
+      "id": "d2",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/d2.mp3",
+      "bytes": 26112,
+      "sha256": "8280896c4ca7a11c1aa06fa9cb6289242aef65166c1075132b861e90a2f293f5"
+    },
+    {
+      "bank": "steel",
+      "id": "d3",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/d3.mp3",
+      "bytes": 25728,
+      "sha256": "b682623973dfa858058735285a533a614ae7299fc770169736191e53c66c0a04"
+    },
+    {
+      "bank": "steel",
+      "id": "d4",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/d4.mp3",
+      "bytes": 26304,
+      "sha256": "7484df122b90448f7b5a95b9c449528a123b54c78bc5b8152e6e0e6389d37cf7"
+    },
+    {
+      "bank": "steel",
+      "id": "d5",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/d5.mp3",
+      "bytes": 25536,
+      "sha256": "a90bec6bca91495dfa3443f26fd6f07944f73706d6790f239aa0f9318cc5a6fa"
+    },
+    {
+      "bank": "steel",
+      "id": "a0",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/a0.mp3",
+      "bytes": 25920,
+      "sha256": "ac665f8b4316b615a52d8befc21758cb4ed1cddf550b9dced9f8dffc9cba5da0"
+    },
+    {
+      "bank": "steel",
+      "id": "a1",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/a1.mp3",
+      "bytes": 25920,
+      "sha256": "08e45b2c6712a2522182bdd83992719a0192fd3f8eb10c02d32e7c3916ef7c4b"
+    },
+    {
+      "bank": "steel",
+      "id": "a2",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/a2.mp3",
+      "bytes": 27072,
+      "sha256": "0f857e852fa154205feb6afa8b73723cd003176a202ce59a67b5102bb0940dcc"
+    },
+    {
+      "bank": "steel",
+      "id": "a3",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/a3.mp3",
+      "bytes": 26880,
+      "sha256": "6b935c33ff41885b22e3630f72300fa11ca3be97f52f7bd0908d70c5cfd4f7aa"
+    },
+    {
+      "bank": "steel",
+      "id": "a4",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/a4.mp3",
+      "bytes": 27072,
+      "sha256": "2bfe8a5bc83e62c768ed23f815cd8ce8c00b79dc168ffb3810746d3247b012e6"
+    },
+    {
+      "bank": "steel",
+      "id": "a5",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/a5.mp3",
+      "bytes": 29568,
+      "sha256": "3f2954b07af33642b15599364c262069e3b9fb903e98218b3ecbe437497fc0b0"
+    },
+    {
+      "bank": "steel",
+      "id": "e0",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/e0.mp3",
+      "bytes": 27264,
+      "sha256": "a24ffb4bb737f9bc9521b78316dfae48b06cc4cf8a8e41e00fc03a36201328ba"
+    },
+    {
+      "bank": "steel",
+      "id": "e1",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/e1.mp3",
+      "bytes": 25728,
+      "sha256": "67d1cc723d4b1b740853945465aab18310743bc2110b3c715a29b2495877f0d5"
+    },
+    {
+      "bank": "steel",
+      "id": "e2",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/e2.mp3",
+      "bytes": 25920,
+      "sha256": "352b904de5121e8f011512852e3c3d204e2a602db8e4451804fbe65b4da52c54"
+    },
+    {
+      "bank": "steel",
+      "id": "e3",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/e3.mp3",
+      "bytes": 25728,
+      "sha256": "ea6be00f686b1f3e97a33bf1dbbe83d2d4778adb9e5e31586d8118abbfe45efb"
+    },
+    {
+      "bank": "steel",
+      "id": "e4",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/e4.mp3",
+      "bytes": 26112,
+      "sha256": "4ede7b15faeac52ecef2e901556f535ce3016223f93decdc4a4af38639eb82b1"
+    },
+    {
+      "bank": "steel",
+      "id": "e5",
+      "url": "https://www.musicca.com/lydfiler/guitar/steel/e5.mp3",
+      "bytes": 25920,
+      "sha256": "66115087a48a34753169030771cbcff8d8541e31942e7ef6e9d4ceb25b14fc17"
+    },
+    {
+      "bank": "classical",
+      "id": "f0",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f0.mp3",
+      "bytes": 38784,
+      "sha256": "cfa172625e1d07f9d8eb370d63236f59438f4f441ecaf85fc85d86d71fbeb1c9"
+    },
+    {
+      "bank": "classical",
+      "id": "f1",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f1.mp3",
+      "bytes": 23040,
+      "sha256": "d288b7083cda5bd260f40c72c2f4c2ebd4423ad02db59a9a07700e9ace8084a6"
+    },
+    {
+      "bank": "classical",
+      "id": "f2",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f2.mp3",
+      "bytes": 23040,
+      "sha256": "19b0b856085ebd68f2107bb364587d1fef019ebff8abcaa2904a370b81aab1f4"
+    },
+    {
+      "bank": "classical",
+      "id": "f3",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f3.mp3",
+      "bytes": 23040,
+      "sha256": "07fcd71d33c7b32495d8cd45899addf551bbbe524a3f701ca15cbe63a18e5345"
+    },
+    {
+      "bank": "classical",
+      "id": "f5",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f5.mp3",
+      "bytes": 23040,
+      "sha256": "92b804f1f95535d89b2b2fc0009c09ae2238442490c7a3c6d3c56e181d7f913c"
+    },
+    {
+      "bank": "classical",
+      "id": "f6",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f6.mp3",
+      "bytes": 23040,
+      "sha256": "bb2df6ecbf5e7e42f8de9d4e5c8feda3577bff930a2adf889d75e1b2f7be0735"
+    },
+    {
+      "bank": "classical",
+      "id": "f7",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f7.mp3",
+      "bytes": 23040,
+      "sha256": "b5f39a89d6e6ec4b259a38e55958b961ecb3b1e647207894b9d7610140585f6a"
+    },
+    {
+      "bank": "classical",
+      "id": "f8",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f8.mp3",
+      "bytes": 23040,
+      "sha256": "f5123633ee089c7e3fe83ef340985a3380affac00e82b85bad754635d307e9e0"
+    },
+    {
+      "bank": "classical",
+      "id": "f9",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f9.mp3",
+      "bytes": 23040,
+      "sha256": "c8065a179961852e7c867b52c455308bac2eb171c32b8b104c8b7065856893ac"
+    },
+    {
+      "bank": "classical",
+      "id": "f10",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f10.mp3",
+      "bytes": 23040,
+      "sha256": "d8b986f25737ab409723f8158fe9492da2a3727b0c73d418def0b05dca4378a0"
+    },
+    {
+      "bank": "classical",
+      "id": "f11",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f11.mp3",
+      "bytes": 23232,
+      "sha256": "38cd0b51435c47892bf23a7d7eb8581b23363bf60dae501c131df9d3c9c418a3"
+    },
+    {
+      "bank": "classical",
+      "id": "f12",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f12.mp3",
+      "bytes": 23232,
+      "sha256": "0da5250d8255b7615d572e458955d60ec5ba8af5b9dd712f2c0bf513c4476f46"
+    },
+    {
+      "bank": "classical",
+      "id": "f13",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f13.mp3",
+      "bytes": 23232,
+      "sha256": "07eeb2fe73e16d352991c49c5cb1d6458f4f1992f4145e4ecbba2b969e4c3743"
+    },
+    {
+      "bank": "classical",
+      "id": "f14",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/f14.mp3",
+      "bytes": 23232,
+      "sha256": "0bfab8b75d5e5552a2cefe6070e27dc3622686a4c5b422c1d051b6288d11b456"
+    },
+    {
+      "bank": "classical",
+      "id": "h0",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/h0.mp3",
+      "bytes": 38784,
+      "sha256": "dee4ba4f6050e35bfae7463e00d0d037ba39be7861969b7aec370b67a9f0c5c0"
+    },
+    {
+      "bank": "classical",
+      "id": "h1",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/h1.mp3",
+      "bytes": 23040,
+      "sha256": "2c0b7090000dcdea9cf69bf0ee00626d3a99df0f12d805aedfa8866ddaf1e05c"
+    },
+    {
+      "bank": "classical",
+      "id": "h2",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/h2.mp3",
+      "bytes": 23040,
+      "sha256": "fdb683dc33572d6ea0cdbc76d4aeb4bbbd906d2fe5cc50e8a750ddfd62b69091"
+    },
+    {
+      "bank": "classical",
+      "id": "h3",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/h3.mp3",
+      "bytes": 23040,
+      "sha256": "8ca50e7e33e5d88ecdaf0f5bd5945bc09f6caf5b94d9f3bea3ae51eb94e3826b"
+    },
+    {
+      "bank": "classical",
+      "id": "h4",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/h4.mp3",
+      "bytes": 23040,
+      "sha256": "3e44bfa4eb78749cbbd5c2d60c47c907f0bb8c91b75c63af2f1a0e8babde4c96"
+    },
+    {
+      "bank": "classical",
+      "id": "h5",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/h5.mp3",
+      "bytes": 23040,
+      "sha256": "b6cf12b46967919b65ea49abe25fc26c58bc2915ae18224b236a52f9b63d83ff"
+    },
+    {
+      "bank": "classical",
+      "id": "h9",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/h9.mp3",
+      "bytes": 23040,
+      "sha256": "105858ac282d554787fac908287f46ce24092133d013a41c0a6bc753e43cdb50"
+    },
+    {
+      "bank": "classical",
+      "id": "g0",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/g0.mp3",
+      "bytes": 38784,
+      "sha256": "019f9da5bfc0ab638a8f9f9e9358483f94a37b0715974d5990c2d84f97789f26"
+    },
+    {
+      "bank": "classical",
+      "id": "g1",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/g1.mp3",
+      "bytes": 23040,
+      "sha256": "0d96f10e44eef1121fdd8d4d8b88b4730571ae546cccfe9f4fccf209e4e9dc33"
+    },
+    {
+      "bank": "classical",
+      "id": "g2",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/g2.mp3",
+      "bytes": 23040,
+      "sha256": "27b26bc9f756855b01c98ffd2acbe7985dea75cfd1037f69f4eabc437be21c6c"
+    },
+    {
+      "bank": "classical",
+      "id": "g3",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/g3.mp3",
+      "bytes": 23040,
+      "sha256": "cc62206e81388c2df84381e07a8c7ce9bd00cf2632d67ea37659fb8530e0b15e"
+    },
+    {
+      "bank": "classical",
+      "id": "g4",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/g4.mp3",
+      "bytes": 23040,
+      "sha256": "8286165b0c7619430a655c3945cc783b0c7c72f2170137a4cb0303505bf14cd2"
+    },
+    {
+      "bank": "classical",
+      "id": "d0",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/d0.mp3",
+      "bytes": 38784,
+      "sha256": "b3181310325c3081bcba015b67e5b9915b0fe22307e3944b4daca17bf570d33e"
+    },
+    {
+      "bank": "classical",
+      "id": "d1",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/d1.mp3",
+      "bytes": 23040,
+      "sha256": "f4c40ea6c20a6af29a892aff369e2f35a4f97b44688f7d031b2951018dbabea6"
+    },
+    {
+      "bank": "classical",
+      "id": "d2",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/d2.mp3",
+      "bytes": 23040,
+      "sha256": "2a17349fa045db1b735c3132cca26a57fb9b0dc9248fd7a0f35150663aad6e0c"
+    },
+    {
+      "bank": "classical",
+      "id": "d3",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/d3.mp3",
+      "bytes": 23040,
+      "sha256": "f1c1b4da1737b09df8bd79ec9b60e3dab240602f6e657ff82ff3ade5b6203aeb"
+    },
+    {
+      "bank": "classical",
+      "id": "d4",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/d4.mp3",
+      "bytes": 23040,
+      "sha256": "09d86e1cc84a563cf6242d737ec3c7134093782746004afa6cd466dc1e752c8d"
+    },
+    {
+      "bank": "classical",
+      "id": "d5",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/d5.mp3",
+      "bytes": 23040,
+      "sha256": "4a5bd59376680a3b4cdca9efd148fab19db8bfbfbf2dce83f62cd22f344b7f5f"
+    },
+    {
+      "bank": "classical",
+      "id": "a0",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/a0.mp3",
+      "bytes": 38784,
+      "sha256": "d554adee16168205d77b7bdf1311f72917a4a178ba414eb6283b8d9aae7c889a"
+    },
+    {
+      "bank": "classical",
+      "id": "a1",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/a1.mp3",
+      "bytes": 23040,
+      "sha256": "561de7e4e42f10f1ec316eb3b5338cf270d15f9e5b1ed5eb46667fd883b4c723"
+    },
+    {
+      "bank": "classical",
+      "id": "a2",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/a2.mp3",
+      "bytes": 23040,
+      "sha256": "ed8f1db537fc98ab7967fcc41d016f90b64deb53b554c0d0981e5c14691cd807"
+    },
+    {
+      "bank": "classical",
+      "id": "a3",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/a3.mp3",
+      "bytes": 23040,
+      "sha256": "c3f0c2882a11af0701203b728b82eb05fff260422dd40e011def4bfa77929d96"
+    },
+    {
+      "bank": "classical",
+      "id": "a4",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/a4.mp3",
+      "bytes": 23040,
+      "sha256": "22e4a4562367c066a861578730eb2bbbc909b565f933ca32917d6401fc7ed6fd"
+    },
+    {
+      "bank": "classical",
+      "id": "a5",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/a5.mp3",
+      "bytes": 23040,
+      "sha256": "618667d16861fdd4a9846d29dc04fe58d0515b862469bed518f587269fc9997a"
+    },
+    {
+      "bank": "classical",
+      "id": "e0",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/e0.mp3",
+      "bytes": 38976,
+      "sha256": "cdd93a35c9f126bf3198aec7825649750d4e5cd4b602f175387c2ce23997391f"
+    },
+    {
+      "bank": "classical",
+      "id": "e1",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/e1.mp3",
+      "bytes": 23040,
+      "sha256": "b4ba7c49bdab9e9be690365770579c17bdb9b6dc2c24d72c1586bb147e878f07"
+    },
+    {
+      "bank": "classical",
+      "id": "e2",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/e2.mp3",
+      "bytes": 23040,
+      "sha256": "25116012ffb70c47fdbaf791d50ce6df8f03a225c5acf0c7ac82c4321df73b90"
+    },
+    {
+      "bank": "classical",
+      "id": "e3",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/e3.mp3",
+      "bytes": 23040,
+      "sha256": "5fe984cb5226b31ea39e0469731808081240782f3dad3e616eaa2e233d229a30"
+    },
+    {
+      "bank": "classical",
+      "id": "e4",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/e4.mp3",
+      "bytes": 23040,
+      "sha256": "5e8c8bf9ab7a14aa3d9945b922b1e4fd809ed716ba473179ab78b9105faa334c"
+    },
+    {
+      "bank": "classical",
+      "id": "e5",
+      "url": "https://www.musicca.com/lydfiler/guitar/classical/e5.mp3",
+      "bytes": 23040,
+      "sha256": "3055cd402862c461c982d01a53a3f7db52f166bd0eea6b2e4dadcd1c83cb925e"
+    },
+    {
+      "bank": "electric",
+      "id": "f0",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f0.mp3",
+      "bytes": 23472,
+      "sha256": "578c966eefe22b4e79170bc07afec780a8ab4275e51c1a42a3214754a5916bad"
+    },
+    {
+      "bank": "electric",
+      "id": "f1",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f1.mp3",
+      "bytes": 15336,
+      "sha256": "afd4fcb13a3776c21c1cd35ec28e13f5e1756aa9a1f704986713974c8a462895"
+    },
+    {
+      "bank": "electric",
+      "id": "f2",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f2.mp3",
+      "bytes": 14220,
+      "sha256": "fb7a6388233b153b0bc2c20758995c38cd1e4762090de1519c40e04d5718648e"
+    },
+    {
+      "bank": "electric",
+      "id": "f3",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f3.mp3",
+      "bytes": 14976,
+      "sha256": "ab8ac079135d4b5cd915e9707d815903171c4095a75fd1205e162808ffd282a3"
+    },
+    {
+      "bank": "electric",
+      "id": "f5",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f5.mp3",
+      "bytes": 13860,
+      "sha256": "7470d87f160f8cb59b2f5a328586cbf3fd7b28fca46efd06f69f45d9d2effdf1"
+    },
+    {
+      "bank": "electric",
+      "id": "f6",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f6.mp3",
+      "bytes": 14508,
+      "sha256": "590bba0a63a663893cde267e8f704f953ddbc555eef848a771e98dac55983775"
+    },
+    {
+      "bank": "electric",
+      "id": "f7",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f7.mp3",
+      "bytes": 13248,
+      "sha256": "1bfb5fa6a4248f2477c6e5567a746cc6c6a997b322faaf6ea61ddb3e9442d184"
+    },
+    {
+      "bank": "electric",
+      "id": "f8",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f8.mp3",
+      "bytes": 13896,
+      "sha256": "8a2b208a4f856818f3b88be829bb4c66f8ac11f287524fbe8bef59e20ff0c596"
+    },
+    {
+      "bank": "electric",
+      "id": "f9",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f9.mp3",
+      "bytes": 13968,
+      "sha256": "0b0ed80177da5a67bd80ae0c2cef9c04b264ee483e53cb3bccc94c3690c5c098"
+    },
+    {
+      "bank": "electric",
+      "id": "f10",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f10.mp3",
+      "bytes": 12780,
+      "sha256": "5856fded5680b6436d07658f7601fda86756f5d4b4da108c50d29a9957a8d351"
+    },
+    {
+      "bank": "electric",
+      "id": "f11",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f11.mp3",
+      "bytes": 14148,
+      "sha256": "4c437758db40ab80821228b256f097693f42d0ca8ef69008abdb8f917bea0031"
+    },
+    {
+      "bank": "electric",
+      "id": "f12",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f12.mp3",
+      "bytes": 12636,
+      "sha256": "e3451c098dd7fd7b973fbb2daedf1dcd254384b993c522472aadc469624d2be9"
+    },
+    {
+      "bank": "electric",
+      "id": "f13",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f13.mp3",
+      "bytes": 15012,
+      "sha256": "0267ece8e20f4da38adcfae20dfbdc33c37f729ba285cf59b5a6f14e0697e1eb"
+    },
+    {
+      "bank": "electric",
+      "id": "f14",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/f14.mp3",
+      "bytes": 13392,
+      "sha256": "63f544d90a9d1a504824783c6957f8d16d81c7d21b5fb1c0596a9d3d832395eb"
+    },
+    {
+      "bank": "electric",
+      "id": "h0",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/h0.mp3",
+      "bytes": 21096,
+      "sha256": "d79e67e62e78bfd3fca422039c8791c7bf17a8bbd798600e8a6a3cc5b1d6ae51"
+    },
+    {
+      "bank": "electric",
+      "id": "h1",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/h1.mp3",
+      "bytes": 14076,
+      "sha256": "336634e7a92d97bb6186fbf2f08b8f823be63d68f6c591a3a05ba54ad27be1ee"
+    },
+    {
+      "bank": "electric",
+      "id": "h2",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/h2.mp3",
+      "bytes": 13176,
+      "sha256": "41691a0fe95b45db36f04f9fbc308f934920e525512858649ad72ab03c2a0610"
+    },
+    {
+      "bank": "electric",
+      "id": "h3",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/h3.mp3",
+      "bytes": 13392,
+      "sha256": "1872e226cfc760ad391aa6c845e3b745a4070244cb342a8b9864737fbe61d3af"
+    },
+    {
+      "bank": "electric",
+      "id": "h4",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/h4.mp3",
+      "bytes": 14832,
+      "sha256": "d90b6ae742e5a18b5f8e04131b7eb6112ce58505e4db37ae8cc516c6c943e8a3"
+    },
+    {
+      "bank": "electric",
+      "id": "h5",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/h5.mp3",
+      "bytes": 14328,
+      "sha256": "4bc1735884c78b603527498b237bf84aa65f82dfc1918235931089bebfa50a7c"
+    },
+    {
+      "bank": "electric",
+      "id": "h9",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/h9.mp3",
+      "bytes": 16488,
+      "sha256": "414b1d7c9ba374d0bac2f99603ae2d6158f7c78beb8712c84349605a527a2323"
+    },
+    {
+      "bank": "electric",
+      "id": "g0",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/g0.mp3",
+      "bytes": 18828,
+      "sha256": "293ab5ddbb255e449f7df805e609e727f984c15542fa0ee48199cc89b2f48886"
+    },
+    {
+      "bank": "electric",
+      "id": "g1",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/g1.mp3",
+      "bytes": 13356,
+      "sha256": "3d908f34744a66ccb5cdf2e8cc66dc0cd2a7d4909983ac2f318092b528788446"
+    },
+    {
+      "bank": "electric",
+      "id": "g2",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/g2.mp3",
+      "bytes": 12564,
+      "sha256": "6a78ddab5479ef5624df367057eb37f63d76e1de588ac18674b7f0ef2f9fdcb2"
+    },
+    {
+      "bank": "electric",
+      "id": "g3",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/g3.mp3",
+      "bytes": 13536,
+      "sha256": "dfa2a37fc732c15376c0f30d65c5b4328b6d8cf69a5e404c836f3a8bf9dc53b3"
+    },
+    {
+      "bank": "electric",
+      "id": "g4",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/g4.mp3",
+      "bytes": 14220,
+      "sha256": "88e910b4bffb1ec00b6c24dd9b315795bde499e1f26182943b59f6fd820cce90"
+    },
+    {
+      "bank": "electric",
+      "id": "d0",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/d0.mp3",
+      "bytes": 18504,
+      "sha256": "ccca3323fc79caddfa4e79afc82ddc42fd687f7d1239ef00bf66f9ac8abb597a"
+    },
+    {
+      "bank": "electric",
+      "id": "d1",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/d1.mp3",
+      "bytes": 11808,
+      "sha256": "4b1ec339fc420de3ce3e56bb39ee9ce21d455c9f91216e0ecd92a6b6bfaa31bc"
+    },
+    {
+      "bank": "electric",
+      "id": "d2",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/d2.mp3",
+      "bytes": 10944,
+      "sha256": "8d89178c7929187b4f104131e453982f2ae80ccb0b5086eb9a8e6140ae4afd33"
+    },
+    {
+      "bank": "electric",
+      "id": "d3",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/d3.mp3",
+      "bytes": 12168,
+      "sha256": "630ca548b1796e520e77c32d317cb7b78f71a776922dd21529f70dc13e82c7a5"
+    },
+    {
+      "bank": "electric",
+      "id": "d4",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/d4.mp3",
+      "bytes": 11988,
+      "sha256": "64d397cfecc82a96dbbe9fe91f21a64414feb7f18051668805c5a8f2c19d8a46"
+    },
+    {
+      "bank": "electric",
+      "id": "d5",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/d5.mp3",
+      "bytes": 12744,
+      "sha256": "ad17675d313d57f1515a447eaf355cf780f9dda79212052f398039211ef0310f"
+    },
+    {
+      "bank": "electric",
+      "id": "a0",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/a0.mp3",
+      "bytes": 19152,
+      "sha256": "42e69e3b0a01af34bdd01689c990f59d13d4fbd26abeec94158ac19f7fa4a4d0"
+    },
+    {
+      "bank": "electric",
+      "id": "a1",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/a1.mp3",
+      "bytes": 11772,
+      "sha256": "f177142a6c74ff605c5cad67bb8a93148f37107d05eb0af5617e0562fbc6da53"
+    },
+    {
+      "bank": "electric",
+      "id": "a2",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/a2.mp3",
+      "bytes": 12384,
+      "sha256": "16e1676f8ede4a2a1578a8795aa5748662f4d299ae99641d1df1a55edbfa8224"
+    },
+    {
+      "bank": "electric",
+      "id": "a3",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/a3.mp3",
+      "bytes": 12348,
+      "sha256": "30e1bbe22246fa7f0e200e2db8f6a50a1209edae02e63abbd7b762d8510fa696"
+    },
+    {
+      "bank": "electric",
+      "id": "a4",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/a4.mp3",
+      "bytes": 11736,
+      "sha256": "879be882522949e04fe4277904a4080bb9074011b2b185146056c5c017c75fb6"
+    },
+    {
+      "bank": "electric",
+      "id": "a5",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/a5.mp3",
+      "bytes": 10908,
+      "sha256": "4b4a72e76a93d9c871cd72e693ee4b95044f35747a8985425c892dbf5107db5f"
+    },
+    {
+      "bank": "electric",
+      "id": "e0",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/e0.mp3",
+      "bytes": 20376,
+      "sha256": "ad84508e71159d17e19674d9553aa29df6ec40edf0ee447a98b4766488f22d9b"
+    },
+    {
+      "bank": "electric",
+      "id": "e1",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/e1.mp3",
+      "bytes": 13032,
+      "sha256": "9f99e6875339d2552506ec722989a26d266e8f17ab3978ffe027803bef6db8ec"
+    },
+    {
+      "bank": "electric",
+      "id": "e2",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/e2.mp3",
+      "bytes": 13068,
+      "sha256": "99576d3193ecbd47c248feabcdaf891b3f0d6b2eb096def1c4f00ca7c298cb19"
+    },
+    {
+      "bank": "electric",
+      "id": "e3",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/e3.mp3",
+      "bytes": 13608,
+      "sha256": "c65552a25372cbecf062402571eb3a8922a62be85f14804e079bbff09a242164"
+    },
+    {
+      "bank": "electric",
+      "id": "e4",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/e4.mp3",
+      "bytes": 13572,
+      "sha256": "b399a748fa74dcc7020305e436818e17a291b0e9658277f90f1b36e0447ef136"
+    },
+    {
+      "bank": "electric",
+      "id": "e5",
+      "url": "https://www.musicca.com/lydfiler/guitar/electric/e5.mp3",
+      "bytes": 12060,
+      "sha256": "f499c1adb0410574382430e6990324246d65b560ec13b49908007a6e73a60903"
+    }
+  ]
+}

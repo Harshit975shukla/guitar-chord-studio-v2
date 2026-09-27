@@ -93,6 +93,10 @@ export function prepareStudio(): void {
   title.className = 'studio-intro';
   title.innerHTML = `<div><p class="eyebrow">YOUR DAILY SESSION</p><h2>Find your next <em>good chord.</em></h2><p>Hear it. See it. Make it yours.</p></div><div class="listening-actions"></div>`;
   element('main-container').prepend(title);
+  const guitarStatus = document.createElement('p');
+  guitarStatus.id = 'guitar-playback-status'; guitarStatus.className = 'guitar-playback-status';
+  guitarStatus.setAttribute('role', 'status'); guitarStatus.hidden = true;
+  title.after(guitarStatus);
   const actions = title.querySelector('.listening-actions')!;
   actions.append(element('btn-toggle-mic'), element('btn-test-speaker'));
   element('btn-toggle-mic').innerHTML = `${icon('mic')}<span id="mic-btn-text">Start listening</span>`;
@@ -144,12 +148,19 @@ export function prepareStudio(): void {
   const charts = disclosure('Signal insights · spectrum & chromagram', [visuals]);
   const explainer = document.querySelector<HTMLElement>('.diag-box')!;
   explainer.innerHTML = '<strong>Make room for a clean take.</strong><p>Start listening and stay quiet while room noise is calibrated. Strum one chord and let it ring. If recognition struggles, try Notes mode or adjust the noise gate in settings. Results depend on your guitar, room and microphone.</p>';
-  primary.replaceChildren(hero, neck, advanced, charts, explainer);
+  const inputCheck = document.createElement('section');
+  inputCheck.id = 'input-check'; inputCheck.className = 'card input-check'; inputCheck.dataset.state = 'off';
+  inputCheck.setAttribute('aria-labelledby', 'input-check-title');
+  inputCheck.innerHTML = `<div class="input-check-header"><h3 id="input-check-title">Microphone &amp; room check</h3><button id="btn-input-recheck" class="btn btn-secondary" disabled>Recheck room noise</button></div>
+    <p id="input-check-status" role="status">Start listening to check the microphone input and room reference.</p>
+    <dl class="input-check-readings"><div><dt>Microphone level</dt><dd id="input-level">—</dd></div><div><dt>Room reference</dt><dd id="input-room">—</dd></div><div><dt>Above room reference</dt><dd id="input-above-room">—</dd></div><div><dt>Input device</dt><dd id="input-device">—</dd></div></dl>
+    <details><summary>Get a cleaner guitar signal</summary><p>Mute all strings and stay quiet during the room check. Turn down nearby music, TV and fans where possible. Try placing the mic about 15–30 cm from the neck/body joint, rather than directly against the soundhole.</p><p>Use headphones for app audio. Check that the intended microphone is selected in your browser or operating system; a voice-call headset can remove useful guitar harmonics. For electric guitar, a clean audio-interface input can avoid much of the room noise.</p><p>Sensitivity changes are handled automatically. Recheck if the room changes or the reference looks wrong. Steady noise can be estimated; speech, other music and incomplete strums can still confuse recognition. These digital input measurements are not an accuracy score, a sound-pressure reading, or a claim of noise-free detection.</p><p>Current chord recognition covers major, minor, 7, maj7, m7, sus2, sus4, power, diminished and augmented chords. The library teaches additional chord types that are not detector targets yet.</p></details>`;
+  primary.replaceChildren(hero, neck, inputCheck, advanced, charts, explainer);
 
   const sidebar = document.querySelector<HTMLElement>('#main-container .sidebar')!;
   const quick = element('preset-chips-standard').closest<HTMLElement>('.card')!;
   sidebar.prepend(quick);
-  const sound = element('btn-sound-nylon').closest<HTMLElement>('.card')!;
+  const sound = element('guitar-sample-bank').closest<HTMLElement>('.card')!;
   advanced.append(sound);
   const comparison = element('btn-preset-am').closest<HTMLElement>('.card')!;
   charts.append(comparison);

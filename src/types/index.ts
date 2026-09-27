@@ -156,6 +156,7 @@ export interface DetectionResult {
   calibrationProgress?: number;
   calibrationComplete?: boolean;
   calibratedDb?: number;
+  calibrationWarning?: string;
   spectrum: Float32Array;
   signalLevelDb: number;
 }
@@ -174,6 +175,8 @@ export interface NoiseProfile {
   timestamp: number;
   peakAmps?: Float32Array;
   avgNoiseFloorDb?: number;
+  rms?: number;
+  warning?: string;
 }
 
 // ============================================================================
@@ -212,18 +215,17 @@ export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
 // Audio Engine Types
 // ============================================================================
 
-export type AcousticModel = 'dreadnought' | 'nylon' | 'twelve';
 export type StrumStyle = 'down' | 'up' | 'arpeggio' | 'roll';
 
 export interface AudioEngineConfig {
-  model: AcousticModel;
+  bank: 'steel' | 'classical' | 'electric';
   masterVolume: number;
   strumStyle: StrumStyle;
   sampleRate: number;
 }
 
 export const DEFAULT_ENGINE_CONFIG: AudioEngineConfig = {
-  model: 'dreadnought',
+  bank: 'steel',
   masterVolume: 1.0,
   strumStyle: 'down',
   sampleRate: 44100,
@@ -420,7 +422,7 @@ export interface UserSettings {
   seventhStrictness: number;
   triggerMode: 'guitartuna' | 'continuous';
   targetMode: DetectionTargetMode;
-  acousticModel: AcousticModel;
+  guitarSampleBank: 'steel' | 'classical' | 'electric';
   monitorEnabled: boolean;
   monitorGain: number;
   
@@ -448,7 +450,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   seventhStrictness: 0.55,
   triggerMode: 'guitartuna',
   targetMode: 'chords',
-  acousticModel: 'dreadnought',
+  guitarSampleBank: 'steel',
   monitorEnabled: false,
   monitorGain: 0.5,
   activeTuningPreset: 'standard',
