@@ -49,6 +49,9 @@ jobs:
       - name: Circle of fifths theory regression tests
         run: npm run test:theory
 
+      - name: Percussion sound and level regression tests
+        run: npm run test:percussion
+
       - name: Build
         run: npm run build
 

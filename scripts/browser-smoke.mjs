@@ -16,6 +16,7 @@ import { checkTwoOctaves } from './two-octave-browser-checks.mjs';
 import { checkCircle } from './circle-browser-checks.mjs';
 import { checkCirclePractice } from './circle-practice-browser-checks.mjs';
 import { checkLessons } from './lessons-browser-checks.mjs';
+import { checkPercussion } from './percussion-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -126,6 +127,9 @@ try {
   });
   await show('detector', 'neck-3d');
   await until("!!window.testScenes['neck-3d']");
+  if (process.env.BROWSER_SUITE === 'percussion') {
+    await checkPercussion({ check, evaluate, send, until, screenshot });
+  } else {
   await check('live renderer retains preset state and scoped accessible help', async () => {
     await evaluate(() => window.loadChordPreset('C', false));
     assert.equal(await evaluate(() => document.querySelector('#neck-3d canvas').getAttribute('aria-describedby')), 'neck-help');
@@ -201,6 +205,7 @@ try {
   await checkCircle({ check, evaluate, send, until, screenshot });
   await checkCirclePractice({ check, evaluate, send, until, screenshot });
   await checkLessons({ check, evaluate, send, until, show, screenshot });
+  await checkPercussion({ check, evaluate, send, until, screenshot });
 
   await check('held results do not score, send MIDI, log chords or paint live pitches', async () => {
     const data = await evaluate(async () => {
@@ -391,6 +396,7 @@ try {
       assert.equal(await evaluate(`document.getElementById('${prefix}-2d').hidden`), false);
     }
   });
+  }
   assert.deepEqual(errors, [], 'Uncaught browser errors');
   console.log(`\n${checks}/${checks} browser checks passed`);
 } finally {

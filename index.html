@@ -2183,22 +2183,16 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
        TAB: TABLA & PERCUSSION
        ========================================================================== -->
   <div class="studio-tab-pane" id="pane-rhythm" role="tabpanel" aria-labelledby="tab-rhythm">
-    <div style="padding: var(--space-xl); max-width: 1200px; margin: 0 auto;">
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:var(--space-sm); margin-bottom:var(--space-lg);">
-          <div><h2 style="font-size:1.6rem; font-weight:800; display:flex; align-items:center; gap:10px;"><span>🥁</span> Acoustic Tabla, Cajón & Percussion</h2><p style="color:var(--text-muted);">Authentic synthesized Indian classical Thekas & western cajón rhythms</p></div>
-          <button class="btn btn-primary" id="btn-rhythm-master-toggle"><span>▶️</span> <span>Start Rhythm</span></button>
-        </div>
-        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:var(--space-md); margin-bottom:var(--space-lg);" id="rhythm-presets">
-          <!-- Populated by JS -->
-        </div>
-        <div style="display:flex; flex-wrap:wrap; gap:var(--space-lg); background:rgba(0,0,0,0.3); padding:var(--space-lg); border-radius:var(--radius-lg); border:1px solid var(--border-light);">
-          <div style="flex:1; min-width:180px;"><div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;"><span>Tempo:</span><strong id="rhythm-tempo-val" style="color:var(--accent-gold);">80 BPM</strong></div><input type="range" id="rhythm-tempo" min="50" max="160" value="80" style="width:100%;"></div>
-          <div style="flex:1; min-width:180px;"><div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;"><span>Bass Volume:</span><strong id="rhythm-bass-vol">80%</strong></div><input type="range" id="rhythm-bass-volume" min="0" max="1" step="0.05" value="0.8" style="width:100%;"></div>
-          <div style="flex:1; min-width:180px;"><div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;"><span>Treble Volume:</span><strong id="rhythm-treble-vol">75%</strong></div><input type="range" id="rhythm-treble-volume" min="0" max="1" step="0.05" value="0.75" style="width:100%;"></div>
-        </div>
-      </div>
-    </div>
+    <section class="percussion-page" aria-labelledby="percussion-heading">
+      <header class="percussion-header">
+        <h2 id="percussion-heading">Percussion</h2>
+        <p>Tabla, congas, bongos, cajón and drums for your guitar practice.</p>
+      </header>
+      <div id="percussion-controls-slot"></div>
+      <h3 class="percussion-pattern-heading">Choose a pattern</h3>
+      <p class="percussion-note">Keep its original instruments or try another sound above. Instrument changes keep the pulse order and timing; they do not turn a pattern into an authentic performance of another tradition.</p>
+      <div id="rhythm-presets"></div>
+    </section>
   </div>
 
   <!-- ==========================================================================
@@ -2211,17 +2205,26 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
   <!-- ==========================================================================
        PERSISTENT RHYTHM DOCK
        ========================================================================== -->
-  <div class="rhythm-dock-container" id="rhythm-dock" aria-label="Persistent rhythm controls">
-    <div class="rhythm-dock-left">
-      <select class="rhythm-select-pill" id="dock-rhythm-select" aria-label="Rhythm pattern"></select>
-      <div class="rhythm-beat-indicators" id="dock-beat-dots" aria-label="Beat indicators"></div>
-      <button class="btn btn-primary" id="btn-dock-rhythm-toggle" style="padding:8px 16px;"><span>▶️</span> <span>Rhythm</span></button>
+  <div id="rhythm-dock" class="percussion-controls" aria-label="Percussion playback controls" data-state="idle">
+    <div class="percussion-selectors">
+      <label>Pattern<select id="dock-rhythm-select"></select></label>
+      <label>Instrument<select id="percussion-instrument"></select></label>
     </div>
-    <div style="display:flex; align-items:center; gap:var(--space-md);">
-      <label style="font-size:0.75rem; color:var(--text-muted);">Tempo: <input type="range" id="dock-tempo-slider" min="50" max="160" value="80" style="width:100px; margin-left:8px;"><span id="dock-tempo-readout" style="color:var(--accent-gold); min-width:40px;">80</span></label>
-      <label style="font-size:0.75rem; color:var(--text-muted);">Bass: <input type="range" id="dock-bass-vol" min="0" max="1" step="0.05" value="0.8" style="width:80px; margin-left:8px;"></label>
-      <label style="font-size:0.75rem; color:var(--text-muted);">Treble: <input type="range" id="dock-treble-vol" min="0" max="1" step="0.05" value="0.75" style="width:80px; margin-left:8px;"></label>
+    <div class="percussion-transport">
+      <button class="btn btn-primary" id="btn-dock-rhythm-toggle" aria-pressed="false">Start rhythm</button>
+      <button class="btn btn-secondary" id="percussion-preview">Hear sound</button>
+      <span id="percussion-pulse"></span>
     </div>
+    <div class="rhythm-beat-indicators" id="dock-beat-dots" aria-label="Pattern pulses"></div>
+    <div class="percussion-levels">
+      <label class="percussion-master">Percussion volume <output id="percussion-volume-readout" for="percussion-volume">100%</output><input type="range" id="percussion-volume" min="0" max="1.5" step="0.05" value="1"></label>
+      <label>Tempo <output id="dock-tempo-readout" for="dock-tempo-slider">80 BPM</output><input type="range" id="dock-tempo-slider" min="50" max="160" value="80"></label>
+      <label>Low drums <output id="percussion-bass-readout" for="dock-bass-vol">80%</output><input type="range" id="dock-bass-vol" min="0" max="1" step="0.05" value="0.8"></label>
+      <label>High drums &amp; shaker <output id="percussion-treble-readout" for="dock-treble-vol">75%</output><input type="range" id="dock-treble-vol" min="0" max="1" step="0.05" value="0.75"></label>
+    </div>
+    <p id="percussion-status" class="percussion-note" role="status">Choose a sound, then start a pattern.</p>
+    <p class="percussion-note">Volume controls only percussion; 0% mutes it and 100–150% adds a boost. Start with a comfortable device volume. Soft limiting controls percussion peaks, not the total level of every app playing on your device.</p>
+    <p class="percussion-note">Original synthesized practice sounds, not recorded instruments. One displayed pulse per tempo tick; existing patterns keep their timing. Use headphones if the microphone is listening. Stop or Escape ends playback; leaving this tool or hiding the page stops it too.</p>
   </div>
 
   <!-- ==========================================================================

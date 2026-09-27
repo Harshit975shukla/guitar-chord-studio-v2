@@ -78,7 +78,7 @@ import {
 } from './midi/output';
 
 import { BUILTIN_SONGS, SongStudio } from './tabs/songs';
-import { RHYTHM_PRESETS } from './tabs/rhythm';
+import { PercussionPlayer } from './ui/percussionPlayer';
 import { ScalesStudio } from './tabs/scales';
 import { TrainerStudio } from './tabs/trainer';
 import { prepareStudio, NeckController } from './ui/studio';
@@ -184,6 +184,7 @@ let libraryNeck: LibraryNeck | null = null;
 let audioAnalysis: AudioAnalysisController | null = null;
 let circleOfFifths: CircleOfFifths | null = null;
 let theoryLessons: TheoryLessons | null = null;
+let percussionPlayer: PercussionPlayer | null = null;
 let liveNeckMidi: number | null = null;
 let neckCaption = 'Explore the fretboard';
 let microphonePending = false;
@@ -1307,7 +1308,7 @@ export function switchTab(tabId: string): void {
   // audio doesn't keep sounding on other tabs (e.g. a song/rhythm/metronome
   // still playing while you're on the Tuner).
   if (tabId !== 'metronome') stopMetronome();
-  if (tabId !== 'rhythm' && rhythmPlaying) toggleRhythmPlayback();
+  percussionPlayer?.setActive(tabId === 'rhythm');
   if (tabId !== 'songs') appState.songStudio.stopPlayback();
   if (tabId !== 'drill' && (appState.isDrillActive || drillStarting)) stopDrill();
 
@@ -1342,7 +1343,6 @@ export function switchTab(tabId: string): void {
   if (tabId === 'chords') renderChordLibrary();
   if (tabId === 'metronome') renderMetronome();
   if (tabId === 'drill') renderDrillUI();
-  if (tabId === 'rhythm') renderRhythmPresets();
   if (tabId === 'transcriber') renderTranscriber();
   if (tabId === 'looper') renderLooper();
   if (tabId === 'recorder') initRecorderTab();
@@ -1737,7 +1737,11 @@ function initializeUI(): void {
   try { renderFretboard(); } catch (e) { console.warn('renderFretboard:', e); }
   try { updateTuningUI(); } catch (e) { console.warn('updateTuningUI:', e); }
   try { renderPresetChips(); } catch (e) { console.warn('renderPresetChips:', e); }
-  try { renderRhythmPresets(); } catch (e) { console.warn('renderRhythmPresets:', e); }
+  percussionPlayer = new PercussionPlayer(async () => {
+    await ensureAudioContext();
+    if (!appState.audioContext) throw new Error('Audio could not be initialized. Check browser audio settings.');
+    return appState.audioContext;
+  });
   try { renderLooperTracks(); } catch (e) { console.warn('renderLooperTracks:', e); }
   try { initSongToolsUI(); } catch (e) { console.warn('initSongToolsUI:', e); }
   initCircleOfFifths();
@@ -2511,196 +2515,6 @@ function useSuggestedStrumming(candidate: StrummingCandidate): void {
   updateDrillPreview();
   setDrillStatus('Suggested pattern and estimated tempo selected. Review the tempo, key and progression, then Start. Stroke directions are practice suggestions.');
 }
-function renderRhythmPresets(): void {
-  const container = document.getElementById('rhythm-presets');
-  const dockSelect = document.getElementById('dock-rhythm-select') as HTMLSelectElement;
-  
-  if (!container) return;
-  
-  container.innerHTML = '';
-  RHYTHM_PRESETS.forEach(preset => {
-    const card = document.createElement('div');
-    card.className = 'mini-chord-card' + (preset.id === currentRhythmId ? ' active-rhythm' : '');
-    card.id = `rhy-card-${preset.id}`;
-    card.innerHTML = `
-      <div style="font-size:1.1rem; font-weight:800; color:var(--accent-gold);">${preset.name}</div>
-      <div style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">${preset.pattern.map(p => p.name).join(' ')}</div>
-      <div style="font-size:0.68rem; color:#6ee7b7; margin-top:4px;">${preset.description}</div>
-    `;
-    card.onclick = () => selectRhythmPreset(preset.id);
-    container.appendChild(card);
-  });
-  
-  if (dockSelect) {
-    dockSelect.innerHTML = '';
-    RHYTHM_PRESETS.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name;
-      dockSelect.appendChild(opt);
-    });
-    dockSelect.value = currentRhythmId;
-    // on* assignment is idempotent — renderRhythmPresets runs on every tab open
-    dockSelect.onchange = (e) => selectRhythmPreset((e.target as HTMLSelectElement).value);
-  }
-
-  updateRhythmDots();
-
-  // Dock controls (idempotent handlers to avoid stacking on repeat tab visits)
-  const dockToggle = document.getElementById('btn-dock-rhythm-toggle');
-  if (dockToggle) dockToggle.onclick = toggleRhythmPlayback;
-
-  const tempoSlider = document.getElementById('dock-tempo-slider') as HTMLInputElement;
-  if (tempoSlider) tempoSlider.oninput = (e) => {
-    const val = parseInt((e.target as HTMLInputElement).value);
-    const r1 = document.getElementById('dock-tempo-readout'); if (r1) r1.textContent = val.toString();
-    const r2 = document.getElementById('rhythm-tempo-val'); if (r2) r2.textContent = `${val} BPM`;
-  };
-
-  const bassVol = document.getElementById('dock-bass-vol') as HTMLInputElement;
-  if (bassVol) bassVol.oninput = (e) => {
-    const val = parseFloat((e.target as HTMLInputElement).value);
-    const el = document.getElementById('rhythm-bass-vol'); if (el) el.textContent = `${Math.round(val * 100)}%`;
-  };
-
-  const trebleVol = document.getElementById('dock-treble-vol') as HTMLInputElement;
-  if (trebleVol) trebleVol.oninput = (e) => {
-    const val = parseFloat((e.target as HTMLInputElement).value);
-    const el = document.getElementById('rhythm-treble-vol'); if (el) el.textContent = `${Math.round(val * 100)}%`;
-  };
-}
-
-function selectRhythmPreset(presetId: string): void {
-  currentRhythmId = presetId;
-  rhythmStep = 0;
-  document.querySelectorAll('[id^="rhy-card-"]').forEach(c => c.classList.remove('active-rhythm'));
-  const card = document.getElementById('rhy-card-' + presetId);
-  if (card) card.classList.add('active-rhythm');
-
-  const dockSelect = document.getElementById('dock-rhythm-select') as HTMLSelectElement;
-  if (dockSelect) dockSelect.value = presetId;
-
-  updateRhythmDots();
-}
-
-function updateRhythmDots(): void {
-  const preset = getRhythmPreset();
-  const container = document.getElementById('dock-beat-dots');
-  if (!container || !preset) return;
-  
-  container.innerHTML = '';
-  for (let b = 0; b < preset.beats; b++) {
-    const dot = document.createElement('div');
-    dot.className = 'rhythm-beat-dot' + (b === 0 ? ' sam-beat' : '');
-    dot.id = 'rhy-dot-' + b;
-    container.appendChild(dot);
-  }
-}
-
-// ---- Rhythm player state ----
-let currentRhythmId = 'keharwa';
-let rhythmPlaying = false;
-let rhythmTimer: number | null = null;
-let rhythmStep = 0;
-
-function getRhythmPreset() {
-  return RHYTHM_PRESETS.find(p => p.id === currentRhythmId) || RHYTHM_PRESETS[0];
-}
-
-function rhythmVolumes(): { bass: number; treble: number } {
-  const bass = parseFloat((document.getElementById('dock-bass-vol') as HTMLInputElement | null)?.value || '0.9');
-  const treble = parseFloat((document.getElementById('dock-treble-vol') as HTMLInputElement | null)?.value || '0.8');
-  return { bass: isNaN(bass) ? 0.9 : bass, treble: isNaN(treble) ? 0.8 : treble };
-}
-
-function rhythmBpm(): number {
-  const v = parseInt((document.getElementById('dock-tempo-slider') as HTMLInputElement | null)?.value || '80');
-  return Math.max(40, Math.min(240, isNaN(v) ? 80 : v));
-}
-
-function playRhythmStroke(type: string, vel: number): void {
-  ensureAudioContext();
-  const ctx = appState.audioContext;
-  if (!ctx) return;
-  const { bass, treble } = rhythmVolumes();
-  const now = ctx.currentTime;
-  const hasBass = type === 'cajon_bass' || type === 'bayan' || type === 'bayan_dayan';
-  const hasTreble = type.startsWith('dayan') || type === 'cajon_snare' || type === 'shaker' || type === 'bayan_dayan';
-
-  if (hasBass) {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(55, now + 0.16);
-    g.gain.setValueAtTime(Math.max(0.0001, vel * bass * 0.5), now);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-    osc.connect(g); g.connect(ctx.destination);
-    osc.start(now); osc.stop(now + 0.24);
-  }
-  if (hasTreble) {
-    if (type === 'shaker' || type === 'cajon_snare') {
-      // noise burst
-      const len = Math.floor(ctx.sampleRate * 0.09);
-      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-      const src = ctx.createBufferSource(); src.buffer = buf;
-      const hp = ctx.createBiquadFilter(); hp.type = 'highpass';
-      hp.frequency.value = type === 'shaker' ? 5000 : 1800;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(Math.max(0.0001, vel * treble * 0.4), now);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
-      src.connect(hp); hp.connect(g); g.connect(ctx.destination);
-      src.start(now); src.stop(now + 0.1);
-    } else {
-      // tabla dayan-style tone
-      const osc = ctx.createOscillator();
-      const bp = ctx.createBiquadFilter();
-      const g = ctx.createGain();
-      bp.type = 'bandpass'; bp.frequency.value = 340; bp.Q.value = 6;
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(360, now);
-      osc.frequency.exponentialRampToValueAtTime(180, now + 0.08);
-      g.gain.setValueAtTime(Math.max(0.0001, vel * treble * 0.32), now);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-      osc.connect(bp); bp.connect(g); g.connect(ctx.destination);
-      osc.start(now); osc.stop(now + 0.14);
-    }
-  }
-}
-
-function stepRhythm(): void {
-  const preset = getRhythmPreset();
-  const stroke = preset.pattern[rhythmStep % preset.pattern.length];
-  if (stroke) playRhythmStroke(stroke.type, stroke.vel);
-
-  // Highlight the active beat dot
-  const dots = document.querySelectorAll('[id^="rhy-dot-"]');
-  dots.forEach((d, i) => d.classList.toggle('active-beat', i === rhythmStep % preset.beats));
-
-  rhythmStep = (rhythmStep + 1) % preset.pattern.length;
-  if (rhythmPlaying) {
-    rhythmTimer = window.setTimeout(stepRhythm, 60000 / rhythmBpm());
-  }
-}
-
-function toggleRhythmPlayback(): void {
-  const btn = document.getElementById('btn-dock-rhythm-toggle');
-  if (rhythmPlaying) {
-    rhythmPlaying = false;
-    if (rhythmTimer !== null) { clearTimeout(rhythmTimer); rhythmTimer = null; }
-    document.querySelectorAll('[id^="rhy-dot-"]').forEach(d => d.classList.remove('active-beat'));
-    if (btn) btn.innerHTML = '<span>▶️</span> Play';
-  } else {
-    ensureAudioContext();
-    rhythmPlaying = true;
-    rhythmStep = 0;
-    if (btn) btn.innerHTML = '<span>⏹️</span> Stop';
-    stepRhythm();
-  }
-}
-
 function renderTranscriber(): void {
   const btn = document.getElementById('btn-toggle-transcribing');
   if (btn) btn.addEventListener('click', () => {

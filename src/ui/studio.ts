@@ -158,8 +158,7 @@ export function prepareStudio(): void {
   ['theory-emotion', 'theory-context'].forEach(id => element(id).closest('tr')!.hidden = true);
   element('theory-degrees').previousElementSibling!.textContent = 'Chord tones';
   theory.querySelectorAll('td').forEach(td => { td.textContent = '—'; });
-  element('rhythm-dock').classList.add('studio-rhythm-controls');
-  element('pane-rhythm').append(element('rhythm-dock'));
+  element('percussion-controls-slot').append(element('rhythm-dock'));
   document.querySelectorAll<HTMLElement>('.card-title > span:first-child, .btn > span:first-child').forEach(span => {
     if (/^\p{Extended_Pictographic}[\p{Extended_Pictographic}\uFE0F\u200D\s]*$/u.test(span.textContent || '')) span.innerHTML = icon('music');
   });

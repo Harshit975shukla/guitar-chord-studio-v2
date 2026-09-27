@@ -21,6 +21,7 @@ npm run test:audio
 npm run test:practice
 npm run test:strumming
 npm run test:theory
+npm run test:percussion
 npm run preview
 ```
 
@@ -107,6 +108,20 @@ Open/Middle/Upper chord diagrams use the existing complete-tone position solver,
 Reference sound is blocked while microphone listening is active or starting; silent formula exploration still works. Stop/Escape, changing the lesson/root/position/tuning, navigation and hiding/leaving the page cancel owned audio and pending starts. These references do not score practice. No cloud lesson-progress tracking is introduced.
 
 `src/theory/lessons.ts` joins educational copy to the shared formulas and verified positions; `src/ui/theoryLessons.ts` owns isolated lesson UI/audio state. `npm run test:theory` includes lesson formula/spelling, all supported qualities, tuning/capo positions and new-scale practice regressions alongside the Circle tests.
+
+## Percussion
+
+Open **More tools → Percussion**. One connected set of controls replaces the old duplicate Start/volume controls. **Percussion volume** controls only this output: 0% is mute, 100% is the new default, and up to 150% adds a boost. **Low drums** and **High drums & shaker** balance the two groups and affect sounding tails as well as later hits. Guitar volume, guitar tone, microphone gain and detector thresholds are unchanged.
+
+**Pattern instruments** preserves each pattern's own sound choices. Select **Tabla**, **Congas**, **Bongos**, **Cajón** or **Drum kit** to reinterpret its strokes. Tabla has separate Bayan, Na, Tin and muted Ta voices; congas have low, open and slap sounds; bongos have low/high voices; the kit adds kick, snare and hi-hat. Shaker accompaniment remains a shaker except in Drum kit, where it becomes hi-hat. **Hear sound** previews the selected pattern's first pulse without starting a loop or microphone.
+
+The fifteen existing patterns retain their pulse order, velocities and timing. Three new original practice grooves introduce congas, bongos and a drum kit. Each displayed pulse follows one tempo tick; changing instruments does not change the rhythm or claim an authentic traditional performance. The active pulse names the actual sounding instruments. Pattern changes restart the loop from its first pulse; instrument changes during a loop apply to the next pulse.
+
+Sounds are original deterministic modal/noise synthesis, not borrowed recordings or samples. The new voices have fuller decays and a stronger output than the old short, heavily filtered tabla tone. A dedicated soft limiter bounds percussion peaks, including layered hits and boost; it is not a guarantee against clipping when combined with every other sound/device output. Start with a comfortable speaker/headphone volume. Small speakers can still reproduce low bass poorly.
+
+Start waits for audio permission/resume. Stop/Escape, leaving Percussion, hiding/leaving the page, an interrupted audio context or cancelled pending starts release the percussion sources and timers. Source stops fade over 12 ms; level changes ramp over 15 ms to avoid clicks. No percussion microphone access is requested. Use headphones when the existing Live studio microphone is listening.
+
+`src/audio/percussion.ts` owns the voices, bounded buffer cache and independent output bus; `src/ui/percussionPlayer.ts` owns the controls and playback lifecycle. `npm run test:percussion` covers valid patterns, mapping, deterministic voices, envelopes, limiter bounds and inputs. Browser coverage also renders the actual Web Audio graph to compare output level with the previous implementation, checks mute/boost/headroom and verifies controls, cancellation and narrow layouts. Synthetic checks do not replace listening on physical speakers or establish acoustic-instrument realism.
 
 ## Circle of Fifths
 

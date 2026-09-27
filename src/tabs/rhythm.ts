@@ -2,7 +2,8 @@
 
 export interface RhythmStroke {
   name: string;
-  type: 'bayan_dayan' | 'bayan' | 'dayan_na' | 'dayan_tin' | 'dayan_ta' | 'cajon_bass' | 'cajon_snare' | 'shaker';
+  type: 'bayan_dayan' | 'bayan' | 'dayan_na' | 'dayan_tin' | 'dayan_ta' | 'cajon_bass' | 'cajon_snare' | 'shaker'
+    | 'conga_low' | 'conga_open' | 'conga_slap' | 'bongo_low' | 'bongo_high' | 'kick' | 'snare' | 'hihat';
   vel: number;
   sam?: boolean; // first beat of cycle
 }
@@ -18,6 +19,51 @@ export interface RhythmPreset {
 }
 
 export const RHYTHM_PRESETS: RhythmPreset[] = [
+  {
+    id: 'conga_practice', name: 'Conga conversation', beats: 8,
+    pattern: [
+      { name: 'Low', type: 'conga_low', vel: 1, sam: true },
+      { name: 'Open', type: 'conga_open', vel: 0.7 },
+      { name: 'Slap', type: 'conga_slap', vel: 0.85 },
+      { name: 'Open', type: 'conga_open', vel: 0.6 },
+      { name: 'Low', type: 'conga_low', vel: 0.85 },
+      { name: 'Open', type: 'conga_open', vel: 0.7 },
+      { name: 'Slap', type: 'conga_slap', vel: 0.9 },
+      { name: 'Open', type: 'conga_open', vel: 0.75 },
+    ],
+    description: 'Original eight-pulse practice groove with low, open and slap sounds.',
+    category: 'hybrid', bpmRange: { min: 60, max: 160, default: 100 },
+  },
+  {
+    id: 'bongo_practice', name: 'Bongo exchange', beats: 8,
+    pattern: [
+      { name: 'Low', type: 'bongo_low', vel: 1, sam: true },
+      { name: 'High', type: 'bongo_high', vel: 0.65 },
+      { name: 'High', type: 'bongo_high', vel: 0.8 },
+      { name: 'Low', type: 'bongo_low', vel: 0.65 },
+      { name: 'High', type: 'bongo_high', vel: 0.9 },
+      { name: 'High', type: 'bongo_high', vel: 0.6 },
+      { name: 'Low', type: 'bongo_low', vel: 0.8 },
+      { name: 'High', type: 'bongo_high', vel: 0.7 },
+    ],
+    description: 'Original eight-pulse call and response between two small drums.',
+    category: 'hybrid', bpmRange: { min: 60, max: 180, default: 110 },
+  },
+  {
+    id: 'drum_practice', name: 'Kick, snare & hi-hat', beats: 8,
+    pattern: [
+      { name: 'Kick', type: 'kick', vel: 1, sam: true },
+      { name: 'Hat', type: 'hihat', vel: 0.55 },
+      { name: 'Snare', type: 'snare', vel: 0.9 },
+      { name: 'Hat', type: 'hihat', vel: 0.6 },
+      { name: 'Kick', type: 'kick', vel: 0.85 },
+      { name: 'Hat', type: 'hihat', vel: 0.5 },
+      { name: 'Snare', type: 'snare', vel: 0.95 },
+      { name: 'Hat', type: 'hihat', vel: 0.65 },
+    ],
+    description: 'Original eight-pulse kit groove. Each displayed pulse follows the tempo control.',
+    category: 'western', bpmRange: { min: 60, max: 180, default: 100 },
+  },
   // Indian Classical
   {
     id: 'keharwa',
