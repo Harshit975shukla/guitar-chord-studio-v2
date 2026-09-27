@@ -10,7 +10,8 @@ export async function checkCircle({ check, evaluate, send, until, screenshot }) 
       });
       const before = snapshot();
       document.querySelector('.tools-menu').open = true;
-      document.getElementById('tab-fifths').click();
+      document.getElementById('tab-theory').click();
+      document.getElementById('lesson-circle').click();
       document.getElementById('fifths-key-2').click();
       const major = { title: document.getElementById('fifths-key-title').textContent, notes: document.getElementById('fifths-scale-notes').textContent,
         signature: document.getElementById('fifths-signature').textContent, relative: document.getElementById('fifths-relative').textContent };

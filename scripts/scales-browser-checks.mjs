@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 /** Focused Scales cases, run by browser-smoke.mjs against the real UI/renderer. */
 export async function checkScales({ check, evaluate, send, until, show, screenshot }) {
   await show('scales', 'scale-neck-3d');
-  await check('Scales renders all eight patterns with accurate roots, registers and degree labels', async () => {
+  await check('Scales renders all twelve patterns with accurate roots, registers and degree labels', async () => {
     const result = await evaluate(async () => {
       const url = performance.getEntriesByType('resource').findLast(e => new URL(e.name).pathname === '/src/tabs/scales.ts').name;
       const { WESTERN_SCALES } = await import(url);
@@ -78,7 +78,7 @@ export async function checkScales({ check, evaluate, send, until, show, screensh
       return { cases, width: host.width, height: host.height, canvasWidth: canvas.width, canvasHeight: canvas.height,
         help: scene.renderer.domElement.getAttribute('aria-describedby'), blueLegend: !document.getElementById('scale-blue-legend').hidden };
     });
-    assert.equal(result.cases, 64);
+    assert.equal(result.cases, 96);
     assert.equal(result.width, result.canvasWidth);
     assert.equal(result.height, result.canvasHeight);
     assert.equal(result.height, 258);

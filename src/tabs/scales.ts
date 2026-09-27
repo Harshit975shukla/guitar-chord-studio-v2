@@ -158,6 +158,9 @@ export class ScalesStudio {
   private initControls(): void {
     const presetSelect = document.getElementById('scale-preset-select') as HTMLSelectElement;
     if (presetSelect) {
+      for (const [key, scale] of Object.entries(WESTERN_SCALES)) {
+        if (![...presetSelect.options].some(option => option.value === key)) presetSelect.add(new Option(scale.name, key));
+      }
       presetSelect.value = this.activeKey;
       presetSelect.onchange = () => this.setScaleKey(presetSelect.value);
     }

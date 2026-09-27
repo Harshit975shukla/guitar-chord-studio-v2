@@ -52,6 +52,7 @@ import {
   identifyChordFromFrets,
   parseChordSymbol,
   CHORD_QUALITY_DISPLAY,
+  CHORD_FORMULAS,
   CapoState,
 } from './chords/definitions';
 
@@ -89,6 +90,9 @@ import { DrillRhythm, renderStrummingGrid } from './ui/drillRhythm';
 import { getStrummingPattern, STRUMMING_PATTERNS, type StrummingCandidate } from './rhythm/strumming';
 import { transposeSongChord } from './songs/timing';
 import { CircleOfFifths } from './ui/circleOfFifths';
+import { TheoryLessons } from './ui/theoryLessons';
+import { CHORD_LESSONS } from './theory/lessons';
+import { scaleRootPc } from './scales/theory';
 
 // ============================================================================
 // Global State
@@ -179,6 +183,7 @@ let neckController: NeckController | null = null;
 let libraryNeck: LibraryNeck | null = null;
 let audioAnalysis: AudioAnalysisController | null = null;
 let circleOfFifths: CircleOfFifths | null = null;
+let theoryLessons: TheoryLessons | null = null;
 let liveNeckMidi: number | null = null;
 let neckCaption = 'Explore the fretboard';
 let microphonePending = false;
@@ -297,6 +302,7 @@ function updateEffectiveTuning(): void {
   if (appState.trainerStudio) appState.trainerStudio.setTuning(tuning);
   if (appState.songStudio) appState.songStudio.setTuning(tuning, appState.capoState.enabled ? appState.capoState.fret : 0);
   libraryNeck?.setTuning(tuning);
+  theoryLessons?.setTuning(tuning, appState.capoState.enabled ? appState.capoState.fret : 0);
 }
 
 function restoreSession(session: any): void {
@@ -357,6 +363,7 @@ async function ensureAudioContext(): Promise<void> {
 
 export async function startMicrophone(): Promise<boolean> {
   if (appState.isListening || microphonePending) return appState.isListening;
+  theoryLessons?.stop('Reference stopped for microphone listening. You can explore the lesson silently.');
   microphonePending = true;
   const button = document.getElementById('btn-toggle-mic') as HTMLButtonElement | null;
   if (button) button.disabled = true;
@@ -1307,8 +1314,9 @@ export function switchTab(tabId: string): void {
   // Update tab buttons
   document.querySelectorAll('.studio-tab-btn').forEach(btn => {
     const button = btn as HTMLElement;
-    button.classList.toggle('active', button.dataset.tab === tabId);
-    if (button.dataset.tab) button.setAttribute('aria-current', button.dataset.tab === tabId ? 'page' : 'false');
+    const selected = button.dataset.tab === (tabId === 'fifths' ? 'theory' : tabId);
+    button.classList.toggle('active', selected);
+    if (button.dataset.tab) button.setAttribute('aria-current', selected ? 'page' : 'false');
   });
   neckController?.setActive(tabId === 'detector');
   libraryNeck?.setActive(tabId === 'chords');
@@ -1316,6 +1324,8 @@ export function switchTab(tabId: string): void {
   appState.scalesStudio.setActive(tabId === 'scales');
   audioAnalysis?.setActive(tabId === 'analysis');
   circleOfFifths?.setActive(tabId === 'fifths');
+  theoryLessons?.setActive(tabId === 'theory');
+  if (tabId === 'theory' || tabId === 'fifths') document.getElementById('studio-tool-label')!.textContent = 'Theory lessons';
   
   // Update tab panes
   document.querySelectorAll('.studio-tab-pane').forEach(pane => {
@@ -1731,6 +1741,7 @@ function initializeUI(): void {
   try { renderLooperTracks(); } catch (e) { console.warn('renderLooperTracks:', e); }
   try { initSongToolsUI(); } catch (e) { console.warn('initSongToolsUI:', e); }
   initCircleOfFifths();
+  initTheoryLessons();
   try { initVideoTab(); } catch (e) { console.warn('initVideoTab:', e); }
 }
 
@@ -2822,6 +2833,39 @@ function initCircleOfFifths(): void {
       if (appState.settings.targetMode === target) setTargetMode(previousTarget);
       if (owned && appState.isListening && appState.micStream === stream) stopMicrophone();
     } };
+  });
+}
+
+function initTheoryLessons(): void {
+  theoryLessons = new TheoryLessons(document.getElementById('theory-lessons')!, appState.effectiveTuning, {
+    audio: async () => {
+      if (appState.isListening || microphonePending) throw new Error('Stop microphone listening in Live studio before playing a lesson reference.');
+      await ensureAudioContext();
+      if (appState.isListening || microphonePending) throw new Error('Microphone listening is active. Stop listening before playing a reference.');
+      if (!appState.audioContext || !appState.acousticBus) throw new Error('Audio could not be initialized. Check browser audio settings.');
+      return { context: appState.audioContext, bus: appState.acousticBus };
+    },
+    scale: (root, key) => {
+      switchTab('scales');
+      appState.scalesStudio.setRoot(root);
+      appState.scalesStudio.setScaleKey(key);
+    },
+    chord: (root, quality, frets) => {
+      switchTab('chords');
+      const canonicalRoot = NOTE_NAMES[scaleRootPc(root)];
+      libraryNeck?.select({
+        symbol: { root: canonicalRoot, quality }, intervals: CHORD_FORMULAS[quality],
+        notes: CHORD_FORMULAS[quality].map(interval => NOTE_NAMES[(scaleRootPc(root) + interval) % 12]),
+        formula: CHORD_LESSONS[quality].degrees.join(' – '),
+        voicings: [{ name: 'Theory lesson voicing', frets, difficulty: 'intermediate' }],
+      });
+      document.getElementById('library-neck')!.scrollIntoView({ block: 'start' });
+    },
+    circle: () => { switchTab('fifths'); document.getElementById('fifths-back-theory')!.focus(); },
+  });
+  theoryLessons.setTuning(appState.effectiveTuning, appState.capoState.enabled ? appState.capoState.fret : 0);
+  document.getElementById('fifths-back-theory')!.addEventListener('click', () => {
+    switchTab('theory'); document.getElementById('lesson-circle')!.focus();
   });
 }
 

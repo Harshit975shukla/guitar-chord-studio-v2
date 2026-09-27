@@ -12,7 +12,7 @@ const sorted = values => [...values].sort((a, b) => a - b);
 
 check('shared scale definitions preserve the original Scales export', () => {
   assert.equal(WESTERN_SCALES, legacyScaleExport);
-  assert.equal(Object.keys(WESTERN_SCALES).length, 8);
+  assert.equal(Object.keys(WESTERN_SCALES).length, 12);
   assert.deepEqual(WESTERN_SCALES.natural_minor.intervals, [0, 2, 3, 5, 7, 8, 10]);
 });
 check('twelve circle positions move by fifths in both key families and wrap to C/A', () => {

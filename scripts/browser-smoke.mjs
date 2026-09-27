@@ -15,6 +15,7 @@ import { checkPractice } from './practice-browser-checks.mjs';
 import { checkTwoOctaves } from './two-octave-browser-checks.mjs';
 import { checkCircle } from './circle-browser-checks.mjs';
 import { checkCirclePractice } from './circle-practice-browser-checks.mjs';
+import { checkLessons } from './lessons-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -99,7 +100,11 @@ try {
   await send('Storage.clearDataForOrigin', { origin: new URL(appUrl).origin, storageTypes: 'service_workers,cache_storage' });
   await send('Network.setBypassServiceWorker', { bypass: true });
   await send('Page.enable');
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: `if (location.origin === ${JSON.stringify(new URL(appUrl).origin)}) localStorage.clear();` });
+  // This UI suite does not test PWA updates; a newly built worker must not reload a scenario.
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `if (location.origin === ${JSON.stringify(new URL(appUrl).origin)}) {
+    localStorage.clear();
+    delete Navigator.prototype.serviceWorker;
+  }` });
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: appUrl });
   await until('!!window.appState?.currentSession');
@@ -195,6 +200,7 @@ try {
   await checkTwoOctaves({ check, evaluate, send, until, show, screenshot });
   await checkCircle({ check, evaluate, send, until, screenshot });
   await checkCirclePractice({ check, evaluate, send, until, screenshot });
+  await checkLessons({ check, evaluate, send, until, show, screenshot });
 
   await check('held results do not score, send MIDI, log chords or paint live pitches', async () => {
     const data = await evaluate(async () => {
@@ -357,12 +363,12 @@ try {
     }
     assert.deepEqual(overflow, []);
   });
-  await check('reduced motion defaults all four views to keyboard-accessible 2D', async () => {
+  await check('reduced motion defaults all five views to keyboard-accessible 2D', async () => {
     await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     await evaluate(() => { localStorage.clear(); window.browserReloading = true; });
     await send('Page.reload');
     await until('!window.browserReloading && !!window.appState?.currentSession');
-    for (const [tab, prefix] of [['detector', 'neck'], ['chords', 'library-neck'], ['songs', 'song-neck'], ['scales', 'scale-neck']]) {
+    for (const [tab, prefix] of [['detector', 'neck'], ['chords', 'library-neck'], ['songs', 'song-neck'], ['scales', 'scale-neck'], ['theory', 'lesson']]) {
       await evaluate(`window.switchTab('${tab}')`);
       assert.equal(await evaluate(`document.getElementById('${prefix}-view-2d').getAttribute('aria-pressed')`), 'true');
     }
@@ -371,7 +377,7 @@ try {
       return ids.length === new Set(ids).size;
     }), true);
   });
-  await check('unavailable WebGL at creation leaves all four 2D views usable', async () => {
+  await check('unavailable WebGL at creation leaves all five 2D views usable', async () => {
     await evaluate(() => {
       const getContext = HTMLCanvasElement.prototype.getContext;
       HTMLCanvasElement.prototype.getContext = function(kind, ...args) {
@@ -379,7 +385,7 @@ try {
         return getContext.call(this, kind, ...args);
       };
     });
-    for (const [tab, prefix] of [['detector', 'neck'], ['chords', 'library-neck'], ['songs', 'song-neck'], ['scales', 'scale-neck']]) {
+    for (const [tab, prefix] of [['detector', 'neck'], ['chords', 'library-neck'], ['songs', 'song-neck'], ['scales', 'scale-neck'], ['theory', 'lesson']]) {
       await evaluate(`window.switchTab('${tab}'); document.getElementById('${prefix}-view-3d').click(); document.getElementById('${prefix}-3d').scrollIntoView({block:'center'})`);
       await until(`document.getElementById('${prefix}-help').textContent.includes('unavailable')`);
       assert.equal(await evaluate(`document.getElementById('${prefix}-2d').hidden`), false);

@@ -831,8 +831,8 @@
       <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="analysis" aria-controls="pane-analysis">
         <span>🎵</span> Analyze Audio
       </button>
-      <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="fifths" aria-controls="pane-fifths">
-        <span>◯</span> Circle of Fifths
+      <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="theory" aria-controls="pane-theory">
+        <span>◯</span> Theory Lessons
       </button>
       <button class="studio-tab-btn" role="tab" aria-selected="false" data-tab="tuner" aria-controls="pane-tuner">
         <span>🪕</span> Headstock Tuner <span class="tab-badge">6 Presets</span>
@@ -1864,9 +1864,14 @@
     </div>
   </div>
 
-  <div class="studio-tab-pane" id="pane-fifths" role="tabpanel" aria-labelledby="tab-fifths">
+  <div class="studio-tab-pane" id="pane-theory" role="tabpanel" aria-labelledby="tab-theory">
+    <section id="theory-lessons" class="theory-lessons" aria-labelledby="lesson-heading"></section>
+  </div>
+
+  <div class="studio-tab-pane" id="pane-fifths" role="region" aria-labelledby="fifths-heading">
     <section class="fifths-page" aria-labelledby="fifths-heading">
       <header class="fifths-header">
+        <button id="fifths-back-theory" class="btn btn-secondary">Back to Theory lessons</button>
         <h2 id="fifths-heading">Circle of fifths</h2>
         <p>See how keys connect, hear their chord families, then take a key into your scale practice.</p>
       </header>
