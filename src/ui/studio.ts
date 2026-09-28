@@ -118,6 +118,10 @@ export function prepareStudio(): void {
   const target = element('btn-target-chords').closest<HTMLElement>('.slider-item')!;
   target.classList.add('listening-target');
   hero.append(target);
+  const fastFollow = document.createElement('div');
+  fastFollow.className = 'fast-follow-control';
+  fastFollow.innerHTML = `<label><input id="fast-follow-preview" type="checkbox"> Fast follow preview <small>optional</small></label><p>Quicker, tentative hints only. Stable confirmation, practice scoring and MIDI stay unchanged.</p><p id="fast-follow-output" role="status" hidden>Enable listening to see a fast preview.</p>`;
+  hero.append(fastFollow);
   element('btn-target-chords').textContent = 'Chords';
   element('btn-target-notes').textContent = 'Notes';
   element('btn-target-auto').textContent = 'Auto';
@@ -156,6 +160,9 @@ export function prepareStudio(): void {
     <dl class="input-check-readings"><div><dt>Microphone level</dt><dd id="input-level">—</dd></div><div><dt>Room reference</dt><dd id="input-room">—</dd></div><div><dt>Above room reference</dt><dd id="input-above-room">—</dd></div><div><dt>Input device</dt><dd id="input-device">—</dd></div></dl>
     <details><summary>Get a cleaner guitar signal</summary><p>Mute all strings and stay quiet during the room check. Turn down nearby music, TV and fans where possible. Try placing the mic about 15–30 cm from the neck/body joint, rather than directly against the soundhole.</p><p>Use headphones for app audio. Check that the intended microphone is selected in your browser or operating system; a voice-call headset can remove useful guitar harmonics. For electric guitar, a clean audio-interface input can avoid much of the room noise.</p><p>Sensitivity changes are handled automatically. Recheck if the room changes or the reference looks wrong. Steady noise can be estimated; speech, other music and incomplete strums can still confuse recognition. These digital input measurements are not an accuracy score, a sound-pressure reading, or a claim of noise-free detection.</p><p>Current chord recognition covers major, minor, 7, maj7, m7, sus2, sus4, power, diminished and augmented chords. The library teaches additional chord types that are not detector targets yet.</p></details>`;
   primary.replaceChildren(hero, neck, inputCheck, advanced, charts, explainer);
+  const labHost = document.createElement('div'); labHost.id = 'guitar-lab-host';
+  const jamHost = document.createElement('div'); jamHost.id = 'jam-loop-host';
+  element('pane-detector').prepend(labHost, jamHost);
 
   const sidebar = document.querySelector<HTMLElement>('#main-container .sidebar')!;
   const quick = element('preset-chips-standard').closest<HTMLElement>('.card')!;

@@ -50,10 +50,13 @@ jobs:
         run: npm run test:theory
 
       - name: Percussion sound and level regression tests
-        run: npm run test:percussion
+        run: npm run test:percussion && npm run test:groove
 
       - name: Guitar sample mapping and integrity tests
         run: npm run test:guitar
+
+      - name: Practice add-on regression tests
+        run: npm run test:ear && npm run test:lab && npm run test:jam
 
       - name: Build
         run: npm run build

@@ -22,6 +22,7 @@ npm run test:practice
 npm run test:strumming
 npm run test:theory
 npm run test:percussion
+npm run test:groove
 npm run test:guitar
 npm run preview
 ```
@@ -169,17 +170,73 @@ Reference sound is blocked while microphone listening is active or starting; sil
 
 ## Percussion
 
-Open **More tools → Percussion**. One connected set of controls replaces the old duplicate Start/volume controls. **Percussion volume** controls only this output: 0% is mute, 100% is the new default, and up to 150% adds a boost. **Low drums** and **High drums & shaker** balance the two groups and affect sounding tails as well as later hits. Guitar volume, guitar tone, microphone gain and detector thresholds are unchanged.
+Open **More tools → Percussion**. The page has two tools: **Drum grooves** (full drum-kit and hand-percussion grooves to play along with) and **Pulse patterns** (the existing one-sound-per-pulse patterns). Starting either one stops the other.
 
-**Pattern instruments** preserves each pattern's own sound choices. Select **Tabla**, **Congas**, **Bongos**, **Cajón** or **Drum kit** to reinterpret its strokes. Tabla has separate Bayan, Na, Tin and muted Ta voices; congas have low, open and slap sounds; bongos have low/high voices; the kit adds kick, snare and hi-hat. Shaker accompaniment remains a shaker except in Drum kit, where it becomes hi-hat. **Hear sound** previews the selected pattern's first pulse without starting a loop or microphone.
+### Drum grooves
 
-The fifteen existing patterns retain their pulse order, velocities and timing. Three new original practice grooves introduce congas, bongos and a drum kit. Each displayed pulse follows one tempo tick; changing instruments does not change the rhythm or claim an authentic traditional performance. The active pulse names the actual sounding instruments. Pattern changes restart the loop from its first pulse; instrument changes during a loop apply to the next pulse.
+Pick one of 26 original practice grooves in seven style groups: rock & pop (straight eighths, half-time, sixteenth-hat pop, punk, double-kick metal), ballads (cross-stick, 6/8, waltz), funk/soul/dance (ghost-note funk, four on the snare, four on the floor, swung boom bap), blues & jazz (shuffle, slow 12/8, swing ride), country & folk (train beat, two-step, stomp & clap), Latin & Caribbean (one drop, bossa nova, son clave & tumbao, 6/8 bell, dembow) and acoustic & fusion (cajón groove, Keherwa and Dadra drum-kit interpretations). Each groove shows its meter, suggested tempo range, a short description and a guitar tip. The Indian-fusion grooves are drum-kit interpretations of eight- and six-pulse cycles, not tabla performances.
 
-Sounds are original deterministic modal/noise synthesis, not borrowed recordings or samples. The new voices have fuller decays and a stronger output than the old short, heavily filtered tabla tone. A dedicated soft limiter bounds percussion peaks, including layered hits and boost; it is not a guarantee against clipping when combined with every other sound/device output. Start with a comfortable speaker/headphone volume. Small speakers can still reproduce low bass poorly.
+- **Transport:** Start/Stop, count-in (none, 1 or 2 bars; short meters always get at least three clicks), tempo from 30–260 BPM with −/+ (Shift for 5), a slider or **Tap**. Tempo changes take effect on the next step without restarting.
+- **Song sections:** **Fill** plays a fill on the next bar; **Verse/Chorus** switches after a transition fill, with a crash on the new section's downbeat. Automatic fills can play every 2, 4 or 8 bars.
+- **Practice tools:** a speed trainer (+N BPM every N bars up to a target), silent bars (for example play 3, silent 1) to test your internal clock, chord prompts for common progressions in any key (1, 2 or 4 bars per chord, with the next chord lit on the last beat), swing for straight grooves and an optional human feel (small, repeatable timing and dynamics variation).
+- **Mix:** drum volume (0–150%) plus kick, snare/claps, hi-hat/cymbals, toms and hand-percussion levels.
+- **Display:** bar number, current beat, section/fill/silent-bar status and a step grid of every lane with the playhead and stroke strengths.
 
-Start waits for audio permission/resume. Stop/Escape, leaving Percussion, hiding/leaving the page, an interrupted audio context or cancelled pending starts release the percussion sources and timers. Source stops fade over 12 ms; level changes ramp over 15 ms to avoid clicks. No percussion microphone access is requested. Use headphones when the existing Live studio microphone is listening.
+The default **Studio** kit pairs multi-velocity VCSL snare, closed/open/foot hi-hat, cross-stick and tom recordings (several dynamic layers with alternate takes) with the Musicca kick, floor tom, ride and crash. The six Musicca banks are also available. Claps, cowbell, claves, woodblock and agogô come from VCSL. Each groove loads only the recordings it uses. Changing the kit while a groove plays keeps the current kit until the new recordings are ready; only the latest choice is applied, and a kit that fails to load leaves the current one playing. Hits are scheduled against the audio clock about 140 ms ahead, so timing does not depend on UI timers; step times are anchored to the last tempo change, avoiding rounding drift over long sessions.
 
-`src/audio/percussion.ts` owns the voices, bounded buffer cache and independent output bus; `src/ui/percussionPlayer.ts` owns the controls and playback lifecycle. `npm run test:percussion` covers valid patterns, mapping, deterministic voices, envelopes, limiter bounds and inputs. Browser coverage also renders the actual Web Audio graph to compare output level with the previous implementation, checks mute/boost/headroom and verifies controls, cancellation and narrow layouts. Synthetic checks do not replace listening on physical speakers or establish acoustic-instrument realism.
+**Your own loop** plays an audio file from your device (WAV, MP3 and other formats your browser can decode, up to 60 seconds and 30 MB). Choose how many bars it holds and its time signature; the tempo comes from its length. If that gives a tempo outside 30–260 BPM, the loop does not start and the app asks for another bar count or time signature. The count-in, silent bars and chord prompts work with loops, and silent bars can be changed while it plays. Loop tempo is not time-stretched. The file stays in the browser tab: it is not uploaded, saved or shared. Use recordings you have the right to use.
+
+No Soundsnap recordings are included. Soundsnap's license allows sounds inside a finished work but forbids making them available "on a standalone basis or in a manner that allows the Sound to be extracted"; committing their files to this public repository and serving them as separate static files would do exactly that. Loops downloaded with your own subscription can be used privately through **Your own loop**.
+
+### Pulse patterns and sounds
+
+**Percussion volume** controls only the pulse-pattern output: 0% is mute, 100% is the default, and up to 150% adds a boost. **Low drums** and **High drums & shaker** balance the two groups and affect sounding tails as well as later hits. Guitar volume, guitar tone, microphone gain and detector thresholds are unchanged.
+
+The default is **Drums · Standard**, using Musicca recordings under the project owner's reported permission. Six drum banks offer kick, snare/cross-stick, closed/open/foot hi-hats, high/low/floor toms, ride and crash. Individual sound buttons audition each voice. Open hi-hats stop when a closed/foot hit arrives.
+
+Recorded congas, bongos, cajón, shaker and tambourine come from the **Versilian Community Sample Library (CC0)**. The selected hand-drum articulations have soft/hard recordings and alternate takes; the Musicca drum banks do not claim additional velocity layers. Conga accents use a recorded high conga (quinto), not a falsely labeled tom or fabricated slap recording. **Tabla remains explicitly labeled legacy synthesized** because no recorded tabla source was verified for this release. “Pattern instruments” is consequently labeled mixed-source. It is not the default.
+
+The 18 existing patterns keep their pulse order, velocities and timing: one displayed pulse per tempo tick. Instrument changes reinterpret strokes and do not claim an authentic performance of another tradition. Changing kits stops the previous output, loads the selected recordings and restarts a playing pattern from its beginning. Sound previews retain their recorded decay rather than a fixed 750 ms cutoff.
+
+### Sources, safety and tests
+
+The 135 selected files and hashes are listed in `public/audio/percussion/SOURCE.json`; the VCSL license is included as `VCSL-CC0.txt`. The downloader pins VCSL to its recorded commit and imports only these named samples, not any source application code. The 37 groove-trainer VCSL files are stored as mono 16-bit PCM, trimmed with a 60 ms fade, which SOURCE.json records per file. They keep their natural level differences between dynamic layers; playback calibrates each voice's loudest layer and only partly lifts softer layers, so ghost notes stay quieter than accents. Samples load on demand, with bounded decoded-bank caching that never evicts a kit that is still playing, per-layer round robin and explicit loading failures. A dedicated soft limiter bounds each percussion bus, not every possible mixture with other outputs. Start at a comfortable speaker/headphone volume.
+
+Start waits for audio permission/resume and is refused during a room check. Stop/Escape, leaving Percussion, hiding/leaving the page, a room check, an interrupted audio context or cancelled pending starts release the percussion sources and timers. Source stops fade over 12 ms; level changes ramp over 15 ms to avoid clicks. No percussion microphone access is requested. Use headphones when the existing Live studio microphone is listening.
+
+`src/audio/percussion.ts` owns mapping and the output bus; `percussionSamples.ts` and `percussionSampleData.ts` own the recordings; `drumGrooves.ts` holds the groove library, fills, chorus variations and chord prompts; `grooveSequencer.ts` is the clock-injected scheduler; `src/ui/grooveTrainer.ts` owns the Drum grooves UI. `npm run test:percussion` covers source-file integrity, mapping, retained legacy voices and level bounds. `npm run test:groove` checks every groove, count-in and step timing, swing, fills and crashes, section changes, silent bars, the speed trainer, human-feel bounds, loop tempo and chord spelling with a deterministic clock. Browser coverage (`BROWSER_SUITE=percussion` and `BROWSER_SUITE=groove`) checks recorded layers and levels, alternate takes, hi-hat choking, live scheduling, loop import, controls, cancellation and 320px layout. These checks do not replace listening on physical speakers.
+
+## Ear Training
+
+Open **More tools → Ear Training**. **Chords / Notes / Scales** selects the exercise family; all 12 tonics and the 12 shared scale patterns are available. Chord context supports every major/minor key rather than only C, G, D and Am.
+
+**Hear** uses the selected target. **Identify** draws a hidden question from the selected set and reveals the formula/positions only after the answer. **Play back** checks a guitar performance using the existing fresh-evidence gate. A tonic reference makes note/scale listening relational rather than a demand for perfect pitch. Complete scale playback is root-to-root in the sounding tuning/capo, never invented outside the available range.
+
+Microphone checking starts explicitly, owns only the stream it started, and preserves an existing borrowed microphone on release. Held/ringing frames, wrong octaves, low-confidence input and calibration cannot advance targets. References and microphone grading are separated; stop global listening to hear an audition if it was borrowed from Live Studio. Leaving the tool cancels its sources, timers, pending starts and practice lease. `npm run test:ear` exercises all keys, targets and scoring rules.
+
+## Record & jam
+
+The single **Record & jam** panel lives on Live Studio. Record a chord progression or melody in Recorder, then choose **Use as backing loop** beside the current take or a saved take. Trim the start/end, set backing volume, choose the part you will play, and Start. The saved recording is not modified.
+
+This first version is **one backing clip**, not multi-layer overdubbing or automatic chord transcription. Clips are limited to two minutes/8 MB before decoding and 48 MiB decoded audio. The selected range becomes a sample-count-preserving PCM loop, with short edge fades to avoid a discontinuity; this is not automatic beat alignment or time stretching.
+
+If microphone listening is on, headphone confirmation is required before loop playback. Start listening and finish the room check first, then Start the loop. The chosen Notes/Chords target applies only when listening is active; improvised parts are not automatically scored. A room check, navigation away, page hiding, Clear or Stop ends backing playback. Changing profiles clears the backing selection. `npm run test:jam` covers range and buffer invariants.
+
+## Optional fast follow preview
+
+**Fast follow preview** is off by default. It is an isolated, tentative display in Live Studio: a separate shorter-spectrum note hint and continuous chord preview. It never feeds confirmed display state, practice scoring, MIDI or statistics. The existing detector implementations and fretboard models are unchanged.
+
+The preview is deliberately selective and can still miss very short events. In one controlled sequence of six recorded 125 ms notes, it displayed two target notes within their windows versus none from the stable path, without changing any stable results or introducing a wrong hint in that check. This is limited prototype evidence, not a general fast-transcription accuracy claim. Keep stable confirmation authoritative.
+
+## Optional Guitar Lab
+
+One collapsed **Guitar Lab** entry appears on the Live Studio start page only. It loads its own modular 3D model after opening: representative steel-string acoustic, classical and solid-body electric guitars, part descriptions, an exploded view, and dependency-aware virtual assembly/removal.
+
+This is an educational model, not a repair guide or an assertion that glued acoustic assemblies are normally removable. It does not replace any existing neck. Keyboard part controls and a 2D diagram remain available; reduced motion starts in 2D. Closing, navigation, offscreen state and context loss release or pause owned rendering/audio. Instrument auditions use a private guitar bus without changing the app's selected sound or tuning. `npm run test:lab` covers anatomy and assembly invariants.
+
+The full-guitar scene uses original geometry and generated wood textures: a deeper hollow acoustic shell, broad dreadnought or rounded classical outlines, a rounded neck back, layered binding/rosette, pickguard, string windings, tuner hardware and electric pickup/bridge details. Physical materials, a generated studio reflection environment and a ground shadow replace the initial flat-color model. Manufacturer references ([Martin D-28](https://www.martinguitar.com/guitars/standard-series/D-28.html), [Fender Player II Stratocaster](https://www.fender.com/products/player-ii-stratocaster)) informed proportions, finish and hardware; their photographs, branding and product models are not bundled. The result is a representative teaching model, not a scan or exact replica of either instrument.
+
+The second refinement adds: acoustic headstocks tilted back behind the nut (13° steel-string, 11° classical) with the tuners and string paths following the tilt; a slotted classical headstock with rollers on brass side plates and a crest; a six-in-line electric headstock outline; a belly bridge, bridge pins and a tortoise-pattern guard on the steel-string; fretboard binding and pearl-like dots; rounded pickup covers with pole pieces, a three-ply electric guard, chrome saddles and a chrome jack plate. Gloss lacquer uses a clearcoat under a darker studio with soft-box reflections and a front bounce light; neutral tone mapping keeps wood and paint colours true. Wide stages show a diagonal “hero” pose, narrow stages stay upright, and the camera fits the whole instrument (or its separated assemblies) automatically. **View** offers three-quarter, front, back & sides, side profile, headstock and bridge close-ups with a short camera move (instant under reduced motion). In an exploded or partly detached view, name tags follow each assembly, and pointing at a part with a mouse shows its name. These overlays are decorative for screen readers; the named part buttons remain the accessible route.
 
 ## Circle of Fifths
 

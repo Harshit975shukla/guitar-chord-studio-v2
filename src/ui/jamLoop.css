@@ -1,0 +1,15 @@
+.jam-workspace { margin: 20px 0; border: 1px solid var(--border-light); border-radius: 14px; background: var(--bg-panel, #20241f); }
+.jam-workspace summary { padding: 18px 20px; cursor: pointer; font-weight: 600; }
+.jam-workspace summary span { margin-left: 10px; color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.jam-content { padding: 0 20px 20px; }
+.jam-content p { max-width: 75ch; font-size: 14px; line-height: 1.7; color: var(--text-muted); }
+.jam-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+.jam-content h3 { font-size: 16px; margin: 18px 0 12px; overflow-wrap: anywhere; }
+.jam-content canvas { width: 100%; height: 100px; background: #141814; border-radius: 8px; }
+.jam-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px,100%),1fr)); gap: 14px; margin: 16px 0; }
+.jam-controls label { display: grid; gap: 7px; min-width: 0; font-size: 13px; color: var(--text-muted); }
+.jam-controls input, .jam-controls select { width: 100%; min-width: 0; min-height: 44px; padding: 8px; background: var(--bg-dark); color: var(--text-main); border: 1px solid var(--border-light); border-radius: 6px; font-size: 16px; }
+.jam-headphones { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.7; }
+.jam-headphones input { width: 18px; height: 18px; margin-top: 3px; }
+.jam-content .jam-hint { margin-top: 10px; font-size: 12px; }
+@media(max-width:500px) { .jam-workspace summary span { display: block; margin: 6px 0 0; } }

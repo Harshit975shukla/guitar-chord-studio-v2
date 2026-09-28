@@ -7,6 +7,18 @@ import { audioRecorder } from '../audio/recorder';
 import { profileManager } from '../storage/profiles';
 
 let recorderTabInitialized = false;
+let jamLoopHandler: ((blob: Blob, title: string, durationMs: number) => Promise<void>) | null = null;
+export function setJamLoopHandler(handler: (blob: Blob, title: string, durationMs: number) => Promise<void>): void { jamLoopHandler = handler; }
+function loopError(error: unknown): void {
+  console.error('Could not open backing loop:', error);
+  const status = document.getElementById('rec-status-text');
+  if (status) status.textContent = error instanceof Error ? error.message : String(error);
+}
+async function sendToJam(blob: Blob, title: string, durationMs: number): Promise<void> {
+  if (!jamLoopHandler) throw new Error('The backing-loop workspace is not ready.');
+  (document.getElementById('rec-audio-element') as HTMLAudioElement | null)?.pause();
+  await jamLoopHandler(blob, title, durationMs);
+}
 
 export function createRecorderTab(): HTMLElement {
   const tab = document.createElement('div');
@@ -74,6 +86,7 @@ export function createRecorderTab(): HTMLElement {
               <div id="rec-take-meta" style="font-size:0.85rem; color:var(--text-main); font-weight:600; margin-top:2px;">Take 1 • 00:15</div>
             </div>
             <div style="display:flex; gap:8px;">
+              <button class="btn btn-secondary" id="rec-use-backing">Use as backing loop</button>
               <button class="btn btn-primary" onclick="saveCurrentTakePrompt()" style="font-size:0.8rem; padding:6px 12px;">
                 <span>💾</span> Save to Takes Library
               </button>
@@ -126,6 +139,24 @@ export function initRecorderTab(): void {
   audioRecorder.setStateChangeCallback(handleRecorderStateChange);
   audioRecorder.setCountInCallback(handleCountInUpdate);
   audioRecorder.setCompleteCallback(handleRecordingComplete);
+  profileManager.subscribe(() => { renderRecordedTakesList(); updateUserDisplay(); });
+  document.getElementById('rec-use-backing')!.addEventListener('click', () => {
+    const blob = audioRecorder.getRecordedBlob();
+    if (!blob) { loopError(new Error('Record a take before opening a backing loop.')); return; }
+    void sendToJam(blob, 'Latest recorded backing', audioRecorder.getDuration()).catch(loopError);
+  });
+  document.getElementById('rec-takes-list')!.addEventListener('click', event => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-jam-take]');
+    if (!button) return;
+    const take = profileManager.getTakesForActiveUser()[Number(button.dataset.jamTake)];
+    void (async () => {
+      if (!take || !/^data:audio\//i.test(take.dataUrl) || take.dataUrl.length > 12 * 1024 * 1024) throw new Error('This saved take cannot be opened as a backing loop.');
+      const duration = /^(\d+):(\d{2})$/.exec(take.duration);
+      if (!duration) throw new Error('This take has no valid duration. Record a new backing take.');
+      const response = await fetch(take.dataUrl);
+      await sendToJam(await response.blob(), take.title, Math.max(1, Number(duration[1]) * 60 + Number(duration[2])) * 1000);
+    })().catch(loopError);
+  });
 
   // Initial render
   renderRecordedTakesList();
@@ -247,7 +278,7 @@ function renderRecordedTakesList(): void {
     return;
   }
 
-  listEl.innerHTML = takes.map(t => `
+  listEl.innerHTML = takes.map((t, index) => `
     <div class="rec-item" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid var(--border-light); border-radius:12px; padding:12px 16px; margin-bottom:8px;">
       <div style="display:flex; align-items:center; gap:12px;">
         <div style="width:36px; height:36px; border-radius:50%; background:rgba(239,68,68,0.15); border:1px solid #ef4444; display:flex; align-items:center; justify-content:center; font-size:1rem;">
@@ -259,6 +290,7 @@ function renderRecordedTakesList(): void {
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
+        <button class="btn btn-secondary" data-jam-take="${index}">Use as backing loop</button>
         <button class="btn btn-secondary" onclick="playSavedTake('${t.id}')" style="font-size:0.78rem; padding:6px 12px; border-color:var(--accent-gold); color:var(--accent-gold);">
           ▶️ Play Take
         </button>

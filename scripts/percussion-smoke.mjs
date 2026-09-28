@@ -1,11 +1,30 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ALL_PERCUSSION_ASSETS, DRUM_BANKS, percussionSampleSet } from '../src/audio/percussionSampleData.ts';
+import { percussionLayer } from '../src/audio/percussionSamples.ts';
 import { RHYTHM_PRESETS } from '../src/tabs/rhythm.ts';
 import { DEFAULT_PERCUSSION_LEVELS, PERCUSSION_KITS, PERCUSSION_VOICES, PERCUSSION_CEILING,
   percussionHits, percussionLimiterCurve, renderPercussionVoice, validatePercussionLevels } from '../src/audio/percussion.ts';
 
 let checks = 0;
 const check = (name, fn) => { fn(); checks++; console.log(`PASS ${name}`); };
+const legacyVoices = [...new Set(RHYTHM_PRESETS.flatMap(p => p.pattern.flatMap(stroke => percussionHits(stroke.type, 'original').map(hit => hit.voice))))];
+check('recorded drum and hand-percussion files match source hashes and include the CC0 license', () => {
+  const root = join('public','audio','percussion'), source = JSON.parse(readFileSync(join(root,'SOURCE.json'),'utf8'));
+  assert.equal(source.files.length, ALL_PERCUSSION_ASSETS.length);
+  assert.equal(Object.keys(DRUM_BANKS).length, 6);
+  for (const file of source.files) {
+    const bytes = readFileSync(join(root,...file.path.split('/')));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'),file.sha256);
+  }
+  assert.match(readFileSync(join(root,'VCSL-CC0.txt'),'utf8'),/CC0 1.0 Universal/);
+  assert.equal(percussionSampleSet('bayan','tabla'),null);
+  assert.ok(percussionSampleSet('conga_open','conga').every(sample=>sample.source==='VCSL'));
+  assert.equal(percussionLayer('conga_open','conga',.3),.4);
+  assert.equal(percussionLayer('conga_open','conga',.95),.9);
+});
 check('fifteen existing patterns and three original percussion grooves keep valid ordered pulses', () => {
   assert.equal(RHYTHM_PRESETS.length, 18);
   assert.equal(new Set(RHYTHM_PRESETS.map(p => p.id)).size, 18);
@@ -29,7 +48,7 @@ check('original tabla articulations remain distinct and instrument changes prese
   assert.equal(percussionHits('conga_slap', 'original')[0].voice, 'conga_slap');
 });
 check('all fifteen original voices are deterministic, finite, audible and click-safe at the endpoints', () => {
-  for (const rate of [44100, 48000, 96000]) for (const voice of Object.keys(PERCUSSION_VOICES)) {
+  for (const rate of [44100, 48000, 96000]) for (const voice of legacyVoices) {
     const samples = renderPercussionVoice(voice, rate);
     assert.deepEqual(samples, renderPercussionVoice(voice, rate));
     assert.ok(samples.every(Number.isFinite)); assert.ok(samples[0] === 0 && samples.at(-1) === 0);
@@ -42,8 +61,8 @@ check('all fifteen original voices are deterministic, finite, audible and click-
   }
 });
 check('tabla, congas, bongos, cajon and drum-kit voices are not reused copies of one tone', () => {
-  const hashes = Object.keys(PERCUSSION_VOICES).map(voice => createHash('sha256').update(Buffer.from(renderPercussionVoice(voice, 48000).buffer)).digest('hex'));
-  assert.equal(new Set(hashes).size, Object.keys(PERCUSSION_VOICES).length);
+  const hashes = legacyVoices.map(voice => createHash('sha256').update(Buffer.from(renderPercussionVoice(voice, 48000).buffer)).digest('hex'));
+  assert.equal(new Set(hashes).size, legacyVoices.length);
 });
 check('percussion soft limiter is symmetric, monotonic and bounded with unity small-signal slope', () => {
   const curve = percussionLimiterCurve();
@@ -66,7 +85,7 @@ check('volume supports mute and a bounded 150-percent boost without changing gui
 check('unknown instruments, strokes and invalid sample rates fail explicitly', () => {
   assert.throws(() => percussionHits('bayan', 'missing'), /Unknown percussion instrument/);
   assert.throws(() => percussionHits('missing', 'original'), /Unknown percussion stroke/);
-  assert.throws(() => renderPercussionVoice('missing', 48000), /Unknown percussion voice/);
+  assert.throws(() => renderPercussionVoice('missing', 48000), /synthesized percussion voice/);
   for (const rate of [0, 4000, NaN, Infinity, 300000]) assert.throws(() => renderPercussionVoice('bayan', rate), /sample rate/);
 });
 console.log(`\n${checks}/${checks} percussion checks passed`);

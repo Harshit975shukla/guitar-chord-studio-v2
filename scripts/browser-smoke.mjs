@@ -20,6 +20,10 @@ import { checkPercussion } from './percussion-browser-checks.mjs';
 import { checkGuitarSamples } from './guitar-samples-browser-checks.mjs';
 import { checkInputHealth } from './input-health-browser-checks.mjs';
 import { checkNotes } from './note-browser-checks.mjs';
+import { checkEarTraining } from './ear-training-browser-checks.mjs';
+import { checkGuitarLab } from './guitar-lab-browser-checks.mjs';
+import { checkPracticeAddons } from './practice-addons-browser-checks.mjs';
+import { checkGrooves } from './groove-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -48,7 +52,7 @@ ws.onmessage = event => {
 function send(method, params = {}) {
   return new Promise((resolve, reject) => {
     const requestId = ++id;
-    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(`CDP timed out: ${method}`)); }, 15000);
+    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(`CDP timed out: ${method}`)); }, method === 'Runtime.evaluate' ? 60000 : 15000);
     pending.set(requestId, { resolve, reject, timer });
     ws.send(JSON.stringify({ id: requestId, method, params }));
   });
@@ -89,11 +93,12 @@ async function show(tab, host) {
   await until(`!!document.querySelector('#${host} canvas')`);
 }
 async function screenshot(name) {
-  if (!process.env.SCREENSHOT_DIR) return;
   await evaluate(async () => {
     await document.fonts.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await Promise.allSettled(document.getAnimations().filter(a => a.effect.getComputedTiming().iterations !== Infinity).map(a => a.finished));
   });
+  if (!process.env.SCREENSHOT_DIR) return;
   const { data } = await send('Page.captureScreenshot', { format: 'png' });
   await writeFile(join(process.env.SCREENSHOT_DIR, `${name}.png`), Buffer.from(data, 'base64'));
 }
@@ -108,6 +113,17 @@ try {
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `if (location.origin === ${JSON.stringify(new URL(appUrl).origin)}) {
     localStorage.clear();
     delete Navigator.prototype.serviceWorker;
+    const Socket = window.WebSocket;
+    window.WebSocket = class extends Socket {
+      constructor(...args) {
+        super(...args);
+        this.addEventListener('message', event => {
+          if (typeof event.data !== 'string') return;
+          let message; try { message = JSON.parse(event.data); } catch { return; }
+          if (message.type === 'full-reload' || message.type === 'update') event.stopImmediatePropagation();
+        });
+      }
+    };
   }` });
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: appUrl });
@@ -137,7 +153,13 @@ try {
   });
   await show('detector', 'neck-3d');
   await until("!!window.testScenes['neck-3d']");
-  if (process.env.BROWSER_SUITE === 'notes') {
+  if (process.env.BROWSER_SUITE === 'addons') {
+    await checkPracticeAddons({ check, evaluate, send, until, screenshot });
+  } else if (process.env.BROWSER_SUITE === 'ear') {
+    await checkEarTraining({ check, evaluate, send, screenshot });
+  } else if (process.env.BROWSER_SUITE === 'lab') {
+    await checkGuitarLab({ check, evaluate, send, until, screenshot });
+  } else if (process.env.BROWSER_SUITE === 'notes') {
     await checkNotes({ check, evaluate, send, until, show });
   } else if (process.env.BROWSER_SUITE === 'input') {
     await checkInputHealth({ check, evaluate, send, until, screenshot });
@@ -145,6 +167,8 @@ try {
     await checkGuitarSamples({ check, evaluate, send, until, show, screenshot });
   } else if (process.env.BROWSER_SUITE === 'percussion') {
     await checkPercussion({ check, evaluate, send, until, screenshot });
+  } else if (process.env.BROWSER_SUITE === 'groove') {
+    await checkGrooves({ check, evaluate, send, until, screenshot });
   } else {
   await check('live renderer retains preset state and scoped accessible help', async () => {
     await evaluate(() => window.loadChordPreset('C', false));
@@ -222,9 +246,13 @@ try {
   await checkCirclePractice({ check, evaluate, send, until, screenshot });
   await checkLessons({ check, evaluate, send, until, show, screenshot });
   await checkPercussion({ check, evaluate, send, until, screenshot });
+  await checkGrooves({ check, evaluate, send, until, screenshot });
   await checkGuitarSamples({ check, evaluate, send, until, show, screenshot });
   await checkInputHealth({ check, evaluate, send, until, screenshot });
   await checkNotes({ check, evaluate, send, until, show });
+  await checkEarTraining({ check, evaluate, send, screenshot });
+  await checkGuitarLab({ check, evaluate, send, until, screenshot });
+  await checkPracticeAddons({ check, evaluate, send, until, screenshot });
 
   await check('held results do not score, send MIDI, log chords or paint live pitches', async () => {
     const data = await evaluate(async () => {
@@ -265,7 +293,8 @@ try {
       testMain.handleDetectionResult({ ...note, timestamp: note.timestamp + 32 }, new Float32Array(0));
       const freshNotes = { score: song.practiceScore, midi };
       let trainer = 0, scales = 0;
-      appState.trainerStudio.onChordDetected = () => trainer++;
+      const trainerDetection = appState.trainerStudio.onDetectionResult, scaleDetection = appState.scalesStudio.onDetectionResult;
+      appState.trainerStudio.onDetectionResult = result => { if (result.freshness === 'fresh') trainer++; };
       appState.scalesStudio.onDetectionResult = result => { if (result.freshness === 'fresh') scales++; };
       appState.activeTab = 'trainer';
       testMain.handleDetectionResult(held, new Float32Array(0));
@@ -282,6 +311,7 @@ try {
       const drillHeld = appState.drillResults.chordResults.length;
       appState.isDrillActive = false;
       appState.midiManager = null;
+      appState.trainerStudio.onDetectionResult = trainerDetection; appState.scalesStudio.onDetectionResult = scaleDetection;
       return { afterHeld, afterFresh, heldNote, freshNotes, heldTuner, liveCells, confidence, trainer, scales, drillHeld };
     });
     assert.deepEqual(data.afterHeld, { score: 0, midi: 0, logs: 0 });

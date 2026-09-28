@@ -1,72 +1,60 @@
-/**
- * Ear Training Quiz & Cadence Warm-Up Studio
- * Calibrates the ear with a 3-4 chord key cadence, plays mystery chords,
- * quizzes with 4 choices or real guitar microphone detection, and advances on correct answer.
- */
+import { playAcousticString, type AcousticBus } from '../audio/engine';
+import { guitarBankReady } from '../audio/guitarSamples';
+import { STANDARD_TUNING, midiToPitch, type ChordQuality, type DetectionResult, type NoteName, type StringTuning } from '../types';
+import { CHORD_QUALITY_DISPLAY } from '../chords/definitions';
+import { WESTERN_SCALES } from '../scales/definitions';
+import { displayNote } from '../scales/theory';
+import {
+  EAR_ROOTS, EAR_CHORD_QUALITIES, NOTE_INTERVALS, answerIsCorrect, buildEarExercise,
+  buildEarReference, chordKeyMaterial, exercisePresentation,
+  type ChordDifficulty, type EarActivity, type EarExercise, type EarSettings, type ExerciseType,
+} from '../training/exercises';
+import { EarTrainingPerformance } from '../training/practice';
+import '../ui/earTraining.css';
 
-import { strumChord, playInTuneChime, AcousticBus } from '../audio/engine';
-import { StringTuning, STANDARD_TUNING, parseChordSymbol } from '../types';
-import { buildChordDefinition } from '../chords/definitions';
-
-interface KeyConfig {
-  name: string;
-  cadence: string[]; // 3-4 reference chords
-  beginnerPool: string[];
-  intermediatePool: string[];
-  masterPool: string[];
-}
-
-const KEY_CONFIGS: Record<string, KeyConfig> = {
-  C: {
-    name: 'C Major',
-    cadence: ['C', 'Am', 'F', 'G'],
-    beginnerPool: ['C', 'F', 'G', 'Am', 'Dm', 'Em'],
-    intermediatePool: ['C', 'Cmaj7', 'Dm', 'Dm7', 'Em', 'Em7', 'F', 'G', 'G7', 'Am', 'Am7'],
-    masterPool: ['C', 'Cmaj7', 'Dm7', 'Em7', 'Fmaj7', 'G7', 'Am7', 'Bdim'],
-  },
-  G: {
-    name: 'G Major',
-    cadence: ['G', 'Em', 'C', 'D'],
-    beginnerPool: ['G', 'C', 'D', 'Em', 'Am', 'Bm'],
-    intermediatePool: ['G', 'Gmaj7', 'Am', 'Am7', 'Bm', 'C', 'D', 'D7', 'Em', 'Em7'],
-    masterPool: ['G', 'Gmaj7', 'Am7', 'Bm7', 'Cmaj7', 'D7', 'Em7', 'F#dim'],
-  },
-  D: {
-    name: 'D Major',
-    cadence: ['D', 'Bm', 'G', 'A'],
-    beginnerPool: ['D', 'G', 'A', 'Bm', 'Em', 'A7'],
-    intermediatePool: ['D', 'Dmaj7', 'Em', 'Em7', 'F#m', 'G', 'A', 'A7', 'Bm'],
-    masterPool: ['D', 'Dmaj7', 'Em7', 'F#m7', 'Gmaj7', 'A7', 'Bm7'],
-  },
-  Am: {
-    name: 'A Minor',
-    cadence: ['Am', 'Dm', 'F', 'E7'],
-    beginnerPool: ['Am', 'C', 'Dm', 'Em', 'F', 'G', 'E7'],
-    intermediatePool: ['Am', 'Am7', 'C', 'Cmaj7', 'Dm', 'Dm7', 'Em', 'F', 'G', 'E7'],
-    masterPool: ['Am', 'Am7', 'Bdim', 'Cmaj7', 'Dm7', 'Em7', 'Fmaj7', 'G7', 'E7'],
-  },
+type MicrophoneLease = { release(): void };
+const pitchName = (midi: number) => {
+  const pitch = midiToPitch(midi);
+  return `${displayNote(pitch.note)}${pitch.octave}`;
 };
+const escapeHTML = (value: string) => value.replace(/[&<>"']/g, character => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[character]!);
 
+/**
+ * The host provides the effective tuning (including capo), shared recorded-guitar bus,
+ * reference readiness and an owned/borrowed microphone lease. No global audio is stopped.
+ * Constructor and pre-init lifecycle calls are safe before the trainer DOM exists.
+ */
 export class TrainerStudio {
-  private mode: 'ear' | 'strum' = 'ear';
-  private keyContext = 'C';
-  private difficulty: 'beginner' | 'intermediate' | 'master' = 'beginner';
-  private targetChord: string | null = null;
+  public onPlayRequested?: () => Promise<void>;
+  public requestMicrophone?: (target: 'notes' | 'chords') => Promise<MicrophoneLease>;
+  private pane: HTMLElement | null = null;
+  private active = false;
+  private tuning = STANDARD_TUNING.map(string => ({ ...string }));
+  private audioContext: AudioContext | null = null;
+  private acousticBus: AcousticBus | null = null;
+  private activity: EarActivity = 'hear';
+  private settings: EarSettings = { type: 'chords', root: 'C', minorKey: false, difficulty: 'beginner', quality: 'Major', interval: 0, scale: 'major' };
+  private exercise: EarExercise | null = null;
+  private answered = false;
+  private heard = false;
   private score = 0;
   private streak = 0;
   private bestStreak = 0;
-  private isCadencePlaying = false;
-  private isCooldown = false;
-  private isMicActive = false;
-  private tuning: StringTuning[] = STANDARD_TUNING;
-  private audioContext: AudioContext | null = null;
-  private acousticBus: AcousticBus | null = null;
-  private active = false;
+  private feedback = 'Choose a target, then hear it on the recorded guitar.';
+  private feedbackState: 'neutral' | 'success' | 'error' = 'neutral';
+  private audioStatus = '';
   private audioGeneration = 0;
   private audioPending = false;
+  private audioPlaying = false;
   private timers = new Set<number>();
   private sources = new Set<AudioBufferSourceNode>();
-  public onPlayRequested?: () => Promise<void>;
+  // Reference cancellation must not invalidate a permission request whose calibration calls stopAudio().
+  private practiceGeneration = 0;
+  private practicePending = false;
+  private lease: MicrophoneLease | null = null;
+  private performance = new EarTrainingPerformance();
 
   constructor() {}
 
@@ -77,20 +65,264 @@ export class TrainerStudio {
 
   setTuning(tuning: StringTuning[]): void {
     this.stopAudio();
-    this.tuning = tuning;
+    this.cancelPractice();
+    this.tuning = tuning.map(string => ({ ...string }));
+    if (this.pane) this.newExercise();
   }
 
   setActive(active: boolean): void {
     this.active = active;
-    if (!active) { this.stopAudio(); this.targetChord = null; }
+    if (!active) {
+      const wasChecking = this.practicePending || this.performance.checking;
+      this.stopAudio();
+      this.cancelPractice();
+      if (wasChecking) this.feedback = 'Checking stopped. Start a new microphone check when you return.';
+      this.render();
+    } else this.renderState();
   }
 
   stopAudio(): void {
-    this.audioGeneration++; this.audioPending = false;
-    this.timers.forEach(id => window.clearTimeout(id)); this.timers.clear();
-    this.sources.forEach(source => source.stop()); this.sources.clear();
-    this.isCadencePlaying = false; this.isCooldown = false;
-    document.getElementById('quiz-hero-card')?.classList.remove('hit-match');
+    const wasPlaying = this.audioPending || this.audioPlaying;
+    this.audioGeneration++;
+    this.audioPending = false;
+    this.audioPlaying = false;
+    this.timers.forEach(id => window.clearTimeout(id));
+    this.timers.clear();
+    this.sources.forEach(source => {
+      try { source.stop(); } catch { /* An already-ended owned source needs no further cleanup. */ }
+    });
+    this.sources.clear();
+    if (wasPlaying) this.audioStatus = 'Reference stopped. Hear it again when ready.';
+    this.renderState();
+  }
+
+  init(): void {
+    if (this.pane) return;
+    this.pane = document.getElementById('pane-trainer');
+    if (!this.pane) return;
+    this.pane.classList.add('ear-training');
+    this.pane.innerHTML = `
+      <header class="ear-heading">
+        <div><h2>Ear training</h2><p>Hear the sound. Name it. Find it on your guitar.</p></div>
+        <dl class="ear-stats" aria-label="This session">
+          <div><dt>Score</dt><dd id="quiz-score">0</dd></div>
+          <div><dt>Streak</dt><dd id="quiz-streak">0</dd></div>
+          <div><dt>Best</dt><dd id="quiz-best-streak">0</dd></div>
+        </dl>
+      </header>
+      <div class="ear-switches">
+        <fieldset class="ear-segmented"><legend>Train your ear for</legend>
+          ${(['chords', 'notes', 'scales'] as const).map(type => `<button type="button" id="ear-type-${type}" data-ear-type="${type}" aria-pressed="false">${type[0].toUpperCase() + type.slice(1)}</button>`).join('')}
+        </fieldset>
+        <fieldset class="ear-segmented ear-activities"><legend>Activity</legend>
+          <button type="button" id="ear-activity-hear" data-ear-activity="hear" aria-pressed="false">Hear</button>
+          <button type="button" id="ear-activity-identify" data-ear-activity="identify" aria-pressed="false">Identify</button>
+          <button type="button" id="ear-activity-play-back" data-ear-activity="play-back" aria-pressed="false">Play-back with guitar</button>
+        </fieldset>
+      </div>
+      <div class="ear-workspace">
+        <section class="ear-settings" aria-labelledby="ear-settings-title">
+          <h3 id="ear-settings-title">Set your practice</h3>
+          <label id="ear-tonic-control" for="ear-tonic">Tonic / home note
+            <select id="ear-tonic">${EAR_ROOTS.map(root => `<option value="${root}">${displayNote(root)}</option>`).join('')}</select>
+          </label>
+          <label id="ear-key-control" for="quiz-key-context">Chord quiz key
+            <select id="quiz-key-context">${EAR_ROOTS.flatMap(root => [false, true].map(minor =>
+              `<option value="${root}${minor ? 'm' : ''}">${displayNote(root)} ${minor ? 'minor' : 'major'}</option>`)).join('')}</select>
+          </label>
+          <label id="ear-difficulty-control" for="quiz-difficulty">Chord choices
+            <select id="quiz-difficulty"><option value="beginner">Beginner · familiar chords</option><option value="intermediate">Intermediate · add sevenths</option><option value="master">Master · add diminished</option></select>
+          </label>
+          <label id="ear-quality-control" for="ear-chord-quality">Chord quality
+            <select id="ear-chord-quality">${EAR_CHORD_QUALITIES.map(quality => `<option value="${quality}">${quality === '5' ? 'Power chord (5)' : quality === '7' ? 'Dominant 7th' : quality === 'Major' || quality === 'Minor' ? quality : CHORD_QUALITY_DISPLAY[quality]}</option>`).join('')}</select>
+          </label>
+          <label id="ear-note-control" for="ear-note-interval">Target note above the tonic
+            <select id="ear-note-interval"></select>
+          </label>
+          <label id="ear-scale-control" for="ear-scale">Scale / mode
+            <select id="ear-scale">${Object.entries(WESTERN_SCALES).map(([key, scale]) => `<option value="${key}">${scale.name}</option>`).join('')}</select>
+          </label>
+          <p id="ear-context" class="ear-context"></p>
+          <p class="ear-settings-note">Uses your current guitar sound, tuning and capo. These controls do not change your guitar settings.</p>
+        </section>
+        <section id="quiz-hero-card" class="ear-exercise" aria-labelledby="quiz-target-chord-name">
+          <p id="quiz-prompt-text" class="ear-instruction"></p>
+          <h3 id="quiz-target-chord-name"></h3>
+          <p id="quiz-target-notes" class="ear-description"></p>
+          <div class="ear-actions">
+            <button type="button" class="btn btn-primary" id="btn-play-cadence">Hear cadence + chord</button>
+            <button type="button" class="btn btn-secondary" id="btn-quiz-replay">Hear again</button>
+            <button type="button" class="btn btn-secondary" id="ear-stop-reference">Stop reference</button>
+          </div>
+          <p id="quiz-audio-status" class="ear-audio-status" role="status" aria-live="polite"></p>
+          <div id="quiz-choices-grid" class="ear-choices" role="group" aria-label="Identify the sound"></div>
+          <div id="ear-playing-guide" class="ear-playing-guide"></div>
+          <div class="ear-practice-actions">
+            <button type="button" class="btn btn-primary" id="btn-quiz-mic">Check with microphone</button>
+            <button type="button" class="btn btn-secondary" id="btn-quiz-skip">Next mystery</button>
+          </div>
+          <p id="quiz-feedback-pill" class="ear-feedback" role="status" aria-live="polite"></p>
+          <p id="ear-practice-progress" class="ear-progress"></p>
+          <p class="ear-limits">Microphone checking needs a fresh pluck or strum. Notes are checked at the shown octave; scales need every note in order. Chords are checked by identity. Rhythm, inversions and finger placement are not graded.</p>
+        </section>
+      </div>`;
+    this.pane.querySelectorAll<HTMLButtonElement>('[data-ear-type]').forEach(button => {
+      button.onclick = () => { this.settings.type = button.dataset.earType as ExerciseType; this.newExercise(); };
+    });
+    this.pane.querySelectorAll<HTMLButtonElement>('[data-ear-activity]').forEach(button => {
+      button.onclick = () => { this.activity = button.dataset.earActivity as EarActivity; this.newExercise(); };
+    });
+    this.select('ear-tonic').onchange = event => {
+      this.settings.root = (event.target as HTMLSelectElement).value as NoteName;
+      this.newExercise();
+    };
+    this.select('quiz-key-context').onchange = event => {
+      const value = (event.target as HTMLSelectElement).value;
+      this.settings.minorKey = value.endsWith('m');
+      this.settings.root = (this.settings.minorKey ? value.slice(0, -1) : value) as NoteName;
+      this.newExercise();
+    };
+    this.select('quiz-difficulty').onchange = event => { this.settings.difficulty = (event.target as HTMLSelectElement).value as ChordDifficulty; this.newExercise(); };
+    this.select('ear-chord-quality').onchange = event => { this.settings.quality = (event.target as HTMLSelectElement).value as ChordQuality; this.newExercise(); };
+    this.select('ear-note-interval').onchange = event => { this.settings.interval = Number((event.target as HTMLSelectElement).value); this.newExercise(); };
+    this.select('ear-scale').onchange = event => { this.settings.scale = (event.target as HTMLSelectElement).value; this.newExercise(); };
+    this.button('btn-play-cadence').onclick = () => this.playCadenceAndStartQuiz();
+    this.button('btn-quiz-replay').onclick = () => this.replayMysteryChord();
+    this.button('ear-stop-reference').onclick = () => this.stopAudio();
+    this.button('btn-quiz-skip').onclick = () => this.skipQuizChord();
+    this.button('btn-quiz-mic').onclick = () => void this.toggleMic();
+    this.newExercise();
+  }
+
+  private element(id: string): HTMLElement { return this.pane!.querySelector<HTMLElement>(`#${id}`)!; }
+  private button(id: string): HTMLButtonElement { return this.element(id) as HTMLButtonElement; }
+  private select(id: string): HTMLSelectElement { return this.element(id) as HTMLSelectElement; }
+  private show(id: string, visible: boolean): void { this.element(id).hidden = !visible; }
+  private text(id: string, text: string): void {
+    if (this.element(id).textContent !== text) this.element(id).textContent = text;
+  }
+
+  private newExercise(avoidPrevious = false): void {
+    const previous = avoidPrevious ? this.exercise?.target.id : undefined;
+    this.stopAudio();
+    this.cancelPractice();
+    this.exercise = buildEarExercise(this.settings, this.activity, this.tuning, Math.random, previous);
+    this.answered = false;
+    this.heard = false;
+    this.audioStatus = '';
+    this.feedbackState = 'neutral';
+    this.feedback = this.activity === 'hear' ? 'Choose a target, then hear it on the recorded guitar.'
+      : this.activity === 'identify' ? 'Hear the reference and mystery sound before choosing an answer.'
+        : 'Hear the target first, then check your own guitar. Microphone access starts only when you ask.';
+    if (!this.exercise) {
+      this.feedback = 'No complete playable target is available in this tuning. Choose another target or adjust your guitar tuning.';
+      this.feedbackState = 'error';
+    }
+    this.render();
+  }
+
+  private render(): void {
+    if (!this.pane) return;
+    const { type, root } = this.settings;
+    const identifying = this.activity === 'identify';
+    this.pane.querySelectorAll<HTMLButtonElement>('[data-ear-type]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.earType === type)));
+    this.pane.querySelectorAll<HTMLButtonElement>('[data-ear-activity]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.earActivity === this.activity)));
+    this.select('ear-tonic').value = root;
+    this.select('quiz-key-context').value = root + (this.settings.minorKey ? 'm' : '');
+    this.select('quiz-difficulty').value = this.settings.difficulty;
+    this.select('ear-chord-quality').value = this.settings.quality;
+    this.select('ear-scale').value = this.settings.scale;
+    this.select('ear-note-interval').innerHTML = NOTE_INTERVALS.map((interval, index) => {
+      const pc = (EAR_ROOTS.indexOf(root) + index) % 12;
+      return `<option value="${index}">${displayNote(EAR_ROOTS[pc])} · ${interval}</option>`;
+    }).join('');
+    this.select('ear-note-interval').value = String(this.settings.interval);
+    this.show('ear-tonic-control', type !== 'chords');
+    this.show('ear-key-control', type === 'chords');
+    this.show('ear-difficulty-control', type === 'chords' && identifying);
+    this.show('ear-quality-control', type === 'chords' && !identifying);
+    this.show('ear-note-control', type === 'notes' && !identifying);
+    this.show('ear-scale-control', type === 'scales' && !identifying);
+    this.text('ear-context', type === 'chords'
+      ? `${displayNote(root)} ${this.settings.minorKey ? 'minor' : 'major'} cadence: ${chordKeyMaterial(root, this.settings.minorKey, this.settings.difficulty).cadence.map(displayNote).join(' → ')}. ${identifying ? 'Only the mystery chord is hidden.' : 'The selected chord follows the cadence.'}`
+      : `${displayNote(root)} is home. Hear this tonic first, followed by ${type === 'notes' ? 'one note above it' : 'a full root-to-octave scale'}. ${identifying ? type === 'scales' ? 'All 12 scale/mode patterns are in the mystery pool.' : 'The mystery pool spans unison through octave.' : ''}`);
+    this.text('quiz-prompt-text', this.activity === 'hear' ? 'Listen to your selected target'
+      : identifying ? 'Listen, compare, then choose' : 'Listen first. Then play it back.');
+    const presentation = this.exercise && exercisePresentation(this.exercise, this.activity, this.answered);
+    this.text('quiz-target-chord-name', presentation?.title ?? 'Target unavailable');
+    const hidden = identifying && !this.answered;
+    this.text('quiz-target-notes', hidden ? (type === 'notes' ? 'Which note and interval followed the tonic?' : type === 'scales' ? 'Which scale or mode followed the tonic?' : 'Which chord followed the key cadence?')
+      : type === 'scales' ? 'One complete ascending octave, including the final tonic.'
+        : type === 'notes' ? 'Match this sounding pitch, including its octave.' : 'A complete chord voicing in your current tuning.');
+    this.button('btn-play-cadence').textContent = type === 'chords' ? hidden ? 'Hear cadence + mystery' : 'Hear cadence + chord' : hidden ? 'Hear tonic + mystery' : 'Hear tonic + target';
+    this.button('btn-quiz-replay').textContent = type === 'chords' ? 'Hear chord only' : 'Hear again with tonic';
+    this.show('quiz-choices-grid', identifying);
+    this.show('btn-quiz-skip', identifying);
+    this.show('btn-quiz-mic', this.activity === 'play-back');
+    this.element('quiz-choices-grid').innerHTML = identifying && this.exercise
+      ? this.exercise.choices.map((choice, index) => `<button type="button" class="ear-choice" id="quiz-choice-${index}">${escapeHTML(choice.label)}</button>`).join('') : '';
+    if (identifying && this.exercise) this.exercise.choices.forEach((choice, index) => {
+      this.button(`quiz-choice-${index}`).onclick = () => this.handleChoice(choice.id, index);
+    });
+    const guide = this.element('ear-playing-guide');
+    guide.replaceChildren();
+    if (presentation && !hidden) {
+      const heading = document.createElement('h4');
+      heading.textContent = presentation.frets ? 'Suggested voicing · strings 6 → 1' : 'Sounding pitches · suggested positions';
+      guide.append(heading);
+      if (presentation.frets) {
+        const frets = document.createElement('p');
+        frets.className = 'ear-frets';
+        frets.textContent = [...presentation.frets].reverse().map(fret => fret === null ? '×' : String(fret)).join('  ·  ');
+        guide.append(frets);
+      } else {
+        const list = document.createElement('ol');
+        list.className = 'ear-note-run';
+        presentation.notes.forEach((note, index) => {
+          const item = document.createElement('li');
+          if (this.performance.checking && index === this.performance.progress) item.setAttribute('aria-current', 'step');
+          item.textContent = `${pitchName(note.midi)} · string ${note.stringIndex + 1}, fret ${note.fret}`;
+          list.append(item);
+        });
+        guide.append(list);
+      }
+      const note = document.createElement('p');
+      note.className = 'ear-position-note';
+      note.textContent = presentation.frets ? '× = mute. Fret numbers are relative to the nut or capo; other voicings of this chord can also match.' : 'Fret numbers are relative to the nut or capo. Other positions at the same pitch can also match.';
+      guide.append(note);
+    }
+    this.show('ear-playing-guide', !!presentation && !hidden);
+    this.renderState();
+  }
+
+  private renderState(): void {
+    if (!this.pane) return;
+    const busy = this.audioPending || this.audioPlaying;
+    for (const id of ['btn-play-cadence', 'btn-quiz-replay']) this.button(id).disabled = !this.active || !this.exercise || busy || this.practicePending;
+    this.button('ear-stop-reference').disabled = !busy;
+    this.button('btn-quiz-mic').disabled = !this.active || !this.exercise || busy;
+    this.button('btn-quiz-mic').textContent = this.practicePending ? 'Cancel microphone request' : this.lease ? 'Stop checking' : this.answered ? 'Check again with microphone' : 'Check with microphone';
+    this.button('btn-quiz-mic').setAttribute('aria-pressed', String(this.performance.checking));
+    this.button('btn-quiz-skip').disabled = !this.active;
+    this.pane.querySelectorAll<HTMLButtonElement>('.ear-choice').forEach(button => { button.disabled = !this.active || !this.heard || this.answered || busy; });
+    this.text('quiz-audio-status', this.audioStatus);
+    this.element('quiz-hero-card').setAttribute('aria-busy', String(this.audioPending || this.practicePending));
+    this.text('quiz-feedback-pill', this.feedback);
+    this.element('quiz-feedback-pill').dataset.state = this.feedbackState;
+    this.text('quiz-score', String(this.score));
+    this.text('quiz-streak', String(this.streak));
+    this.text('quiz-best-streak', String(this.bestStreak));
+    this.text('ear-practice-progress', this.performance.checking
+      ? `${this.performance.progress} / ${this.performance.total} pitches or chords accepted. ${this.performance.needsRelease ? 'Mute the strings briefly, then play.' : 'Ready for a fresh pluck or strum.'}` : '');
+  }
+
+  private cancelPractice(): void {
+    this.practiceGeneration++;
+    this.practicePending = false;
+    this.performance.stop();
+    const lease = this.lease;
+    this.lease = null;
+    lease?.release();
   }
 
   private schedule(action: () => void, milliseconds: number): void {
@@ -102,422 +334,161 @@ export class TrainerStudio {
     this.timers.add(id);
   }
 
-  private async prepareAudio(action: () => void): Promise<void> {
-    if (!this.active) return;
-    const generation = this.audioGeneration;
-    const status = document.getElementById('quiz-audio-status');
+  private async audition(includeCadence: boolean): Promise<void> {
+    if (!this.active || !this.exercise || this.audioPending || this.audioPlaying || this.practicePending) return;
+    this.cancelPractice();
+    this.stopAudio();
+    this.heard = false;
     this.audioPending = true;
-    if (status) status.textContent = 'Preparing guitar audio…';
+    this.audioStatus = 'Preparing recorded guitar audio…';
+    this.feedback = 'Reference playback is not graded. Microphone checking is stopped.';
+    this.feedbackState = 'neutral';
+    const generation = this.audioGeneration;
+    const exercise = this.exercise;
+    this.render();
     try {
+      const steps = buildEarReference(exercise, this.settings, this.tuning, includeCadence);
+      if (!steps) throw new Error('The complete key cadence is unavailable in this tuning. Try “Hear chord only” or another key.');
       await this.onPlayRequested?.();
-      if (generation !== this.audioGeneration || !this.active) return;
-      if (!this.audioContext || !this.acousticBus) throw new Error('Guitar audio is not ready. Replay to try again.');
+      if (!this.active || generation !== this.audioGeneration) return;
+      const ctx = this.audioContext, bus = this.acousticBus;
+      if (!ctx || !bus || ctx.state !== 'running' || !guitarBankReady(ctx, bus.sampleBank)) throw new Error('Recorded guitar is not ready. Try Hear again after the guitar recordings load.');
       this.audioPending = false;
-      if (status) status.textContent = '';
-      action();
-    } catch (error) {
-      if (generation === this.audioGeneration) {
-        this.stopAudio();
-        console.error('Ear training audio unavailable:', error);
-        if (status) status.textContent = `Audio unavailable: ${error instanceof Error ? error.message : String(error)}`;
-      }
-    }
-  }
-
-  init(): void {
-    this.initControls();
-    this.updateStatsHUD();
-    // Prompt user with warm-up ready
-    this.showInitialPrompt();
-  }
-
-  private initControls(): void {
-    const earBtn = document.getElementById('btn-trainer-mode-ear');
-    const strumBtn = document.getElementById('btn-trainer-mode-strum');
-
-    if (earBtn) earBtn.onclick = () => this.setMode('ear');
-    if (strumBtn) strumBtn.onclick = () => this.setMode('strum');
-
-    const keySelect = document.getElementById('quiz-key-context') as HTMLSelectElement;
-    if (keySelect) {
-      keySelect.value = this.keyContext;
-      keySelect.onchange = () => {
-        this.keyContext = keySelect.value;
-        this.playCadenceAndStartQuiz();
-      };
-    }
-
-    const diffSelect = document.getElementById('quiz-difficulty') as HTMLSelectElement;
-    if (diffSelect) {
-      diffSelect.value = this.difficulty;
-      diffSelect.onchange = () => {
-        this.difficulty = diffSelect.value as any;
-        this.nextQuizChord();
-      };
-    }
-
-    const playCadenceBtn = document.getElementById('btn-play-cadence');
-    if (playCadenceBtn) {
-      playCadenceBtn.onclick = () => this.playCadenceAndStartQuiz();
-    }
-
-    const replayBtn = document.getElementById('btn-quiz-replay');
-    if (replayBtn) {
-      replayBtn.onclick = () => this.replayMysteryChord();
-    }
-
-    const skipBtn = document.getElementById('btn-quiz-skip');
-    if (skipBtn) {
-      skipBtn.onclick = () => this.skipQuizChord();
-    }
-
-    const micBtn = document.getElementById('btn-quiz-mic');
-    if (micBtn) {
-      micBtn.onclick = () => this.toggleMic();
-    }
-  }
-
-  setMode(mode: 'ear' | 'strum'): void {
-    this.mode = mode;
-    const earBtn = document.getElementById('btn-trainer-mode-ear');
-    const strumBtn = document.getElementById('btn-trainer-mode-strum');
-    if (earBtn) earBtn.classList.toggle('active', mode === 'ear');
-    if (strumBtn) strumBtn.classList.toggle('active', mode === 'strum');
-
-    const challengeBadge = document.getElementById('quiz-challenge-badge');
-    const promptText = document.getElementById('quiz-prompt-text');
-    const choicesGrid = document.getElementById('quiz-choices-grid');
-    const diagramPreview = document.getElementById('quiz-diagram-preview');
-
-    if (mode === 'ear') {
-      if (challengeBadge) challengeBadge.textContent = '🎯 Ear Training Challenge';
-      if (promptText) promptText.textContent = 'Listen to the mystery chord played below:';
-      if (choicesGrid) choicesGrid.style.display = 'grid';
-      if (diagramPreview) diagramPreview.style.display = 'none';
-    } else {
-      if (challengeBadge) challengeBadge.textContent = '🎸 Strum Training Challenge';
-      if (promptText) promptText.textContent = 'Strum this chord on your guitar (Mic listens):';
-      if (choicesGrid) choicesGrid.style.display = 'none';
-      if (diagramPreview) diagramPreview.style.display = 'block';
-    }
-
-    this.nextQuizChord();
-  }
-
-  private showInitialPrompt(): void {
-    const targetName = document.getElementById('quiz-target-chord-name');
-    const targetNotes = document.getElementById('quiz-target-notes');
-    const pill = document.getElementById('quiz-feedback-pill');
-
-    if (targetName) targetName.textContent = '👂 Cadence Ready';
-    if (targetNotes) targetNotes.textContent = 'Click "Play 3-4 Reference Chords" to calibrate your ear!';
-    if (pill) {
-      pill.innerHTML = '<span>🎵</span> First play 3-4 reference chords in key, then guess the mystery chord!';
-      pill.style.background = 'rgba(255,179,0,0.12)';
-      pill.style.borderColor = 'var(--accent-gold)';
-      pill.style.color = 'var(--accent-gold)';
-    }
-  }
-
-  playCadenceAndStartQuiz(): void {
-    if (this.isCadencePlaying || !this.active) return;
-    this.stopAudio();
-    this.isCadencePlaying = true;
-    void this.prepareAudio(() => this.startCadence());
-  }
-
-  private startCadence(): void {
-    const keyInfo = KEY_CONFIGS[this.keyContext] || KEY_CONFIGS.C;
-    const cadenceChords = keyInfo.cadence;
-    const cadenceText = document.getElementById('quiz-cadence-text');
-    const pill = document.getElementById('quiz-feedback-pill');
-
-    let step = 0;
-    const playNextCadenceChord = () => {
-      if (step < cadenceChords.length) {
-        const chord = cadenceChords[step];
-        this.strumChordByName(chord, .7);
-
-        if (cadenceText) {
-          const playedSoFar = cadenceChords.slice(0, step + 1).map(c => `<strong>${c}</strong>`).join(' → ');
-          cadenceText.innerHTML = `Calibrating Ear in ${keyInfo.name}: ${playedSoFar} ...`;
-        }
-        if (pill) {
-          pill.innerHTML = `<span>🎵</span> Reference Chords: Playing <strong>${chord}</strong> (${step + 1}/${cadenceChords.length})`;
-          pill.style.background = 'rgba(255,179,0,0.15)';
-          pill.style.borderColor = 'var(--accent-gold)';
-          pill.style.color = 'var(--accent-gold)';
-        }
-
-        step++;
-        this.schedule(playNextCadenceChord, 750);
-      } else {
-        // Cadence complete!
-        this.isCadencePlaying = false;
-        if (cadenceText) {
-          cadenceText.innerHTML = `✅ Ear calibrated in <strong>${keyInfo.name}</strong>! Starting quiz...`;
-        }
-        this.schedule(() => {
-          this.nextQuizChord();
-        }, 800);
-      }
-    };
-
-    playNextCadenceChord();
-  }
-
-  nextQuizChord(): void {
-    this.stopAudio();
-    if (!this.active) return;
-    const keyInfo = KEY_CONFIGS[this.keyContext] || KEY_CONFIGS.C;
-    let pool = keyInfo.beginnerPool;
-    if (this.difficulty === 'intermediate') pool = keyInfo.intermediatePool;
-    if (this.difficulty === 'master') pool = keyInfo.masterPool;
-
-    // Pick a new chord different from previous
-    let nextChord = pool[Math.floor(Math.random() * pool.length)];
-    if (nextChord === this.targetChord && pool.length > 1) {
-      nextChord = pool[(pool.indexOf(nextChord) + 1) % pool.length];
-    }
-    this.targetChord = nextChord;
-
-    const targetName = document.getElementById('quiz-target-chord-name');
-    const targetNotes = document.getElementById('quiz-target-notes');
-    const choicesGrid = document.getElementById('quiz-choices-grid');
-    const pill = document.getElementById('quiz-feedback-pill');
-
-    if (this.mode === 'ear') {
-      if (targetName) targetName.textContent = '❓ Mystery Chord';
-      if (targetNotes) targetNotes.textContent = 'Which chord did you hear? Click your answer below:';
-
-      // Pick 4 choices: correct one + 3 distractors from the key pool
-      const distractors = pool.filter(c => c !== this.targetChord).sort(() => 0.5 - Math.random()).slice(0, 3);
-      const choices = [this.targetChord, ...distractors].sort(() => 0.5 - Math.random());
-
-      if (choicesGrid) {
-        choicesGrid.innerHTML = choices.map((chord, idx) => `
-          <button class="btn btn-secondary quiz-choice-btn" id="quiz-choice-${idx}" style="padding:16px 12px; font-size:1.25rem; font-weight:800; border:2px solid var(--border-light); background:rgba(0,0,0,0.4); border-radius:12px; cursor:pointer; color:var(--accent-gold); transition:all 0.2s ease;">
-            ${chord}
-          </button>
-        `).join('');
-
-        choices.forEach((chord, idx) => {
-          const btn = document.getElementById(`quiz-choice-${idx}`);
-          if (btn) {
-            btn.onclick = () => this.handleChoice(chord, idx);
-          }
+      this.audioPlaying = true;
+      this.audioStatus = exercise.type === 'chords' ? 'Playing recorded guitar reference…' : `Tonic ${displayNote(exercise.tonic)} first, then the ${exercise.type === 'notes' ? 'note' : 'scale'}…`;
+      const start = ctx.currentTime + .025;
+      for (const step of steps) {
+        [...step.notes].sort((a, b) => b.stringIndex - a.stringIndex).forEach((note, index) => {
+          const source = playAcousticString(ctx, bus, {
+            freq: 440 * 2 ** ((note.midi - 69) / 12), stringIndex: note.stringIndex, velocity: .82,
+            startTime: start + step.offset + index * .022, endTime: start + step.offset + step.duration,
+          });
+          this.sources.add(source);
+          source.addEventListener('ended', () => this.sources.delete(source), { once: true });
         });
       }
-
-      if (pill) {
-        pill.innerHTML = '<span>👂</span> Mystery chord played! Choose from the 4 options or strum on your guitar.';
-        pill.style.background = 'rgba(255,255,255,0.06)';
-        pill.style.borderColor = 'var(--border-light)';
-        pill.style.color = 'var(--text-main)';
-      }
-
-      // Play the mystery chord sound after brief pause
+      const last = steps[steps.length - 1];
       this.schedule(() => {
-        if (this.targetChord) {
-          const chord = this.targetChord;
-          void this.prepareAudio(() => this.strumChordByName(chord));
-        }
-      }, 400);
-    } else {
-      // Strum Training mode
-      if (targetName) targetName.textContent = this.targetChord;
-      if (targetNotes) targetNotes.textContent = 'Strum this chord cleanly on your guitar. The mic is actively listening!';
-
-      const diagramPreview = document.getElementById('quiz-diagram-preview');
-      const miniFretboard = document.getElementById('quiz-mini-fretboard');
-      if (diagramPreview) diagramPreview.style.display = 'block';
-
-      const voicing = this.getVoicingFrets(this.targetChord);
-      if (miniFretboard && voicing) {
-        const strLabels = voicing.map(f => (f === null || f === -1 ? 'x' : String(f))).reverse().join('  ');
-        miniFretboard.innerHTML = `<span style="color:var(--text-muted);">Frets (6th to 1st):</span> <strong style="color:var(--accent-gold);">${strLabels}</strong>`;
-      }
-
-      if (pill) {
-        pill.innerHTML = '<span>🎸</span> Listening for chord on mic... Strike it now!';
-        pill.style.background = 'rgba(255,255,255,0.06)';
-        pill.style.borderColor = 'var(--border-light)';
-        pill.style.color = 'var(--text-main)';
-      }
+        this.audioPlaying = false;
+        this.heard = true;
+        this.audioStatus = 'Reference finished.';
+        this.feedback = this.activity === 'identify' && !this.answered ? 'Choose the sound you heard. Replay if you need another listen.'
+          : this.activity === 'play-back' ? 'Now check with the microphone. Mute the reference, then play a fresh pluck or strum.'
+            : 'Listen again, or switch to Identify or Play-back with guitar.';
+        this.renderState();
+      }, (last.offset + last.duration + .2) * 1000);
+      this.renderState();
+    } catch (error) {
+      if (generation !== this.audioGeneration || !this.active) return;
+      this.stopAudio();
+      this.audioStatus = `Audio unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      this.feedback = 'No answer is scored until the reference finishes. Resolve the audio issue, then try Hear again.';
+      this.feedbackState = 'error';
+      this.renderState();
     }
   }
 
-  handleChoice(chosenChord: string, btnIdx: number): void {
-    if (this.isCooldown || this.audioPending || !this.targetChord) return;
-    const btn = document.getElementById(`quiz-choice-${btnIdx}`);
-    const pill = document.getElementById('quiz-feedback-pill');
-    const targetName = document.getElementById('quiz-target-chord-name');
-    const heroCard = document.getElementById('quiz-hero-card');
+  playCadenceAndStartQuiz(): void { void this.audition(true); }
+  replayMysteryChord(): void { void this.audition(false); }
+  nextQuizChord(): void { this.newExercise(true); }
+  skipQuizChord(): void {
+    if (!this.answered) this.streak = 0;
+    this.newExercise(true);
+  }
+  setMode(mode: 'ear' | 'strum'): void {
+    this.activity = mode === 'ear' ? 'identify' : 'play-back';
+    this.newExercise();
+  }
 
-    if (chosenChord === this.targetChord) {
-      this.isCooldown = true;
-      this.score += 100 + this.streak * 20;
-      this.streak++;
-      if (this.streak > this.bestStreak) this.bestStreak = this.streak;
-      this.updateStatsHUD();
-
-      if (btn) {
-        btn.style.background = 'rgba(16, 185, 129, 0.4)';
-        btn.style.borderColor = '#10b981';
-        btn.style.color = '#34d399';
-        btn.style.transform = 'scale(1.06)';
-      }
-
-      if (targetName) targetName.innerHTML = `✅ ${this.targetChord}`;
-      if (heroCard) {
-        heroCard.classList.add('hit-match');
-        this.schedule(() => heroCard.classList.remove('hit-match'), 800);
-      }
-
-      if (pill) {
-        pill.innerHTML = `<span>🎉</span> <strong>CORRECT! +100 PTS</strong> That was <strong>${this.targetChord}</strong>! Next chord coming...`;
-        pill.style.background = 'rgba(16, 185, 129, 0.25)';
-        pill.style.borderColor = '#10b981';
-        pill.style.color = '#34d399';
-      }
-
-      if (this.audioContext) {
-        playInTuneChime(this.audioContext);
-      }
-
-      this.schedule(() => {
-        this.isCooldown = false;
-        this.nextQuizChord();
-      }, 1300);
+  handleChoice(choiceId: string, _buttonIndex?: number): void {
+    if (!this.active || this.activity !== 'identify' || !this.exercise || !this.heard || this.answered || this.audioPending || this.audioPlaying) return;
+    if (!this.exercise.choices.some(choice => choice.id === choiceId)) return;
+    this.answered = true;
+    if (answerIsCorrect(this.exercise, choiceId)) {
+      this.award();
+      this.feedback = `Correct — ${this.exercise.target.label}. Choose Next mystery for another sound.`;
     } else {
       this.streak = 0;
-      this.updateStatsHUD();
+      this.feedbackState = 'error';
+      this.feedback = `Not this time. The answer was ${this.exercise.target.label}. Hear it again, then try the next mystery.`;
+    }
+    this.render();
+  }
 
-      if (btn) {
-        btn.style.background = 'rgba(239, 68, 68, 0.3)';
-        btn.style.borderColor = '#ef4444';
-        this.schedule(() => {
-          btn.style.background = 'rgba(0,0,0,0.4)';
-          btn.style.borderColor = 'var(--border-light)';
-        }, 800);
-      }
+  private award(): void {
+    this.score += 100 + this.streak * 20;
+    this.streak++;
+    this.bestStreak = Math.max(this.bestStreak, this.streak);
+    this.feedbackState = 'success';
+  }
 
-      if (pill) {
-        pill.innerHTML = `<span>❌</span> Not quite! That was not ${chosenChord}. Replay or try another choice!`;
-        pill.style.background = 'rgba(239, 68, 68, 0.2)';
-        pill.style.borderColor = '#ef4444';
-        pill.style.color = '#fca5a5';
-      }
+  async toggleMic(): Promise<void> {
+    if (this.practicePending || this.lease) {
+      this.cancelPractice();
+      this.feedback = 'Checking stopped. Any listening that was already active is preserved.';
+      this.render();
+      return;
+    }
+    if (!this.active || this.activity !== 'play-back' || !this.exercise || this.audioPending || this.audioPlaying) return;
+    if (!this.requestMicrophone) {
+      this.feedback = 'Microphone checking is unavailable. You can still hear targets and use Identify.';
+      this.feedbackState = 'error';
+      this.renderState();
+      return;
+    }
+    this.stopAudio();
+    const generation = ++this.practiceGeneration;
+    const exercise = this.exercise;
+    this.practicePending = true;
+    this.feedback = 'Requesting microphone access. If prompted, allow access and keep the strings quiet for calibration.';
+    this.feedbackState = 'neutral';
+    this.renderState();
+    try {
+      const lease = await this.requestMicrophone(this.settings.type === 'chords' ? 'chords' : 'notes');
+      if (!this.active || generation !== this.practiceGeneration || this.exercise !== exercise) { lease.release(); return; }
+      this.lease = lease;
+      this.practicePending = false;
+      this.answered = false;
+      this.performance.start(exercise.target.practice, performance.now());
+      this.feedback = this.settings.type === 'scales' ? 'Mute briefly, then play each shown pitch in order, root to octave. Pluck each note separately.'
+        : 'Mute briefly, then play the target with a fresh pluck or strum.';
+      this.render();
+    } catch (error) {
+      if (generation !== this.practiceGeneration || !this.active) return;
+      this.practicePending = false;
+      this.feedback = `Microphone unavailable: ${error instanceof Error ? error.message : String(error)}. Check access, then try again.`;
+      this.feedbackState = 'error';
+      this.renderState();
     }
   }
 
-  replayMysteryChord(): void {
-    if (this.targetChord) {
-      this.stopAudio();
-      const chord = this.targetChord;
-      void this.prepareAudio(() => this.strumChordByName(chord));
+  onDetectionResult(result: DetectionResult): void {
+    if (!this.active || !this.lease || this.activity !== 'play-back' || this.audioPlaying || this.audioPending || !this.performance.checking) return;
+    const outcome = this.performance.consume(result);
+    if (outcome === 'complete') {
+      this.answered = true;
+      this.award();
+      this.feedback = `Matched ${this.exercise!.target.label}${this.settings.type === 'scales' ? ' — the complete root-to-octave sequence' : ''}.`;
+      this.cancelPractice();
+      this.render();
+    } else if (outcome === 'step') {
+      this.feedback = `Pitch ${this.performance.progress} accepted. Play the next shown pitch with a new pluck.`;
+      this.render();
+    } else {
+      this.renderState();
     }
   }
 
-  skipQuizChord(): void {
-    this.streak = 0;
-    this.updateStatsHUD();
-    this.nextQuizChord();
-  }
+  /** Raw chord strings intentionally cannot award points; hosts should forward full evidence. */
+  onChordDetected(_chord: string): void {}
 
-  toggleMic(): void {
-    this.isMicActive = !this.isMicActive;
-    const micBtn = document.getElementById('btn-quiz-mic');
-    if (micBtn) {
-      micBtn.classList.toggle('btn-listen-active', this.isMicActive);
-      micBtn.innerHTML = this.isMicActive ? '<span>🎙️</span> Mic Active (Strum to Answer)' : '<span>🎙️</span> Live Guitar Mic (Optional)';
+  onMicrophoneStopped(): void {
+    const wasChecking = this.performance.checking || this.practicePending;
+    this.cancelPractice();
+    if (wasChecking) {
+      this.feedback = 'Microphone stopped. Check with the microphone again when ready.';
+      this.feedbackState = 'neutral';
     }
-  }
-
-  onChordDetected(detectedChord: string): void {
-    if (this.isCooldown || !this.targetChord) return;
-
-    const target = this.targetChord.trim();
-    const det = detectedChord.trim();
-
-    const isMatch = det === target ||
-      (det.startsWith(target) && (det.length === target.length || det[target.length] === '7' || det[target.length] === 'm')) ||
-      (target === 'C' && (det === 'C' || det === 'Cmaj7')) ||
-      (target === 'Am' && (det === 'Am' || det === 'Am7')) ||
-      (target === 'G' && (det === 'G' || det === 'G7')) ||
-      (target === 'D' && (det === 'D' || det === 'D7')) ||
-      (target === 'Em' && (det === 'Em' || det === 'Em7'));
-
-    if (isMatch) {
-      this.isCooldown = true;
-      this.score += 100 + this.streak * 20;
-      this.streak++;
-      if (this.streak > this.bestStreak) this.bestStreak = this.streak;
-      this.updateStatsHUD();
-
-      const targetName = document.getElementById('quiz-target-chord-name');
-      const pill = document.getElementById('quiz-feedback-pill');
-      const heroCard = document.getElementById('quiz-hero-card');
-
-      if (targetName) targetName.innerHTML = `✅ ${target}`;
-      if (heroCard) {
-        heroCard.classList.add('hit-match');
-        this.schedule(() => heroCard.classList.remove('hit-match'), 800);
-      }
-
-      if (pill) {
-        pill.innerHTML = `<span>🔥</span> <strong>CORRECT! +100 PTS</strong> Heard your guitar play <strong>${target}</strong>!`;
-        pill.style.background = 'rgba(16, 185, 129, 0.25)';
-        pill.style.borderColor = '#10b981';
-        pill.style.color = '#34d399';
-      }
-
-      if (this.audioContext) {
-        playInTuneChime(this.audioContext);
-      }
-
-      this.schedule(() => {
-        this.isCooldown = false;
-        this.nextQuizChord();
-      }, 1300);
-    }
-  }
-
-  private updateStatsHUD(): void {
-    const scoreEl = document.getElementById('quiz-score');
-    const streakEl = document.getElementById('quiz-streak');
-    const bestStreakEl = document.getElementById('quiz-best-streak');
-
-    if (scoreEl) scoreEl.textContent = String(this.score);
-    if (streakEl) streakEl.textContent = `🔥 ${this.streak}`;
-    if (bestStreakEl) bestStreakEl.textContent = `🏆 ${this.bestStreak}`;
-  }
-
-  private strumChordByName(chordSymbol: string, duration = 1.5): void {
-    if (!this.audioContext || !this.acousticBus) throw new Error('Guitar audio is not ready.');
-    const frets = this.getVoicingFrets(chordSymbol);
-    if (!frets) throw new Error(`No playable voicing for ${chordSymbol} in this tuning.`);
-
-    const sources = strumChord(this.audioContext, this.acousticBus, {
-      frets,
-      style: 'down',
-      velocity: 0.88,
-      tuning: this.tuning,
-      endTime: this.audioContext.currentTime + duration,
-    });
-    sources.forEach(source => {
-      this.sources.add(source);
-      source.addEventListener('ended', () => this.sources.delete(source), { once: true });
-    });
-  }
-
-  private getVoicingFrets(chordSymbol: string): (number | null)[] | null {
-    const parsed = parseChordSymbol(chordSymbol);
-    if (!parsed) return null;
-    const def = buildChordDefinition(parsed.root, parsed.quality, this.tuning);
-    if (def.voicings.length > 0) {
-      return def.voicings[0].frets;
-    }
-    return null;
+    this.render();
   }
 }

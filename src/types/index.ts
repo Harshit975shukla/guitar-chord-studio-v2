@@ -423,6 +423,7 @@ export interface UserSettings {
   triggerMode: 'guitartuna' | 'continuous';
   targetMode: DetectionTargetMode;
   guitarSampleBank: 'steel' | 'classical' | 'electric';
+  fastFollowPreview: boolean;
   monitorEnabled: boolean;
   monitorGain: number;
   
@@ -451,6 +452,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   triggerMode: 'guitartuna',
   targetMode: 'chords',
   guitarSampleBank: 'steel',
+  fastFollowPreview: false,
   monitorEnabled: false,
   monitorGain: 0.5,
   activeTuningPreset: 'standard',

@@ -149,11 +149,13 @@ export async function checkGuitarSamples({ check, evaluate, send, until, show, s
         switchTab('trainer');
         const original=appState.trainerStudio.onPlayRequested; let release;
         appState.trainerStudio.onPlayRequested=()=>new Promise(resolve=>{release=resolve;});
-        samplePlayed.length=0;document.getElementById('btn-play-cadence').click();switchTab('detector');
-        release();await Promise.resolve();await Promise.resolve();appState.trainerStudio.onPlayRequested=original;
-        return {voices:samplePlayed.length,timers:appState.trainerStudio.timers.size};
+        samplePlayed.length=0;document.getElementById('btn-play-cadence').click();
+        for(let i=0;i<20 && !release;i++)await Promise.resolve();
+        if(!release)throw new Error('Ear Training did not request reference audio.');
+        switchTab('detector');release();await Promise.resolve();await Promise.resolve();appState.trainerStudio.onPlayRequested=original;
+        return {voices:samplePlayed.length};
       });
-      assert.deepEqual(trainer,{voices:0,timers:0});
+      assert.deepEqual(trainer,{voices:0});
     });
     await check('unavailable recordings stay silent and offer retry without a synth fallback', async () => {
       const result = await evaluate(async () => {

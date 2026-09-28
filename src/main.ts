@@ -79,6 +79,7 @@ import {
 
 import { BUILTIN_SONGS, SongStudio } from './tabs/songs';
 import { PercussionPlayer } from './ui/percussionPlayer';
+import { GrooveTrainer } from './ui/grooveTrainer';
 import { ScalesStudio } from './tabs/scales';
 import { TrainerStudio } from './tabs/trainer';
 import { prepareStudio, NeckController } from './ui/studio';
@@ -94,6 +95,11 @@ import { TheoryLessons } from './ui/theoryLessons';
 import { CHORD_LESSONS } from './theory/lessons';
 import { scaleRootPc } from './scales/theory';
 import { InputHealthMonitor } from './detection/inputHealth';
+import { FastDetectionPreview } from './detection/fastPreview';
+import { JamLoop } from './ui/jamLoop';
+import { GuitarLab } from './ui/guitarLab';
+import { setJamLoopHandler } from './tabs/recorder';
+import { profileManager } from './storage/profiles';
 
 // ============================================================================
 // Global State
@@ -190,10 +196,14 @@ let audioAnalysis: AudioAnalysisController | null = null;
 let circleOfFifths: CircleOfFifths | null = null;
 let theoryLessons: TheoryLessons | null = null;
 let percussionPlayer: PercussionPlayer | null = null;
+let grooveTrainer: GrooveTrainer | null = null;
 let liveNeckMidi: number | null = null;
 let neckCaption = 'Explore the fretboard';
 let microphonePending = false;
 let theoryChord = '';
+let jamLoop: JamLoop | null = null;
+let guitarLab: GuitarLab | null = null;
+let fastPreview: FastDetectionPreview | null = null;
 let guitarGeneration = 0;
 let livePickGeneration = 0;
 let instantGuitarRequest = 0;
@@ -255,7 +265,12 @@ export async function initializeApp(): Promise<void> {
   };
   appState.songStudio.onPlayRequested = ensureGuitarAudio;
   appState.scalesStudio.onPlayRequested = ensureGuitarAudio;
-  appState.trainerStudio.onPlayRequested = ensureGuitarAudio;
+  appState.trainerStudio.onPlayRequested = async () => {
+    if (appState.isListening || microphonePending) throw new Error('Stop microphone listening before hearing an Ear Training reference.');
+    await ensureGuitarAudio();
+    if (appState.isListening || microphonePending) throw new Error('Stop microphone listening before hearing an Ear Training reference.');
+  };
+  appState.trainerStudio.requestMicrophone = requestPracticeMicrophone;
   window.addEventListener('pagehide', stopGuitarPlayback);
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopGuitarPlayback(); });
   appState.scalesStudio.onMicStartRequested = async () => {
@@ -306,6 +321,7 @@ function applySettingsToState(): void {
 }
 
 function updateEffectiveTuning(): void {
+  fastPreview?.reset();
   guitarGeneration++; livePickGeneration++; instantGuitarRequest++;
   let tuning = appState.activeTuning.strings;
   if (appState.capoState.enabled) {
@@ -441,6 +457,7 @@ export async function startMicrophone(): Promise<boolean> {
     appState.highpassFilter.connect(appState.lowpassFilter);
     appState.lowpassFilter.connect(appState.micGainNode);
     appState.micGainNode.connect(appState.analyser);
+    fastPreview?.connect(appState.micGainNode);
     
     appState.isListening = true;
     appState.detectionEngine.reset();
@@ -502,6 +519,7 @@ export function stopMicrophone(): void {
   appState.isListening = false;
   appState.scalesStudio.setMicPracticeActive(false);
   appState.songStudio.onMicrophoneStopped();
+  appState.trainerStudio.onMicrophoneStopped();
   circleOfFifths?.onMicrophoneStopped();
   if (appState.isDrillActive && (appState.drillConfig?.practiceMode !== 'rhythm' || appState.drillConfig.checkChords)) {
     stopDrill();
@@ -521,6 +539,7 @@ export function stopMicrophone(): void {
 }
 
 function disposeMicrophoneInput(): void {
+  fastPreview?.disconnect();
   const stream = appState.micStream;
   appState.micStream = null;
   stream?.getTracks().forEach(track => track.stop());
@@ -530,12 +549,16 @@ function disposeMicrophoneInput(): void {
 }
 
 function prepareRoomCalibration(): void {
+  jamLoop?.stop('Backing loop stopped for the room check. Start it again after calibration finishes.');
+  guitarLab?.stopAudio(false);
+  fastPreview?.calibrate();
   guitarGeneration++; livePickGeneration++; instantGuitarRequest++;
   if (appState.acousticBus) stopAcousticSources(appState.acousticBus);
   appState.scalesStudio.stopScaleAudioRun();
   appState.trainerStudio.stopAudio();
   appState.songStudio.pauseReferenceForCalibration();
   circleOfFifths?.stop(); theoryLessons?.stop(); percussionPlayer?.stop();
+  grooveTrainer?.stopIfActive('Drums stopped for the room check. Start them again after calibration finishes.');
   stopMetronome();
   inputHealth.reset();
 }
@@ -592,6 +615,7 @@ function startDetectionLoop(): void {
           handleDetectionResult(result, freqData);
         }
       }
+      fastPreview?.tick(now, appState.effectiveTuning);
     } catch (err) {
       console.error('Detection loop error (handled, loop continuing):', err);
     } finally {
@@ -609,6 +633,7 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
   if (appState.activeTab === 'songs') appState.songStudio.evaluatePractice(result);
   if (appState.activeTab === 'scales') appState.scalesStudio.onDetectionResult(result);
   if (appState.activeTab === 'fifths') circleOfFifths?.onDetectionResult(result);
+  if (appState.activeTab === 'trainer') appState.trainerStudio.onDetectionResult(result);
   if (appState.activeTab === 'drill' && appState.isDrillActive) evaluateDrillResult(result);
   // Handle room noise calibration progress and completion
   if (result.isCalibrating) {
@@ -664,7 +689,6 @@ export function handleDetectionResult(result: DetectionResult, spectrum: Float32
 
     // Route only to the active studio; background practice must not react.
     if (result.chord) {
-      if (appState.activeTab === 'trainer') appState.trainerStudio?.onChordDetected(result.chord.symbol);
     }
   }
 
@@ -786,6 +810,7 @@ export function updateMicGain(gain: number): void {
     appState.micGainNode.gain.value = gain;
   }
   appState.detectionEngine.setConfig({ micGainMultiplier: gain });
+  fastPreview?.configure({ micGainMultiplier: gain });
   if (changed && appState.isListening) {
     if (appState.detectionEngine.isNoiseCalibrating()) {
       inputHealth.reset(); updateCalibrationUI(true);
@@ -801,12 +826,14 @@ export function updateNoiseGate(db: number): void {
   appState.settings.noiseGateDb = db;
   saveSettings(appState.settings);
   appState.detectionEngine.setConfig({ noiseGateDb: db });
+  fastPreview?.configure({ noiseGateDb: db });
 }
 
 export function updateSeventhStrictness(value: number): void {
   appState.settings.seventhStrictness = value;
   saveSettings(appState.settings);
   appState.detectionEngine.setConfig({ seventhStrictness: value });
+  fastPreview?.configure({ seventhStrictness: value });
 }
 
 export function setTriggerMode(mode: 'guitartuna' | 'continuous'): void {
@@ -830,6 +857,7 @@ export function setTargetMode(mode: DetectionTargetMode): void {
   appState.settings.targetMode = mode;
   saveSettings(appState.settings);
   appState.detectionEngine.setConfig({ targetMode: mode });
+  fastPreview?.configure({ targetMode: mode });
   appState.detectionEngine.reset();
   
   const chordsBtn = document.getElementById('btn-target-chords');
@@ -1439,12 +1467,16 @@ export function switchTab(tabId: string): void {
     if (appState.acousticBus) stopAcousticSources(appState.acousticBus);
   }
   appState.activeTab = tabId;
+  jamLoop?.setActive(tabId === 'detector');
+  guitarLab?.setActive(tabId === 'detector');
+  fastPreview?.setVisible(tabId === 'detector' && !document.hidden);
 
   // Stop transport players when navigating away from their own tab, so their
   // audio doesn't keep sounding on other tabs (e.g. a song/rhythm/metronome
   // still playing while you're on the Tuner).
   if (tabId !== 'metronome') stopMetronome();
   percussionPlayer?.setActive(tabId === 'rhythm');
+  grooveTrainer?.setActive(tabId === 'rhythm');
   if (tabId !== 'songs') appState.songStudio.stopPlayback();
   if (tabId !== 'drill' && (appState.isDrillActive || drillStarting)) stopDrill();
 
@@ -1884,6 +1916,13 @@ function updateChromaVisualizer(chroma: Float32Array, held = false): void {
 }
 
 // UI initialization functions
+async function percussionAudio(): Promise<AudioContext> {
+  if (appState.isListening && appState.detectionEngine.isNoiseCalibrating()) throw new Error('Wait for the room check to finish before playing percussion.');
+  await ensureAudioContext();
+  if (!appState.audioContext) throw new Error('Audio could not be initialized. Check browser audio settings.');
+  return appState.audioContext;
+}
+
 function initializeUI(): void {
   try { initChromaBars(); } catch (e) { console.warn('initChromaBars:', e); }
   try { initFretboard(); } catch (e) { console.warn('initFretboard:', e); }
@@ -1891,16 +1930,19 @@ function initializeUI(): void {
   try { renderFretboard(); } catch (e) { console.warn('renderFretboard:', e); }
   try { updateTuningUI(); } catch (e) { console.warn('updateTuningUI:', e); }
   try { renderPresetChips(); } catch (e) { console.warn('renderPresetChips:', e); }
-  percussionPlayer = new PercussionPlayer(async () => {
-    if (appState.isListening && appState.detectionEngine.isNoiseCalibrating()) throw new Error('Wait for the room check to finish before playing percussion.');
-    await ensureAudioContext();
-    if (!appState.audioContext) throw new Error('Audio could not be initialized. Check browser audio settings.');
-    return appState.audioContext;
+  percussionPlayer = new PercussionPlayer(percussionAudio, {
+    onStart: () => grooveTrainer?.stopIfActive('Drums stopped for the pulse pattern.'),
   });
+  try {
+    grooveTrainer = new GrooveTrainer(document.getElementById('groove-trainer-host')!, percussionAudio, {
+      onStart: () => percussionPlayer?.stopIfActive('Pulse pattern stopped for the drum groove.'),
+    });
+  } catch (e) { console.warn('GrooveTrainer:', e); }
   try { renderLooperTracks(); } catch (e) { console.warn('renderLooperTracks:', e); }
   try { initSongToolsUI(); } catch (e) { console.warn('initSongToolsUI:', e); }
   initCircleOfFifths();
   initTheoryLessons();
+  initPracticeAddons();
   try { initVideoTab(); } catch (e) { console.warn('initVideoTab:', e); }
 }
 
@@ -2785,6 +2827,69 @@ function initSongToolsUI(): void {
   );
 }
 
+async function requestPracticeMicrophone(target: 'notes' | 'chords'): Promise<{ release(): void }> {
+  const previousTarget = appState.settings.targetMode || 'chords';
+  const owned = !appState.isListening;
+  if (!appState.isListening && !await startMicrophone()) throw new Error('Allow microphone access and check your input device.');
+  const stream = appState.micStream;
+  setTargetMode(target);
+  let released = false;
+  return { release: () => {
+    if (released) return;
+    released = true;
+    if (appState.settings.targetMode === target) setTargetMode(previousTarget);
+    if (owned && appState.isListening && appState.micStream === stream) stopMicrophone();
+  } };
+}
+
+function initPracticeAddons(): void {
+  fastPreview = new FastDetectionPreview(result => {
+    const output = document.getElementById('fast-follow-output')!;
+    output.hidden = appState.settings.fastFollowPreview !== true;
+    const name = result?.note ? `${result.note.pitch.note}${result.note.pitch.octave}` : result?.chord?.symbol;
+    const text = result?.isCalibrating ? 'Preparing the fast preview room reference…'
+      : name ? `${result?.freshness === 'held' ? 'Last preview' : 'Fast preview'}: ${name} · tentative, not scored`
+        : 'Fast preview is waiting for a supported signal. Stable detection remains in control.';
+    if (output.textContent !== text) output.textContent = text;
+  });
+  fastPreview.configure({ noiseGateDb: appState.settings.noiseGateDb, micGainMultiplier: appState.settings.micGain,
+    seventhStrictness: appState.settings.seventhStrictness, targetMode: appState.settings.targetMode });
+  const toggle = document.getElementById('fast-follow-preview') as HTMLInputElement;
+  toggle.checked = appState.settings.fastFollowPreview === true;
+  fastPreview.setEnabled(toggle.checked, appState.micGainNode);
+  toggle.addEventListener('change', () => {
+    appState.settings.fastFollowPreview = toggle.checked; saveSettings(appState.settings);
+    fastPreview!.setEnabled(toggle.checked, appState.micGainNode);
+    if (appState.detectionEngine.isNoiseCalibrating()) fastPreview!.calibrate();
+  });
+  document.addEventListener('visibilitychange', () => fastPreview?.setVisible(appState.activeTab === 'detector' && !document.hidden));
+  jamLoop = new JamLoop(document.getElementById('jam-loop-host')!, {
+    audio: async () => { await ensureAudioContext(); if (!appState.audioContext) throw new Error('Browser audio is unavailable.'); return appState.audioContext; },
+    record: () => { if (appState.isListening) stopMicrophone(); switchTab('recorder'); document.getElementById('rec-btn-main')?.focus(); },
+    listening: () => appState.isListening,
+    calibrating: () => appState.detectionEngine.isNoiseCalibrating(),
+    target: setTargetMode,
+  });
+  setJamLoopHandler(async (blob, title, durationMs) => {
+    switchTab('detector');
+    await jamLoop!.load(blob, title, durationMs);
+    document.getElementById('jam-loop-host')!.scrollIntoView({ block: 'start' });
+  });
+  let profileId = profileManager.getActiveProfile().id;
+  profileManager.subscribe(() => {
+    const current = profileManager.getActiveProfile().id;
+    if (current !== profileId) { profileId = current; jamLoop?.clear(); }
+  });
+  guitarLab = new GuitarLab(document.getElementById('guitar-lab-host')!, async () => {
+    if (appState.isListening || microphonePending) throw new Error('Stop microphone listening before hearing a Guitar Lab reference.');
+    await ensureAudioContext();
+    if (appState.isListening || microphonePending) throw new Error('Microphone listening is active. Explore the model silently or stop listening first.');
+    if (!appState.audioContext) throw new Error('Browser audio is unavailable.');
+    return appState.audioContext;
+  });
+  guitarLab.setActive(appState.activeTab === 'detector'); jamLoop.setActive(appState.activeTab === 'detector');
+}
+
 function initCircleOfFifths(): void {
   circleOfFifths = new CircleOfFifths(async () => {
     if (appState.isListening) throw new Error('Stop microphone listening in Live studio before playing theory references. You can still explore the circle silently.');
@@ -2796,20 +2901,7 @@ function initCircleOfFifths(): void {
     switchTab('scales');
     appState.scalesStudio.setRoot(root);
     appState.scalesStudio.setScaleKey(mode === 'major' ? 'major' : 'natural_minor');
-  }, async target => {
-    const previousTarget = appState.settings.targetMode || 'chords';
-    const owned = !appState.isListening;
-    if (!appState.isListening && !await startMicrophone()) throw new Error('Allow microphone access and check your input device.');
-    const stream = appState.micStream;
-    setTargetMode(target);
-    let released = false;
-    return { release: () => {
-      if (released) return;
-      released = true;
-      if (appState.settings.targetMode === target) setTargetMode(previousTarget);
-      if (owned && appState.isListening && appState.micStream === stream) stopMicrophone();
-    } };
-  });
+  }, requestPracticeMicrophone);
 }
 
 function initTheoryLessons(): void {

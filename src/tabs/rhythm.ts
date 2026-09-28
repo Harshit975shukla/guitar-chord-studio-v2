@@ -3,7 +3,9 @@
 export interface RhythmStroke {
   name: string;
   type: 'bayan_dayan' | 'bayan' | 'dayan_na' | 'dayan_tin' | 'dayan_ta' | 'cajon_bass' | 'cajon_snare' | 'shaker'
-    | 'conga_low' | 'conga_open' | 'conga_slap' | 'bongo_low' | 'bongo_high' | 'kick' | 'snare' | 'hihat';
+    | 'conga_low' | 'conga_open' | 'conga_slap' | 'bongo_low' | 'bongo_high' | 'kick' | 'snare' | 'hihat'
+    | 'rim' | 'hihat_open' | 'hihat_foot' | 'tom1' | 'tom2' | 'floor_tom' | 'ride' | 'crash' | 'tambourine'
+    | 'clap' | 'cowbell' | 'claves' | 'woodblock' | 'agogo_high' | 'agogo_low';
   vel: number;
   sam?: boolean; // first beat of cycle
 }

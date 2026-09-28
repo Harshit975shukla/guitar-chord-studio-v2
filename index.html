@@ -2188,8 +2188,11 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
     <section class="percussion-page" aria-labelledby="percussion-heading">
       <header class="percussion-header">
         <h2 id="percussion-heading">Percussion</h2>
-        <p>Tabla, congas, bongos, cajón and drums for your guitar practice.</p>
+        <p>Recorded drums and hand percussion for your guitar practice: full drum grooves to play along with, or single-sound pulse patterns.</p>
       </header>
+      <div id="groove-trainer-host"></div>
+      <h3 class="percussion-pattern-heading">Pulse patterns</h3>
+      <p class="percussion-note">One sound per pulse, including tabla-style cycles and hand-drum patterns.</p>
       <div id="percussion-controls-slot"></div>
       <h3 class="percussion-pattern-heading">Choose a pattern</h3>
       <p class="percussion-note">Keep its original instruments or try another sound above. Instrument changes keep the pulse order and timing; they do not turn a pattern into an authentic performance of another tradition.</p>
@@ -2218,15 +2221,17 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
       <span id="percussion-pulse"></span>
     </div>
     <div class="rhythm-beat-indicators" id="dock-beat-dots" aria-label="Pattern pulses"></div>
+    <div id="percussion-pads" class="percussion-pads" role="group" aria-label="Hear individual percussion sounds"></div>
+    <p id="percussion-source" class="percussion-note"></p>
     <div class="percussion-levels">
       <label class="percussion-master">Percussion volume <output id="percussion-volume-readout" for="percussion-volume">100%</output><input type="range" id="percussion-volume" min="0" max="1.5" step="0.05" value="1"></label>
-      <label>Tempo <output id="dock-tempo-readout" for="dock-tempo-slider">80 BPM</output><input type="range" id="dock-tempo-slider" min="50" max="160" value="80"></label>
+      <label>Pulse tempo <output id="dock-tempo-readout" for="dock-tempo-slider">80 BPM</output><input type="range" id="dock-tempo-slider" min="50" max="160" value="80"></label>
       <label>Low drums <output id="percussion-bass-readout" for="dock-bass-vol">80%</output><input type="range" id="dock-bass-vol" min="0" max="1" step="0.05" value="0.8"></label>
       <label>High drums &amp; shaker <output id="percussion-treble-readout" for="dock-treble-vol">75%</output><input type="range" id="dock-treble-vol" min="0" max="1" step="0.05" value="0.75"></label>
     </div>
     <p id="percussion-status" class="percussion-note" role="status">Choose a sound, then start a pattern.</p>
     <p class="percussion-note">Volume controls only percussion; 0% mutes it and 100–150% adds a boost. Start with a comfortable device volume. Soft limiting controls percussion peaks, not the total level of every app playing on your device.</p>
-    <p class="percussion-note">Original synthesized practice sounds, not recorded instruments. One displayed pulse per tempo tick; existing patterns keep their timing. Use headphones if the microphone is listening. Stop or Escape ends playback; leaving this tool or hiding the page stops it too.</p>
+    <p class="percussion-note">Musicca drum recordings are used with the project owner's permission. Hand-percussion recordings are from <a href="https://github.com/sgossner/VCSL" target="_blank" rel="noopener noreferrer">VCSL (CC0)</a>. Legacy tabla is labeled separately. One displayed pulse per tempo tick; existing patterns keep their timing. Changing kits reloads and restarts a playing pattern. Use headphones if listening with the microphone. Stop, Escape, leaving this tool or hiding the page ends playback.</p>
   </div>
 
   <!-- ==========================================================================

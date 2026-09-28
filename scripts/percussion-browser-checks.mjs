@@ -14,6 +14,7 @@ export async function checkPercussion({ check, evaluate, send, until, screenshot
       window.percussionRender = async (type, options = {}) => {
         const ctx = new OfflineAudioContext(1, 48000, 48000);
         const bus = new PercussionBus(ctx, { volume: options.volume ?? 1, bass: options.bass ?? .8, treble: options.treble ?? .75 });
+        if (options.kit && !['original','tabla'].includes(options.kit)) await bus.prepare(options.kit);
         for (let i = 0; i < (options.hits ?? 1); i++) bus.play(type, options.kit ?? 'original', 1, .02 + i * .02);
         if (options.cancelFuture) bus.stop();
         const rendered = await ctx.startRendering(), samples = rendered.getChannelData(0);
@@ -117,32 +118,53 @@ export async function checkPercussion({ check, evaluate, send, until, screenshot
     });
     await screenshot('percussion-desktop');
   });
+  await check('recorded hand percussion uses real dynamic layers and alternate takes; closed hats choke open hats', async () => {
+    const result = await evaluate(async () => {
+      const { PercussionBus } = await import('/src/audio/percussion.ts');
+      const context = new OfflineAudioContext(2, 96000, 48000), bus = new PercussionBus(context);
+      await bus.prepare('conga');
+      const sources = [], create = context.createBufferSource.bind(context);
+      context.createBufferSource = () => { const source = create(); sources.push(source); return source; };
+      [.4,.9,.4,.9].forEach((velocity,i)=>bus.playVoice('conga_open','conga',velocity,.02+i*.08));
+      const variants = new Set(sources.map(s=>s.buffer)).size;
+      await context.startRendering(); bus.dispose();
+      const hats = new OfflineAudioContext(1, 96000, 48000), hatBus = new PercussionBus(hats), stops = [];
+      await hatBus.prepare('drums');
+      const original = hats.createBufferSource.bind(hats);
+      hats.createBufferSource = () => { const source=original(),stop=source.stop.bind(source);source.stop=time=>{stops.push(time);stop(time);};return source; };
+      hatBus.playVoice('hihat_open','drums',.8,.02);hatBus.playVoice('hihat','drums',.8,.12);
+      await hats.startRendering();hatBus.dispose();
+      return {variants,choke:stops[0]};
+    });
+    assert.equal(result.variants,4);assert.ok(result.choke<=.129);
+  });
   await check('percussion timing, instrument changes and cancelled audio starts never duplicate or leak playback', async () => {
     const timing = await evaluate(async () => {
+      await percussion.bus.prepare('conga'); await percussion.bus.prepare('tabla');
       const timeout = window.setTimeout, clear = window.clearTimeout;
       const timers = new Map(); let timerId = 90000;
       window.setTimeout = (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; };
       window.clearTimeout = id => { timers.delete(id); };
-      const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+      const flush = async () => { for(let i=0;i<30;i++)await Promise.resolve(); };
       try {
-        document.getElementById('btn-dock-rhythm-toggle').click(); await flush();
+        await percussion.start(false);
         const first = { step: percussion.step, timers: timers.size, delay: [...timers.values()][0]?.delay };
         percussionSelect('dock-tempo-slider', '160', 'input');
         const [id, timer] = [...timers][0]; timers.delete(id); timer.fn();
         const faster = { step: percussion.step, timers: timers.size, delay: [...timers.values()][0]?.delay };
         percussionSelect('percussion-instrument', 'conga');
+        await flush();
         const unchangedStep = percussion.step;
-        const [nextId, next] = [...timers][0]; timers.delete(nextId); next.fn();
         const changedVoice = document.getElementById('percussion-pulse').textContent;
         document.getElementById('btn-dock-rhythm-toggle').click();
         const stopped = { timers: timers.size, sources: percussion.bus.sources.size, state: percussion.mode };
-        document.getElementById('btn-dock-rhythm-toggle').click(); await flush(); switchTab('chords');
+        await percussion.start(false); switchTab('chords');
         return { first, faster, unchangedStep, changedVoice, stopped, exit: { timers: timers.size, sources: percussion.bus.sources.size, state: percussion.mode } };
       } finally { percussion.stop(); window.setTimeout = timeout; window.clearTimeout = clear; }
     });
     assert.deepEqual(timing.first, { step: 1, timers: 1, delay: 750 });
     assert.deepEqual(timing.faster, { step: 2, timers: 1, delay: 375 });
-    assert.equal(timing.unchangedStep, 2); assert.match(timing.changedVoice, /conga/i);
+    assert.equal(timing.unchangedStep, 1); assert.match(timing.changedVoice, /conga/i);
     assert.deepEqual(timing.stopped, { timers: 0, sources: 0, state: 'idle' }); assert.deepEqual(timing.exit, timing.stopped);
     const cancelled = await evaluate(async () => {
       const original = percussion.getAudio; const results = [];

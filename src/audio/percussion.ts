@@ -1,10 +1,16 @@
 import type { RhythmStroke } from '../tabs/rhythm';
+import { DRUM_BANKS, DRUM_FILES } from './percussionSampleData';
+import { loadPercussionRecordings, markPercussionKitActive, percussionLayer, percussionRecording } from './percussionSamples';
 
 export const PERCUSSION_KITS = {
-  original: 'Pattern instruments', tabla: 'Tabla', conga: 'Congas',
-  bongos: 'Bongos', cajon: 'Cajón', drums: 'Drum kit',
+  original: 'Pattern instruments · mixed sources', tabla: 'Tabla · legacy synthesized', conga: 'Congas · recorded',
+  bongos: 'Bongos · recorded', cajon: 'Cajón · recorded', drums: 'Drums · Standard',
+  'drums-powerful': 'Drums · Powerful', 'drums-monumental': 'Drums · Monumental',
+  'drums-smooth': 'Drums · Smooth', 'drums-minimalistic': 'Drums · Minimalistic', 'drums-energetic': 'Drums · Energetic',
 } as const;
 export type PercussionKit = keyof typeof PERCUSSION_KITS;
+/** Sample sources: pulse-player kits plus the groove trainer's multi-velocity studio kit. */
+export type SampleKit = PercussionKit | 'studio';
 export type PercussionVoice = Exclude<RhythmStroke['type'], 'bayan_dayan'>;
 export interface PercussionLevels { volume: number; bass: number; treble: number }
 export const DEFAULT_PERCUSSION_LEVELS: PercussionLevels = { volume: 1, bass: 0.8, treble: 0.75 };
@@ -13,12 +19,17 @@ export interface PercussionHit { voice: PercussionVoice; channel: 'bass' | 'treb
 
 export const PERCUSSION_VOICES: Record<PercussionVoice, string> = {
   bayan: 'Bayan', dayan_na: 'Dayan · Na', dayan_tin: 'Dayan · Tin', dayan_ta: 'Dayan · Ta',
-  cajon_bass: 'Cajón bass', cajon_snare: 'Cajón slap', shaker: 'Shaker',
-  conga_low: 'Low conga', conga_open: 'Open conga', conga_slap: 'Conga slap',
+  cajon_bass: 'Cajón hit 1', cajon_snare: 'Cajón hit 2', shaker: 'Shaker',
+  conga_low: 'Low conga (tumba)', conga_open: 'Conga', conga_slap: 'High conga (quinto)',
   bongo_low: 'Low bongo', bongo_high: 'High bongo', kick: 'Kick', snare: 'Snare', hihat: 'Hi-hat',
+  rim: 'Cross stick', hihat_open: 'Open hi-hat', hihat_foot: 'Foot hi-hat', tom1: 'High tom', tom2: 'Low tom',
+  floor_tom: 'Floor tom', ride: 'Ride cymbal', crash: 'Crash cymbal', tambourine: 'Tambourine',
+  clap: 'Hand claps', cowbell: 'Cowbell', claves: 'Claves', woodblock: 'Woodblock', agogo_high: 'Agogô · high', agogo_low: 'Agogô · low',
 };
-const bassVoices = new Set<PercussionVoice>(['bayan', 'cajon_bass', 'conga_low', 'bongo_low', 'kick']);
-const kitVoices: Record<Exclude<PercussionKit, 'original'>, [PercussionVoice, PercussionVoice, PercussionVoice, PercussionVoice]> = {
+const bassVoices = new Set<PercussionVoice>(['bayan', 'cajon_bass', 'conga_low', 'bongo_low', 'kick', 'tom2', 'floor_tom']);
+/** Auxiliary recordings used by drum grooves only; pulse patterns never load them. */
+export const GROOVE_ONLY_VOICES = new Set<PercussionVoice>(['clap', 'cowbell', 'claves', 'woodblock', 'agogo_high', 'agogo_low']);
+const kitVoices: Record<'tabla' | 'conga' | 'bongos' | 'cajon' | 'drums', [PercussionVoice, PercussionVoice, PercussionVoice, PercussionVoice]> = {
   tabla: ['bayan', 'dayan_na', 'dayan_tin', 'dayan_ta'],
   conga: ['conga_low', 'conga_open', 'conga_open', 'conga_slap'],
   bongos: ['bongo_low', 'bongo_high', 'bongo_high', 'bongo_high'],
@@ -34,8 +45,9 @@ export function percussionHits(type: RhythmStroke['type'], kit: PercussionKit): 
     const channel = bassVoices.has(original) ? 'bass' : 'treble';
     let voice = original;
     if (kit !== 'original') {
-      const sounds = kitVoices[kit];
-      voice = original === 'shaker' || original === 'hihat' ? kit === 'drums' ? 'hihat' : 'shaker'
+      const family = kit === 'tabla' || kit === 'conga' || kit === 'bongos' || kit === 'cajon' ? kit : 'drums';
+      const sounds = kitVoices[family];
+      voice = original === 'shaker' || original === 'hihat' ? family === 'drums' ? 'hihat' : 'shaker'
         : channel === 'bass' ? sounds[0]
           : original === 'dayan_tin' || original === 'conga_open' ? sounds[2]
             : original === 'dayan_ta' || original === 'conga_slap' || original === 'snare' || original === 'cajon_snare' ? sounds[3] : sounds[1];
@@ -48,7 +60,7 @@ interface VoiceShape {
   frequency: number; decay: number; duration: number; bend: number; noise: number; cutoff: number;
   modes: readonly [number, number][];
 }
-const shapes: Record<PercussionVoice, VoiceShape> = {
+const shapes: Partial<Record<PercussionVoice, VoiceShape>> = {
   bayan: { frequency: 82, decay: .19, duration: .65, bend: .65, noise: .045, cutoff: 700, modes: [[1, 1], [2, .48], [3, .22], [4.1, .1]] },
   dayan_na: { frequency: 265, decay: .14, duration: .55, bend: .018, noise: .08, cutoff: 1500, modes: [[1, 1], [2, .62], [3, .36], [4, .14]] },
   dayan_tin: { frequency: 330, decay: .2, duration: .65, bend: .006, noise: .035, cutoff: 1800, modes: [[1, 1], [2, .38], [3, .15]] },
@@ -68,9 +80,10 @@ const shapes: Record<PercussionVoice, VoiceShape> = {
 
 /** Original modal/noise synthesis; no recordings, downloaded samples or random test outcomes. */
 export function renderPercussionVoice(voice: PercussionVoice, sampleRate: number): Float32Array {
-  if (!Object.hasOwn(shapes, voice)) throw new Error(`Unknown percussion voice: ${voice}`);
+  const shape = shapes[voice];
+  if (!shape) throw new Error(`No synthesized percussion voice: ${voice}`);
   if (!Number.isFinite(sampleRate) || sampleRate < 8000 || sampleRate > 192000) throw new Error('Unsupported percussion sample rate.');
-  const shape = shapes[voice], count = Math.ceil(sampleRate * shape.duration), samples = new Float32Array(count);
+  const count = Math.ceil(sampleRate * shape.duration), samples = new Float32Array(count);
   let seed = 0x6d2b79f5 + Object.keys(shapes).indexOf(voice), low = 0, mean = 0;
   const alpha = 1 - Math.exp(-2 * Math.PI * shape.cutoff / sampleRate);
   for (let i = 0; i < count; i++) {
@@ -113,7 +126,8 @@ export class PercussionBus {
   private master: GainNode;
   private limiter: WaveShaperNode;
   private buffers = new Map<PercussionVoice, AudioBuffer>();
-  private sources = new Map<AudioBufferSourceNode, GainNode>();
+  private sources = new Map<AudioBufferSourceNode, { gain: GainNode; voice: PercussionVoice; end: number }>();
+  private takes = new Map<string, number>();
   private disposed = false;
 
   constructor(readonly context: BaseAudioContext, levels: PercussionLevels = DEFAULT_PERCUSSION_LEVELS) {
@@ -134,36 +148,87 @@ export class PercussionBus {
     }
   }
 
-  play(type: RhythmStroke['type'], kit: PercussionKit, velocity: number, at = this.context.currentTime + .005): void {
+  async prepare(kit: PercussionKit): Promise<void> {
+    const voices = new Set<PercussionVoice>(percussionPads(kit));
+    for (const type of Object.keys(PERCUSSION_VOICES) as PercussionVoice[]) {
+      if (!GROOVE_ONLY_VOICES.has(type)) percussionHits(type, kit).forEach(hit => voices.add(hit.voice));
+    }
+    await loadPercussionRecordings(this.context, [...voices], kit);
+  }
+
+  /** Protects a kit from cache eviction from the moment it is chosen, before its first hit; stop() releases it. */
+  holdKit(kit: SampleKit): void {
+    if (!this.disposed) markPercussionKitActive(this.context, this, kit);
+  }
+
+  /** Loads only the recordings a groove needs, from any sample kit. */
+  async prepareVoices(voices: Iterable<PercussionVoice>, kit: SampleKit): Promise<void> {
+    await loadPercussionRecordings(this.context, [...new Set(voices)], kit);
+  }
+
+  play(type: RhythmStroke['type'], kit: PercussionKit, velocity: number, at = this.context.currentTime + .005): number {
+    return Math.max(...percussionHits(type, kit).map(hit => this.playVoice(hit.voice, kit, velocity, at, hit.channel)));
+  }
+
+  /** level scales loudness only (for a mixer); velocity also chooses the recorded dynamic layer. */
+  playVoice(voice: PercussionVoice, kit: SampleKit, velocity: number, at = this.context.currentTime + .005, channel: 'bass' | 'treble' = bassVoices.has(voice) ? 'bass' : 'treble', level = 1): number {
     if (this.disposed) throw new Error('Percussion output has been closed.');
     if (!Number.isFinite(velocity) || velocity < 0 || velocity > 1 || !Number.isFinite(at) || at < 0) throw new Error('Invalid percussion velocity or start time.');
-    for (const hit of percussionHits(type, kit)) {
-      let buffer = this.buffers.get(hit.voice);
+    if (!Number.isFinite(level) || level < 0 || level > 2) throw new Error('Invalid percussion level.');
+      const key = `${kit}:${voice}:${percussionLayer(voice, kit, velocity)}`, take = this.takes.get(key) ?? 0;
+      const recording = percussionRecording(this.context, voice, kit, velocity, take);
+      markPercussionKitActive(this.context, this, kit);
+      let buffer = recording?.buffer ?? null;
+      const offset = recording?.offset ?? 0;
+      this.takes.set(key, take + 1);
+      if (!buffer && !voice.startsWith('dayan') && voice !== 'bayan') throw new Error(`No recording is available for ${voice}.`);
+      buffer ??= this.buffers.get(voice) ?? null;
       if (!buffer) {
-        const samples = renderPercussionVoice(hit.voice, this.context.sampleRate);
+        const samples = renderPercussionVoice(voice, this.context.sampleRate);
         buffer = this.context.createBuffer(1, samples.length, this.context.sampleRate);
-        buffer.getChannelData(0).set(samples); this.buffers.set(hit.voice, buffer);
+        buffer.getChannelData(0).set(samples); this.buffers.set(voice, buffer);
       }
+      if (voice === 'hihat' || voice === 'hihat_foot') this.sources.forEach((entry, source) => {
+        if (entry.voice !== 'hihat_open' || entry.end <= at) return;
+        entry.gain.gain.cancelAndHoldAtTime(at); entry.gain.gain.linearRampToValueAtTime(0, at + .008);
+        entry.end = Math.min(entry.end, at + .008); source.stop(entry.end);
+      });
       const source = this.context.createBufferSource(), gain = this.context.createGain();
-      source.buffer = buffer; gain.gain.value = velocity;
-      source.connect(gain); gain.connect(hit.channel === 'bass' ? this.bass : this.treble);
-      this.sources.set(source, gain);
+      source.buffer = buffer; gain.gain.value = velocity * level * (recording?.gain ?? 1);
+      source.connect(gain); gain.connect(channel === 'bass' ? this.bass : this.treble);
+      this.sources.set(source, { gain, voice, end: at + buffer.duration - offset });
       source.addEventListener('ended', () => { this.sources.delete(source); source.disconnect(); gain.disconnect(); }, { once: true });
-      source.start(at);
-    }
+      source.start(at, offset);
+      return buffer.duration - offset;
+  }
+
+  /** Sends another source (an imported loop) through this bus's volume and soft limiter. */
+  route(node: AudioNode): void {
+    if (this.disposed) throw new Error('Percussion output has been closed.');
+    node.connect(this.master);
   }
 
   stop(): void {
     const now = this.context.currentTime;
-    this.sources.forEach((gain, source) => {
+    this.sources.forEach(({ gain, end }, source) => {
       gain.gain.cancelAndHoldAtTime(now); gain.gain.linearRampToValueAtTime(0, now + .012);
-      source.stop(now + .012);
+      source.stop(Math.min(end, now + .012));
     });
     this.sources.clear();
+    markPercussionKitActive(this.context, this, null);
   }
 
   dispose(): void {
     this.stop(); this.disposed = true; this.buffers.clear();
     this.bass.disconnect(); this.treble.disconnect(); this.master.disconnect(); this.limiter.disconnect();
   }
+}
+
+export function percussionPads(kit: PercussionKit): PercussionVoice[] {
+  if (Object.hasOwn(DRUM_BANKS, kit)) return Object.keys(DRUM_FILES) as PercussionVoice[];
+  if (kit === 'tabla') return ['bayan', 'dayan_na', 'dayan_tin', 'dayan_ta'];
+  if (kit === 'conga') return ['conga_low', 'conga_open', 'conga_slap', 'shaker'];
+  if (kit === 'bongos') return ['bongo_low', 'bongo_high', 'shaker'];
+  if (kit === 'cajon') return ['cajon_bass', 'cajon_snare', 'shaker'];
+  return ['kick', 'snare', 'conga_open', 'bongo_high', 'cajon_bass', 'shaker', 'tambourine'];
 }

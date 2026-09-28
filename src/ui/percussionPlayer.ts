@@ -1,9 +1,9 @@
-import { DEFAULT_PERCUSSION_LEVELS, PERCUSSION_KITS, PERCUSSION_VOICES, PercussionBus, percussionHits, type PercussionKit, type PercussionLevels } from '../audio/percussion';
+import { DEFAULT_PERCUSSION_LEVELS, PERCUSSION_KITS, PERCUSSION_VOICES, PercussionBus, percussionHits, percussionPads, type PercussionKit, type PercussionLevels, type PercussionVoice } from '../audio/percussion';
 import { RHYTHM_PRESETS, getRhythmPreset } from '../tabs/rhythm';
 
 export class PercussionPlayer {
   private presetId = 'keharwa';
-  private kit: PercussionKit = 'original';
+  private kit: PercussionKit = 'drums';
   private levels = { ...DEFAULT_PERCUSSION_LEVELS };
   private bpm = 80;
   private step = 0;
@@ -16,7 +16,7 @@ export class PercussionPlayer {
 
   private el<T extends HTMLElement = HTMLElement>(id: string): T { return document.getElementById(id) as T; }
 
-  constructor(private getAudio: () => Promise<AudioContext>) {
+  constructor(private getAudio: () => Promise<AudioContext>, private hooks: { onStart?: () => void } = {}) {
     const events = { signal: this.abort.signal };
     const presets = this.el('rhythm-presets'), select = this.el<HTMLSelectElement>('dock-rhythm-select');
     for (const preset of RHYTHM_PRESETS) {
@@ -30,13 +30,14 @@ export class PercussionPlayer {
     select.addEventListener('change', () => this.selectPreset(select.value), events);
     const instruments = this.el<HTMLSelectElement>('percussion-instrument');
     for (const [id, name] of Object.entries(PERCUSSION_KITS)) instruments.add(new Option(name, id));
+    instruments.value = this.kit;
     instruments.addEventListener('change', () => {
       const kit = (Object.keys(PERCUSSION_KITS) as PercussionKit[]).find(key => key === instruments.value);
       if (!kit) throw new Error('Choose a supported percussion instrument.');
-      this.kit = kit;
-      if (this.mode === 'starting' || this.mode === 'preview') this.stop();
-      else this.bus?.stop();
-      this.status(`${PERCUSSION_KITS[kit]} selected. ${this.mode === 'playing' ? 'The next pulse uses this sound.' : 'Hear the sound or start the rhythm.'}`);
+      const resume = this.mode === 'playing';
+      this.stop(); this.kit = kit; this.renderPads();
+      this.status(`${PERCUSSION_KITS[kit]} selected. ${resume ? 'Loading the kit, then restarting the pattern.' : 'Hear a sound or start the rhythm.'}`);
+      if (resume) void this.start(false);
     }, events);
     this.el('btn-dock-rhythm-toggle').addEventListener('click', () => {
       if (this.mode !== 'idle') this.stop();
@@ -58,7 +59,7 @@ export class PercussionPlayer {
     this.el('pane-rhythm').addEventListener('keydown', event => { if (event.key === 'Escape') this.stop(); }, events);
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.stop('Percussion stopped while the page was hidden.'); }, events);
     window.addEventListener('pagehide', () => this.stop(), events);
-    this.renderPreset(); this.syncButton();
+    this.renderPreset(); this.renderPads(); this.syncButton();
   }
 
   private preset() {
@@ -90,6 +91,22 @@ export class PercussionPlayer {
     });
     this.el('percussion-pulse').textContent = `${preset.name} · ${preset.pattern.length} pulses`;
   }
+  private renderPads(): void {
+    const container = this.el('percussion-pads');
+    container.replaceChildren();
+    percussionPads(this.kit).forEach(voice => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'btn btn-secondary'; button.dataset.voice = voice;
+      button.textContent = PERCUSSION_VOICES[voice];
+      button.addEventListener('click', () => { void this.start(true, voice); }, { signal: this.abort.signal });
+      container.append(button);
+    });
+    this.el('percussion-source').textContent = this.kit.startsWith('drums')
+      ? 'Recorded drum kit by Musicca. Open hi-hats are choked by closed/foot hi-hat hits.'
+      : this.kit === 'tabla' ? 'Legacy synthesized tabla. No recorded tabla bank is claimed; choose a recorded drum or hand-percussion kit for recorded sound.'
+        : this.kit === 'original' ? 'Original pattern instruments: recorded drums/hand percussion; tabla strokes remain explicitly synthesized.'
+          : 'Recorded hand percussion from VCSL (CC0), with recorded dynamic layers and alternate hits.';
+  }
   private selectPreset(id: string): void {
     if (!getRhythmPreset(id)) throw new Error(`Unknown percussion pattern: ${id}`);
     const resume = this.mode === 'playing';
@@ -98,9 +115,10 @@ export class PercussionPlayer {
     if (resume) void this.start(false);
   }
 
-  private async start(preview: boolean): Promise<void> {
+  private async start(preview: boolean, voice?: PercussionVoice): Promise<void> {
     this.stop();
     if (!this.active || document.hidden) return;
+    this.hooks.onStart?.();
     const generation = this.generation;
     this.mode = 'starting'; this.syncButton(); this.status('Preparing percussion audio…');
     try {
@@ -113,13 +131,15 @@ export class PercussionPlayer {
           if (this.bus?.context === context && context.state !== 'running') this.stop('Audio was interrupted. Press Start to resume.');
         }, { signal: this.abort.signal });
       }
+      await this.bus.prepare(this.kit);
+      if (generation !== this.generation || !this.active || document.hidden) return;
       this.bus.setLevels(this.levels);
       this.mode = preview ? 'preview' : 'playing'; this.step = 0; this.syncButton();
       if (preview) {
         const stroke = this.preset().pattern[0];
-        this.bus.play(stroke.type, this.kit, stroke.vel);
-        this.status(`Sound preview: ${percussionHits(stroke.type, this.kit).map(hit => PERCUSSION_VOICES[hit.voice]).join(' + ')}.`);
-        this.timer = window.setTimeout(() => this.stop('Sound preview finished. Start the rhythm when ready.'), 750);
+        const duration = voice ? this.bus.playVoice(voice, this.kit, .85) : this.bus.play(stroke.type, this.kit, stroke.vel);
+        this.status(`Sound preview: ${voice ? PERCUSSION_VOICES[voice] : percussionHits(stroke.type, this.kit).map(hit => PERCUSSION_VOICES[hit.voice]).join(' + ')}.`);
+        this.timer = window.setTimeout(() => { if (generation === this.generation) this.stop('Sound preview finished. Start the rhythm when ready.'); }, Math.max(.25, duration + .03) * 1000);
       } else {
         this.status('Percussion playing. Adjust its volume independently of the guitar.');
         this.pulse();
@@ -143,7 +163,8 @@ export class PercussionPlayer {
       });
       this.el('percussion-pulse').textContent = `${this.step + 1}/${preset.pattern.length} · ${stroke.name} · ${percussionHits(stroke.type, this.kit).map(hit => PERCUSSION_VOICES[hit.voice]).join(' + ')}`;
       this.step = (this.step + 1) % preset.pattern.length;
-      this.timer = window.setTimeout(() => this.pulse(), 60000 / this.bpm);
+      const generation = this.generation;
+      this.timer = window.setTimeout(() => { if (generation === this.generation) this.pulse(); }, 60000 / this.bpm);
     } catch (error) {
       console.error('Percussion pulse failed:', error);
       this.stop(`Percussion stopped: ${error instanceof Error ? error.message : String(error)}`);
@@ -158,5 +179,6 @@ export class PercussionPlayer {
     this.syncButton(); this.status(message);
   }
   setActive(active: boolean): void { this.active = active; if (!active) this.stop(); }
+  stopIfActive(message: string): void { if (this.mode !== 'idle') this.stop(message); }
   dispose(): void { this.stop(); this.active = false; this.abort.abort(); this.bus?.dispose(); }
 }

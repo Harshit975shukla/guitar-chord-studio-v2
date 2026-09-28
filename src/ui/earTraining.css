@@ -1,0 +1,61 @@
+#pane-trainer.ear-training {
+  color: var(--text-main);
+}
+
+.ear-training [hidden] { display: none !important; }
+.ear-training .ear-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; }
+.ear-training h2 { font-size: clamp(26px, 3vw, 38px); font-weight: 450; letter-spacing: -.025em; line-height: 1.2; }
+.ear-training .ear-heading p { color: var(--text-muted); margin-top: 9px; line-height: 1.6; font-size: 14px; }
+.ear-training .ear-stats { display: flex; gap: 24px; margin: 0; }
+.ear-training .ear-stats dt { color: var(--text-muted); font-size: 12px; }
+.ear-training .ear-stats dd { margin: 5px 0 0; font-size: 18px; font-variant-numeric: tabular-nums; }
+.ear-training .ear-switches { display: flex; flex-wrap: wrap; gap: 20px 32px; margin-bottom: 28px; }
+.ear-training .ear-segmented { display: flex; flex-wrap: wrap; gap: 5px; padding: 0; border: 0; min-width: 0; margin: 0; }
+.ear-training .ear-segmented legend { font-size: 12px; color: var(--text-muted); margin-bottom: 9px; padding: 0; }
+.ear-training .ear-segmented button { background: transparent; color: var(--text-main); border: 1px solid var(--border-subtle); border-radius: 7px; padding: 10px 16px; min-height: 44px; font-size: 13px; }
+.ear-training .ear-segmented button[aria-pressed="true"] { color: var(--accent-gold); background: var(--panel-bg); border-color: var(--accent-gold); }
+.ear-training .ear-segmented button:hover:not(:disabled), .ear-training .ear-choice:hover:not(:disabled) { border-color: var(--accent-gold); }
+.ear-training button:focus-visible, .ear-training select:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 3px; }
+.ear-training button:disabled { opacity: .55; cursor: not-allowed; }
+.ear-training .ear-workspace { display: grid; grid-template-columns: minmax(230px, .7fr) minmax(0, 1.6fr); gap: 32px; align-items: start; }
+.ear-training .ear-settings { min-width: 0; }
+.ear-training .ear-settings h3 { margin: 0 0 20px; font-size: 17px; font-weight: 550; }
+.ear-training .ear-settings label { display: grid; gap: 8px; margin-bottom: 18px; font-size: 13px; color: var(--text-main); }
+.ear-training .ear-settings select { color: var(--text-main); background: var(--panel-bg); width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--border-subtle); border-radius: 7px; padding: 10px; font-size: 13px; }
+.ear-training .ear-context { font-size: 13px; line-height: 1.8; color: var(--accent-gold); margin-top: 22px; overflow-wrap: anywhere; }
+.ear-training .ear-settings-note { font-size: 12px; color: var(--text-muted); line-height: 1.8; margin-top: 14px; max-width: 65ch; }
+.ear-training .ear-exercise { min-width: 0; padding: 26px; background: var(--panel-bg); border: 1px solid var(--border-light); border-radius: 14px; }
+.ear-training .ear-instruction { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+.ear-training #quiz-target-chord-name { font-size: clamp(25px, 3vw, 36px); font-weight: 450; color: var(--accent-gold); letter-spacing: -.02em; line-height: 1.25; overflow-wrap: anywhere; margin: 12px 0; }
+.ear-training .ear-description { font-size: 14px; color: var(--text-main); line-height: 1.7; max-width: 68ch; }
+.ear-training .ear-actions, .ear-training .ear-practice-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
+.ear-training .ear-actions .btn, .ear-training .ear-practice-actions .btn { min-height: 44px; white-space: normal; }
+.ear-training .ear-audio-status { font-size: 13px; line-height: 1.7; margin-top: 12px; color: var(--text-muted); overflow-wrap: anywhere; min-height: 22px; }
+.ear-training .ear-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 22px; }
+.ear-training .ear-choice { background: var(--bg-dark); color: var(--text-main); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 15px; min-height: 54px; font-size: 15px; line-height: 1.5; text-align: left; overflow-wrap: anywhere; }
+.ear-training .ear-playing-guide { border-top: 1px solid var(--border-subtle); margin-top: 22px; padding-top: 20px; }
+.ear-training .ear-playing-guide h4 { font-weight: 500; font-size: 13px; color: var(--text-main); margin-bottom: 14px; }
+.ear-training .ear-frets { font-size: 22px; color: var(--accent-gold); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ear-training .ear-note-run { list-style-position: inside; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 16px; padding: 0; margin: 0; }
+.ear-training .ear-note-run li { color: var(--text-main); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.ear-training .ear-note-run li[aria-current="step"] { color: var(--accent-gold); font-weight: 650; }
+.ear-training .ear-position-note, .ear-training .ear-limits { color: var(--text-muted); font-size: 12px; line-height: 1.8; margin-top: 16px; max-width: 70ch; }
+.ear-training .ear-feedback { font-size: 14px; line-height: 1.8; color: var(--text-main); margin-top: 20px; max-width: 70ch; overflow-wrap: anywhere; }
+.ear-training .ear-feedback[data-state="success"] { color: var(--accent-emerald); }
+.ear-training .ear-feedback[data-state="error"] { color: var(--accent-rose); }
+.ear-training .ear-progress { color: var(--accent-gold); font-size: 13px; line-height: 1.7; margin-top: 9px; }
+.ear-training .ear-limits { border-top: 1px solid var(--border-subtle); padding-top: 18px; margin-top: 24px; }
+
+@media (max-width: 760px) {
+  .ear-training .ear-workspace { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .ear-training .ear-exercise { padding: 20px; }
+  .ear-training .ear-switches { gap: 18px; }
+  .ear-training .ear-settings-note { max-width: 70ch; }
+}
+
+@media (max-width: 420px) {
+  .ear-training .ear-heading { gap: 18px; }
+  .ear-training .ear-choices, .ear-training .ear-note-run { grid-template-columns: minmax(0, 1fr); }
+  .ear-training .ear-exercise { padding: 16px; }
+  .ear-training .ear-segmented button { padding: 10px 12px; }
+}

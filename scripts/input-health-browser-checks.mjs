@@ -71,6 +71,9 @@ export async function checkInputHealth({ check, evaluate, send, until, screensho
       await evaluate(() => { switchTab('rhythm'); document.getElementById('percussion-preview').click(); });
       await until("document.getElementById('percussion-status').textContent.includes('room check')");
       assert.equal(await evaluate(() => document.getElementById('rhythm-dock').dataset.state), 'idle');
+      await evaluate(() => document.querySelector('.groove [data-groove-play]').click());
+      await until("document.querySelector('.groove [data-groove-status]').textContent.includes('room check')");
+      assert.equal(await evaluate(() => document.querySelector('.groove').dataset.state), 'idle');
       await evaluate(() => switchTab('detector'));
       await until("!!appState.detectionEngine.getNoiseProfile()?.calibrated && !appState.detectionEngine.isNoiseCalibrating()");
       assert.equal(await evaluate(() => appState.detectionEngine.getNoiseProfile().warning ?? null), null);

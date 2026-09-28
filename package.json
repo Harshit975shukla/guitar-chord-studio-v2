@@ -15,7 +15,11 @@
     "test:strumming": "tsx scripts/strumming-smoke.mjs",
     "test:theory": "tsx scripts/circle-smoke.mjs && tsx scripts/lessons-smoke.mjs",
     "test:percussion": "tsx scripts/percussion-smoke.mjs",
-    "test:guitar": "tsx scripts/guitar-samples-smoke.mjs"
+    "test:groove": "tsx scripts/groove-smoke.mjs",
+    "test:guitar": "tsx scripts/guitar-samples-smoke.mjs",
+    "test:ear": "tsx scripts/ear-training-smoke.mjs",
+    "test:lab": "tsx scripts/guitar-lab-smoke.mjs",
+    "test:jam": "tsx scripts/jam-loop-smoke.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",
