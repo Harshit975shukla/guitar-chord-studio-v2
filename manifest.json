@@ -1,50 +1,28 @@
 {
-  "name": "Guitar Chord Detective Studio",
+  "name": "Guitar Studio",
   "short_name": "GuitarStudio",
-  "description": "Real-time guitar chord detection, practice tools, and acoustic synthesis",
-  "start_url": "/",
+  "description": "Guitar practice studio: live chord and note detection, play-along songs, scales, drums and more.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#07090e",
-  "theme_color": "#0d1117",
-  "orientation": "portrait-primary",
+  "background_color": "#171918",
+  "theme_color": "#171918",
+  "orientation": "any",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
   "categories": ["music", "education", "utilities"],
-  "shortcuts": [
-    {
-      "name": "Live Detector",
-      "short_name": "Detect",
-      "description": "Real-time chord detection",
-      "url": "/?tab=detector",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Chord Change Drill",
-      "short_name": "Drill",
-      "description": "Practice chord transitions",
-      "url": "/?tab=drill",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Headstock Tuner",
-      "short_name": "Tuner",
-      "description": "Precision guitar tuner",
-      "url": "/?tab=tuner",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    }
-  ],
-  "screenshots": [],
   "prefer_related_applications": false
 }
