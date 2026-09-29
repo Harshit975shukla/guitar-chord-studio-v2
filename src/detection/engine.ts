@@ -50,6 +50,17 @@ export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
   oversubtraction: 1.80,
 };
 
+/**
+ * Strum capture confirms most chords after three frames. A new power/suspended reading, or a 7th
+ * whose evidence is marginal, instead waits until this long after the strum attack (still inside
+ * the unchanged 30–320 ms capture window). On real recordings, some of those early readings were
+ * strums whose third had not sounded yet, or bright attack overtones that fade within ~100 ms.
+ */
+export const STRUM_PATIENCE_MS = 190;
+export const PATIENT_SEVENTH_RATIO = 0.75;
+const THIRDLESS_QUALITIES = new Set(['Power Chord (5)', 'Suspended 2nd', 'Suspended 4th']);
+const SEVENTH_QUALITIES = new Set(['Dominant 7th', 'Major 7th', 'Minor 7th']);
+
 // ============================================================================
 // Core 10 Chord Templates (V1 Proven Set)
 // ============================================================================
@@ -168,6 +179,10 @@ export class DetectionEngine {
   private strumState: 'idle' | 'attack' = 'idle';
   private strumAttackTimestamp = 0;
   private strumChromaBuffer: Float32Array[] = [];
+  /** Deadline for an unconfirmed power/sus/marginal-7th reading; 0 when none is pending. */
+  private strumPatienceUntil = 0;
+  /** The waiting reading and the capture (attack) it was measured in. */
+  private strumPending: { result: DetectionResult; captureAt: number } | null = null;
   private lockedChordResult: DetectionResult | null = null;
   private lockedNoteResult: DetectionResult | null = null;
   private lastAudioActivityTimestamp = 0;
@@ -748,15 +763,7 @@ export class DetectionEngine {
     const isMinor = best.quality.includes("Minor") || best.quality.includes("m7");
     const triadQuality = isMinor ? "Minor" : "Major";
     const triadMatch = matches.find(m => m.root === best.root && m.quality === triadQuality);
-
-    const seventhInterval = (best.quality === "Major 7th") ? 11 : 10;
-    const thirdInterval = isMinor ? 3 : 4;
-    const rootEnergy = smoothedChroma[rootIdx];
-    const thirdEnergy = smoothedChroma[(rootIdx + thirdInterval) % 12];
-    const fifthEnergy = smoothedChroma[(rootIdx + 7) % 12];
-    const seventhEnergy = smoothedChroma[(rootIdx + seventhInterval) % 12];
-    const triadAvg = (rootEnergy + thirdEnergy + fifthEnergy) / 3;
-    const seventhRatio = seventhEnergy / (triadAvg + 0.001);
+    const seventhRatio = this.seventhRatio(smoothedChroma, rootIdx, best.quality);
 
     if (best.quality.includes("7") || best.quality.includes("7th")) {
       if (triadMatch && seventhRatio < this.config.seventhStrictness) {
@@ -893,11 +900,52 @@ export class DetectionEngine {
   // Main Processing Loop
   // ============================================================================
 
+  /** 7th evidence relative to the triad tones (used by the 7th gate and capture patience). */
+  private seventhRatio(chroma: Float32Array, root: number, quality: string): number {
+    const minor = quality.includes("Minor") || quality.includes("m7");
+    const triadAvg = (chroma[root] + chroma[(root + (minor ? 3 : 4)) % 12] + chroma[(root + 7) % 12]) / 3;
+    return chroma[(root + (quality === "Major 7th" ? 11 : 10)) % 12] / (triadAvg + 0.001);
+  }
+
+  /** Whether a new strum-capture reading should wait for more of the same strum before confirming. */
+  private needsStrumPatience(chord: NonNullable<DetectionResult['chord']>, chroma: Float32Array, incumbent: string | null): boolean {
+    if (chord.symbol === incumbent) return false;
+    if (THIRDLESS_QUALITIES.has(chord.quality)) return true;
+    return SEVENTH_QUALITIES.has(chord.quality)
+      && this.seventhRatio(chroma, NOTE_NAMES.indexOf(chord.root), chord.quality) < PATIENT_SEVENTH_RATIO;
+  }
+
+  private chordTones(chord: NonNullable<DetectionResult['chord']>): number[] {
+    const template = CHORD_TEMPLATES.find(candidate => candidate.name === chord.quality);
+    const root = NOTE_NAMES.indexOf(chord.root);
+    return template ? template.weights.flatMap((weight, i) => weight > 0 ? [(root + i) % 12] : []) : [];
+  }
+
+  /**
+   * Whether `later` is a fuller reading of the same strum: every earlier tone still sounds and a chord
+   * tone was added. Equivalent spellings of one pitch set (F#sus4/Bsus2) keep the earlier bass-based name.
+   */
+  private continuesStrum(earlier: NonNullable<DetectionResult['chord']>, later: NonNullable<DetectionResult['chord']>): boolean {
+    const before = this.chordTones(earlier);
+    return before.length > 0 && before.every(pc => later.activeNotes.includes(NOTE_NAMES[pc]))
+      && this.chordTones(later).some(pc => !before.includes(pc));
+  }
+
   private clearStrumAttempt(): void {
     this.strumState = 'idle';
     this.strumAttackTimestamp = 0;
     this.strumChromaBuffer = [];
+    this.strumPatienceUntil = 0;
+    this.strumPending = null;
     this.candidateVoteHistory = [];
+  }
+
+  /** Confirms a strum-capture chord and ends the attempt. */
+  private lockStrumChord(result: DetectionResult): DetectionResult {
+    this.lockedChordResult = result;
+    this.lastLockedChord = result.chord?.symbol ?? null;
+    this.clearStrumAttempt();
+    return result;
   }
 
   private holdResult(result: DetectionResult, spectrum: Float32Array, signalLevelDb: number): DetectionResult {
@@ -1299,13 +1347,27 @@ export class DetectionEngine {
           for (let i = 0; i < 12; i++) avgChroma[i] /= this.strumChromaBuffer.length;
           for (let i = 0; i < 12; i++) this.smoothedChroma[i] = avgChroma[i];
 
+          const incumbent = this.lastLockedChord;
           const chordRes = this.processChord(avgChroma, peaks);
-          if (chordRes.mode === 'chord' && chordRes.chord) {
-            this.lockedChordResult = chordRes;
-            this.lastLockedChord = chordRes.chord.symbol;
-            this.clearStrumAttempt();
-            return chordRes;
+          const reading = chordRes.mode === 'chord' && chordRes.chord ? chordRes : null;
+          if (reading && !this.needsStrumPatience(reading.chord!, avgChroma, incumbent)) return this.lockStrumChord(reading);
+          // A waiting reading is replaced by the same root (C#5 → C#m, Em7 → Em), by a fuller reading
+          // that keeps all its tones, or by a new chord after a renewed attack. Only decay within the
+          // same strum keeps the earlier reading. A renewed attack never extends the deadline.
+          const pending = this.strumPending;
+          const renewed = !!pending && pending.captureAt !== this.strumAttackTimestamp;
+          if (reading && (!pending || renewed || reading.chord!.root === pending.result.chord!.root
+            || this.continuesStrum(pending.result.chord!, reading.chord!))) {
+            this.strumPending = { result: reading, captureAt: this.strumAttackTimestamp };
+            if (!pending) this.strumPatienceUntil = this.strumAttackTimestamp + STRUM_PATIENCE_MS;
           }
+          const waiting = this.strumPending;
+          // After a renewed attack, only the new strum's own reading can end the wait.
+          if (waiting && now >= this.strumPatienceUntil && waiting.captureAt === this.strumAttackTimestamp) {
+            return this.lockStrumChord(waiting.result === reading ? reading : { ...waiting.result, timestamp: now });
+          }
+          // processChord promotes any chord it returns; only confirmed readings become the incumbent.
+          this.lastLockedChord = incumbent;
         }
 
         if (this.lockedChordResult) {

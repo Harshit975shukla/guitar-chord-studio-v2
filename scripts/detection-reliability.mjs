@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { DetectionEngine, DEFAULT_DETECTION_CONFIG } from '../src/detection/engine.ts';
+import { DetectionEngine, DEFAULT_DETECTION_CONFIG, STRUM_PATIENCE_MS, PATIENT_SEVENTH_RATIO } from '../src/detection/engine.ts';
 import { STANDARD_TUNING } from '../src/types/index.ts';
 
 const SR = 44100, N = 8192;
 const C = [130.8, 164.8, 196, 261.6, 329.6, 392, 523.3];
+const C5 = [130.8, 196, 261.6, 392];
 const G = [98, 123.47, 146.83, 196, 246.94, 293.66, 392];
 const E = [329.63, 659.26, 988.9];
 const originalNow = Date.now;
@@ -231,6 +232,125 @@ try {
     assert.ok(repeated.performance.id > captured.performance.id);
     assert.equal(repeated.performance.attackAt, base + 400);
     freshChord(repeated, 'C');
+  });
+  check('a new power-chord reading waits inside the capture window, then confirms', () => {
+    assert.equal(STRUM_PATIENCE_MS, 190);
+    const { frame, engine } = fixture();
+    for (const ms of [0, 32, 64, 96, 128, 160]) assert.equal(frame(ms, C5).freshness, 'none');
+    assert.equal(engine.strumState, 'attack');
+    const confirmed = frame(192, C5);
+    freshChord(confirmed, 'C');
+    assert.equal(confirmed.chord.symbol, 'C5');
+    assert.equal(engine.strumState, 'idle');
+    frame(300, null);
+    // Repeating the confirmed chord keeps the three-frame path.
+    const repeated = capture(frame, 400, C5);
+    freshChord(repeated, 'C');
+    assert.equal(repeated.chord.symbol, 'C5');
+  });
+  check('a third that sounds before the deadline replaces an early power-chord reading', () => {
+    const { frame } = fixture();
+    for (const ms of [0, 32, 64, 96]) assert.equal(frame(ms, C5).freshness, 'none');
+    for (const ms of [128, 160, 192]) assert.equal(frame(ms, C, -12).freshness, 'none');
+    const full = frame(224, C, -12);
+    freshChord(full, 'C');
+    assert.equal(full.chord.symbol, 'C');
+  });
+  check('a renewed attack restarts collection but never extends the patience deadline', () => {
+    const { frame } = fixture();
+    for (const ms of [0, 32, 64, 96]) assert.equal(frame(ms, C5).freshness, 'none');
+    for (const ms of [128, 160, 192]) assert.equal(frame(ms, C5, -12).freshness, 'none');
+    const confirmed = frame(224, C5, -12);
+    freshChord(confirmed, 'C');
+    assert.equal(confirmed.chord.symbol, 'C5');
+  });
+  check('a marginal 7th waits for attack overtones to fade; a clear 7th confirms on the fast path', () => {
+    // Controlled chroma isolates the confirmation rule from the spectral front end.
+    const dominant = seventh => { const chroma = new Float32Array(12); chroma[0] = 1; chroma[4] = .8; chroma[7] = .8; chroma[10] = seventh; return chroma; };
+    const marginal = fixture();
+    let seventh = .6;
+    assert.ok(seventh / ((1 + .8 + .8) / 3) < PATIENT_SEVENTH_RATIO);
+    marginal.engine.buildChromaCQT = () => dominant(seventh);
+    for (const ms of [0, 32, 64, 96]) assert.equal(marginal.frame(ms).freshness, 'none');
+    seventh = .1;
+    let first;
+    for (const ms of [128, 160, 192]) { first = marginal.frame(ms); if (first.freshness === 'fresh') break; }
+    freshChord(first, 'C');
+    assert.equal(first.chord.symbol, 'C');
+    const clear = fixture();
+    clear.engine.buildChromaCQT = () => dominant(.9);
+    for (const ms of [0, 32, 64]) assert.equal(clear.frame(ms).freshness, 'none');
+    const fast = clear.frame(96);
+    freshChord(fast, 'C');
+    assert.equal(fast.chord.symbol, 'C7');
+  });
+  check('while a reading waits, the previous chord stays held rather than fresh', () => {
+    const { frame } = fixture();
+    const first = capture(frame);
+    freshChord(first, 'C');
+    frame(150, null);
+    for (const ms of [200, 232, 264, 296, 328]) held(frame(ms, C5), first);
+    const next = frame(392, C5);
+    freshChord(next, 'C');
+    assert.equal(next.chord.symbol, 'C5');
+  });
+  check('an unconfirmed reading whose strum fades before the deadline confirms nothing', () => {
+    const { frame, engine } = fixture();
+    for (const ms of [0, 32, 64, 96]) assert.equal(frame(ms, C5).freshness, 'none');
+    for (const ms of [128, 160, 192, 224, 256, 288, 320, 351]) assert.equal(frame(ms, null).freshness, 'none');
+    assert.equal(engine.strumState, 'idle');
+    freshChord(capture(frame, 500), 'C');
+  });
+  check('ambiguous later frames at the deadline keep, rather than drop, the earlier reading', () => {
+    const { frame, engine } = fixture();
+    const buildChroma = engine.buildChromaCQT, decide = engine.processChord.bind(engine);
+    let lastReading;
+    engine.processChord = (chroma, peaks) => { const result = decide(chroma, peaks); lastReading = result.mode; return result; };
+    for (const ms of [0, 32, 64, 96]) assert.equal(frame(ms, C5).freshness, 'none');
+    // Silent chroma pulls the capture average below every chord's evidence floor.
+    engine.buildChromaCQT = () => new Float32Array(12);
+    for (const ms of [128, 160]) assert.equal(frame(ms, C5).freshness, 'none');
+    const kept = frame(192, C5);
+    engine.buildChromaCQT = buildChroma;
+    assert.equal(lastReading, 'idle');
+    freshChord(kept, 'C');
+    assert.equal(kept.chord.symbol, 'C5');
+    assert.equal(kept.timestamp, clock);
+  });
+  check('a different chord after a renewed attack replaces the unconfirmed reading without extending the wait', () => {
+    const G5 = [98, 146.83, 196, 293.66];
+    const { frame } = fixture();
+    for (const ms of [0, 32, 64, 96]) assert.equal(frame(ms, C5).freshness, 'none');
+    for (const ms of [128, 160, 192]) assert.equal(frame(ms, G5, -12).freshness, 'none');
+    const next = frame(224, G5, -12);
+    freshChord(next, 'G');
+    assert.equal(next.chord.symbol, 'G5');
+  });
+  check('an undecided first reading after a renewed attack does not confirm the earlier strum', () => {
+    const { frame, engine } = fixture();
+    const decide = engine.processChord.bind(engine);
+    let undecided = false;
+    // The renewed strum's first readings are still gathering votes.
+    engine.processChord = (chroma, peaks) => undecided
+      ? { mode: 'idle', freshness: 'none', timestamp: Date.now(), chroma, peaks, ringingNotes: [], spectrum: new Float32Array(0), signalLevelDb: 0 }
+      : decide(chroma, peaks);
+    for (const ms of [0, 32, 64, 96]) assert.equal(frame(ms, C5).freshness, 'none');
+    undecided = true;
+    for (const ms of [128, 160, 192, 224]) assert.equal(frame(ms, G, -12).freshness, 'none');
+    undecided = false;
+    const next = frame(256, G, -12);
+    freshChord(next, 'G');
+    assert.equal(next.chord.symbol, 'G');
+  });
+  check('a renewed attack that keeps every earlier tone fills out the same strum silently', () => {
+    const Gsus4 = [98, 130.8, 146.83, 196, 261.6];
+    const { frame } = fixture();
+    for (const ms of [0, 32, 64, 96]) assert.equal(frame(ms, C5).freshness, 'none');
+    const results = [128, 160, 192, 224, 256, 288, 320].map(ms => frame(ms, Gsus4, -12));
+    const fresh = results.filter(result => result.freshness === 'fresh');
+    assert.equal(fresh.length, 1);
+    freshChord(fresh[0], 'G');
+    assert.equal(fresh[0].chord.symbol, 'Gsus4');
   });
   console.log(`\n${checks}/${checks} reliability checks passed`);
 } finally {

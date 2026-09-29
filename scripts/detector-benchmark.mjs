@@ -17,7 +17,7 @@ const baselineRef = requestedBaseline ?? (notes ? 'bbb8fdbc228ee773b7f333a08bb79
 const baseline = execFileSync('git', ['show', `${baselineRef}:src/detection/engine.ts`], { encoding: 'utf8' });
 const baselineJs = ts.transpileModule(baseline, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
   .replace(/from ['"]\.\.\/types['"]/, `from '${new URL('src/types/index.ts', base).href}'`)
-  .replace(/from ['"]\.\/(inputHealth|harmonicChroma)['"]/g, (_, name) => `from '${new URL(`src/detection/${name}.ts`, base).href}'`);
+  .replace(/from ['"]\.\/(inputHealth|harmonicChroma|notePitch)['"]/g, (_, name) => `from '${new URL(`src/detection/${name}.ts`, base).href}'`);
 const sourceHash = createHash('sha256').update(await readFile(new URL('../src/detection/engine.ts', import.meta.url))).digest('hex');
 const provenance = Object.fromEntries(await Promise.all([
   '../src/detection/engine.ts', '../src/detection/harmonicChroma.ts', '../src/detection/inputHealth.ts',

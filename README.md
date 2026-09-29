@@ -44,6 +44,8 @@ Microphone access requires HTTPS or localhost and browser permission. MIDI permi
 
 **Strum capture** collects resonance from **30 through 320 ms** and expires **after 350 ms**. Incomplete or rejected attempts expire through silence, noise and single-note gates, discard temporary samples/votes, and wait for another attack. A renewed strong attack restarts its own capture window. This capture window is unchanged; calibrated level handling and chord evidence have been improved as described below. The saved trigger identifier remains `guitartuna` for compatibility, but this is our detector, not a GuitarTuna integration.
 
+**First-strum patience.** Most chords are confirmed after three analysis frames (about 0.1 s). A *new* power-chord or sus2/sus4 reading, or a 7th whose 7th is weak (below 0.75 of the triad average), instead waits until 190 ms after the attack, still inside the window above. On real recordings such early readings were sometimes a strum whose third had not sounded yet (C#m read as C#5, D as Dsus2) or a bright attack overtone that fades within ~0.1 s (Em read as Em7). While it waits, the reading is replaced by a same-root reading (C#5 → C#m), by a fuller reading that keeps all its notes, or by a new chord after a fresh attack; if the evidence only fades, the earlier reading is kept. A reading whose strum stops sounding like a chord before the deadline is not confirmed. Re-strumming the chord already shown, triads (major, minor, diminished, augmented) and clear 7ths keep the three-frame path. Waiting frames show the previous chord as held. Equivalent spellings of one pitch set (for example Dsus2/Asus4) keep their first bass-based name. Thresholds, sensitivity and the capture window are unchanged.
+
 Results distinguish **fresh**, **held** and **none**. A held note/chord retains its original evidence timestamp and last confidence, and is labeled **Last confirmed / held**. It can remain visible, but does not score practice or drills, emit MIDI, update session statistics, or paint a current live pitch/tuning verdict. Repeated genuinely supported frames and repeated strums still count as fresh; this is not chord-event deduplication. The existing five-second silence clearing behavior remains.
 
 ### Single notes and tuner
@@ -95,6 +97,26 @@ Measured before release on this controlled corpus:
 | Non-chord inputs, 72 cases | 1 false positive | 0 false positives |
 
 Across chord cases, correct first answers increased from 723 to 1,395 and no-answer cases decreased from 771 to 28. Wrong first answers increased from 216 to 287 as coverage expanded; precision among answered cases nevertheless increased from 77.0% to 82.9%. Some individual clean voicings still regressed, so these results must not be presented as “better on every chord” or real-room accuracy. Median correct latency was about one 32 ms processing frame lower. A real recording collection across players/devices and an independent listening comparison are still needed.
+
+**First-strum patience, measured against the previous release (`7f503e2`).** The same suites were rerun with `--baseline=7f503e2` (baselines that import `notePitch.ts` now load). Exact first answers went from 627 to 634 of 765 and from 768 to 775 of 945. Wrong first answers went from 132 to 125 and from 155 to 148. No-answer cases and false positives were unchanged (0/18 and 0/54). One case regressed: a quiet G#7 with a weak 7th now reads G#. Median correct latency rose by one 32 ms frame, and new power/sus first strums wait about 0.1 s longer.
+
+It was also checked offline, through the same filters, analyser and default capture, on public recordings that are not shipped with the app:
+
+- [GuitarSet](https://zenodo.org/records/3371780) (Xi et al., ISMIR 2018, CC BY 4.0): room-mic takes with chord and note annotations; one studio room, six players, five styles.
+- 65 single-chord clips from Freesound (CC0 / CC BY 3.0–4.0; labels come from their uploaders).
+
+The rules were designed on 30 takes and 25 clips, then checked once on 30 other takes and 40 other clips:
+
+| Recordings | Measure | `7f503e2` | Now |
+| --- | --- | ---: | ---: |
+| Clean single-chord clips used for design (16) | Exact first answer | 13 | 16 |
+| Unseen single-chord clips (40) | Exact first answer · exact across all answers | 28 · 85.7% | 28 · 88.4% |
+| GuitarSet comping, design takes (30) | Answers matching the lead-sheet chord exactly | 43.4% | 46.6% |
+| GuitarSet comping, unseen takes (30) | Answers matching the lead-sheet chord exactly | 39.9% | 44.3% |
+
+- **Unseen clips:** the first answer did not change on any of them. In most misses the first stroke really held only root and fifth, and both versions report that power chord.
+- **Displayed root:** on the unseen takes the root shown on screen was correct slightly less of the time (54.4% → 52.8%). The display holds the last confirmed chord while a new power/sus reading waits.
+- **Limits:** studio-room recordings and uploader labels do not establish accuracy on your guitar, microphone or room.
 
 Relevant primary sources:
 
