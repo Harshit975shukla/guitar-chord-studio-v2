@@ -20,7 +20,8 @@
     "test:guitar": "tsx scripts/guitar-samples-smoke.mjs",
     "test:ear": "tsx scripts/ear-training-smoke.mjs",
     "test:lab": "tsx scripts/guitar-lab-smoke.mjs",
-    "test:jam": "tsx scripts/jam-loop-smoke.mjs"
+    "test:jam": "tsx scripts/jam-loop-smoke.mjs",
+    "test:manifest": "node scripts/manifest-smoke.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",

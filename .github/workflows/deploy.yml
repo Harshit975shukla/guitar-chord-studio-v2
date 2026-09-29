@@ -58,6 +58,9 @@ jobs:
       - name: Practice add-on regression tests
         run: npm run test:ear && npm run test:lab && npm run test:jam
 
+      - name: Install manifest checks
+        run: npm run test:manifest
+
       - name: Build
         run: npm run build
 
