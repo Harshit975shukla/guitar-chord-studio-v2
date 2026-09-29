@@ -19,6 +19,8 @@ export interface NeckState {
   root: string | null;
   /** Explicit positions keep scale filters, degree labels and exact plucks in sync with 2D. */
   scalePositions?: ScaleNeckPosition[] | null;
+  /** Optional positions to play next, drawn as dashed ghosts; panes that omit it render as before. */
+  upcoming?: { stringIndex: number; fret: number; label: string }[] | null;
 }
 
 /** An on-demand scene: no animation loop competes with microphone analysis. */
@@ -261,6 +263,25 @@ export class Fretboard3D {
         }
         this.label(scalePosition?.label ?? note, this.noteX(f), 0.34, this.stringZ(s), 0.28, 0x211a12, this.markers);
       }
+    }
+    for (const next of state.upcoming ?? []) {
+      if (!Number.isInteger(next.stringIndex) || next.stringIndex < 0 || next.stringIndex > 5 || !Number.isInteger(next.fret) || next.fret < 0 || next.fret > 12) continue;
+      const x = this.noteX(next.fret), z = this.stringZ(next.stringIndex);
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.03, 24),
+        new THREE.MeshBasicMaterial({ color: 0x9dbfcd, transparent: true, opacity: 0.26, depthWrite: false }));
+      glow.position.set(x, 0.24, z);
+      this.geometries.add(glow.geometry); this.materials.add(glow.material);
+      this.markers.add(glow);
+      // A dashed ring reads as "coming up", distinct from solid current and scale-target markers.
+      for (let d = 0; d < 10; d++) {
+        const dash = new THREE.Mesh(new THREE.RingGeometry(0.19, 0.235, 6, 1, d * Math.PI / 5, Math.PI / 8),
+          new THREE.MeshBasicMaterial({ color: 0x9dbfcd, side: THREE.DoubleSide }));
+        dash.rotation.x = -Math.PI / 2;
+        dash.position.set(x, 0.3, z);
+        this.geometries.add(dash.geometry); this.materials.add(dash.material);
+        this.markers.add(dash);
+      }
+      this.label(next.label, x, 0.34, z, 0.24, 0xcfe3ea, this.markers);
     }
     this.requestRender();
   }

@@ -1,13 +1,14 @@
 import './guitarLab.css';
 import {
-  GUITAR_LAB_CAVEAT, GUITAR_LAB_VIEWS, GUITAR_MODELS, createGuitarLabState, guitarAssemblyOffset, guitarAssemblyProgress,
-  guitarFretY, guitarOutlinePath, transitionGuitarLab,
-  type GuitarKind, type GuitarLabAction, type GuitarLabState, type GuitarLabView, type GuitarPartId,
+  GUITAR_LAB_CAVEAT, GUITAR_LAB_VIEWS, GUITAR_MODELS, GUITAR_PART_GROUPS, createGuitarLabState, easeInOutCubic,
+  guitarAssemblyOffset, guitarFretY, guitarOutlinePath, guitarPart, selectGuitarPart, setGuitarExplode,
+  type GuitarKind, type GuitarLabState, type GuitarLabView, type GuitarPartId,
 } from '../theory/guitarAnatomy';
 import type { AcousticBus } from '../audio/engine';
 import type { GuitarLab3D } from './guitarLab3d';
 
 const escape = (text: string): string => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+const explodeText = (percent: number): string => percent <= 0 ? 'Assembled' : percent >= 100 ? 'Fully apart' : `${percent}% apart`;
 
 /**
  * Append once to an empty host in Live Studio. Call setActive with the owning tab's
@@ -39,13 +40,13 @@ export class GuitarLab {
     this.root.className = 'guitar-lab';
     this.root.dataset.guitarLab = '';
     this.root.innerHTML = `
-      <!-- THESIS: Learn a whole guitar by moving meaningful assemblies, not replacing the studio neck.
-      OWN-WORLD: Incumbent charcoal, warm gold, quiet borders and native controls.
-      STORY: Choose an instrument, identify a part, separate it virtually, put it back.
-      FIRST VIEWPORT: One closed optional entry; expansion reveals the guitar beside a part explanation.
-      FORM: Local workbench extension with an always-available accessible parts index. -->
+      <!-- THESIS: A luthier's bench beside the practice screen: take the guitar apart and read why each part exists.
+      OWN-WORLD: Incumbent charcoal, warm gold, quiet borders; the instrument is the only lit surface.
+      STORY: Choose an instrument, drag it apart, isolate a part, read what it does, put it back together.
+      FIRST VIEWPORT: One closed optional entry; expansion reveals the guitar beside the component notes.
+      FORM: Local workbench extension with an always-available accessible component list. -->
       <summary class="gl-summary">
-        <span class="gl-summary-copy"><strong>Guitar Lab</strong><span>Explore the instrument, piece by piece.</span></span>
+        <span class="gl-summary-copy"><strong>Guitar Lab</strong><span>Take a guitar apart and learn what every part does.</span></span>
         <span class="gl-disclosure"><span data-lab-disclosure>Explore parts</span><span aria-hidden="true" class="gl-chevron">⌄</span></span>
       </summary>
       <div class="gl-content">
@@ -66,8 +67,16 @@ export class GuitarLab {
             <div class="gl-stage">
               <div class="gl-diagram" data-lab-diagram></div>
               <div class="gl-render" data-lab-render hidden></div>
-              <span class="gl-stage-label" data-lab-stage-label>Assembled view</span>
+              <span class="gl-stage-label" data-lab-stage-label>Assembled</span>
               <p class="gl-loading" data-lab-loading hidden role="status">Preparing the full guitar…</p>
+            </div>
+            <div class="gl-dock" role="group" aria-label="Assemble and disassemble">
+              <button type="button" data-lab-explode-to="0">Assemble</button>
+              <label class="gl-scrub"><span>Disassembly</span>
+                <input type="range" min="0" max="100" step="1" value="0" data-lab-explode aria-valuetext="Assembled">
+                <output data-lab-explode-out>0%</output>
+              </label>
+              <button type="button" data-lab-explode-to="100">Disassemble</button>
             </div>
             <div class="gl-camera" role="group" aria-label="Guitar Lab camera" hidden>
               <label class="gl-camera-view">View<select data-lab-camera-view aria-label="Camera view">
@@ -77,35 +86,31 @@ export class GuitarLab {
               <button type="button" data-lab-camera="right" aria-label="Rotate guitar right">↷</button>
               <button type="button" data-lab-camera="in" aria-label="Zoom guitar in">+</button>
               <button type="button" data-lab-camera="out" aria-label="Zoom guitar out">−</button>
+              <button type="button" data-lab-turntable aria-pressed="false">Turntable</button>
               <button type="button" data-lab-camera="reset">Reset view</button>
             </div>
             <p class="gl-view-help" data-lab-view-help></p>
           </div>
-          <section class="gl-detail" aria-label="Selected guitar part">
-            <div class="gl-part-heading"><h3 data-lab-part-name></h3><span class="gl-state" data-lab-part-state></span></div>
-            <p class="gl-function" data-lab-function></p>
-            <p class="gl-part-detail" data-lab-detail></p>
-            <div class="gl-assembly-detail">
-              <span>Virtual assembly</span><strong data-lab-assembly></strong>
-              <p data-lab-assembly-help></p>
-              <button type="button" data-lab-action="part" class="gl-primary">Detach assembly</button>
-            </div>
-          </section>
-          <nav class="gl-parts" aria-label="Guitar parts"><p>Select a part</p><div data-lab-parts></div></nav>
+          <aside class="gl-side">
+            <section class="gl-detail" aria-label="Selected guitar part">
+              <p class="gl-detail-empty" data-lab-detail-empty>Choose a component to isolate it and read what it does.</p>
+              <div data-lab-detail-body hidden>
+                <div class="gl-detail-head"><h3 data-lab-part-name></h3><button type="button" data-lab-clear>Show all parts</button></div>
+                <p class="gl-spec" data-lab-part-spec></p>
+                <p class="gl-info" data-lab-part-info></p>
+              </div>
+            </section>
+            <nav class="gl-parts" aria-label="Guitar parts">
+              <div class="gl-parts-head"><h3>Components</h3><span data-lab-part-count></span></div>
+              <div class="gl-part-list" data-lab-parts></div>
+            </nav>
+          </aside>
         </div>
-        <div class="gl-assembly-bar">
-          <div class="gl-progress">
-            <label><span data-lab-progress-text></span><progress data-lab-progress aria-label="Attached guitar assemblies"></progress></label>
-            <span>The body stays as the anchor.</span>
-          </div>
-          <div class="gl-actions">
-            <button type="button" data-lab-action="explode" aria-pressed="false">Exploded view</button>
-            <button type="button" data-lab-action="detach-all">Detach all</button>
-            <button type="button" data-lab-action="reassemble">Reassemble all</button>
-          </div>
-          <label class="gl-animation"><input type="checkbox" data-lab-animate ${this.motion.matches ? 'disabled' : 'checked'}> Animate 3D assembly<span data-lab-motion-note>${this.motion.matches ? ' (reduced motion)' : ''}</span></label>
-        </div>
-        <p class="gl-status" data-lab-status role="status" aria-live="polite">Select a part on the guitar or use its named button.</p>
+        <section class="gl-specs-block" aria-label="Representative specification">
+          <h3>Specification <span>representative instrument</span></h3>
+          <dl class="gl-specs" data-lab-specs></dl>
+        </section>
+        <p class="gl-status" data-lab-status role="status" aria-live="polite">Choose a component, or drag Disassembly to take the guitar apart.</p>
         ${getAudio ? `<div class="gl-audio">
           <div class="gl-actions"><button type="button" data-lab-audio="hear">Hear instrument</button><button type="button" data-lab-audio="stop" disabled>Stop preview</button></div>
           <p data-lab-audio-status role="status">Optional recorded preview: six standard-tuning open strings. Studio tuning and sound stay unchanged.</p>
@@ -121,24 +126,36 @@ export class GuitarLab {
       this.syncView();
     }, { signal });
     this.root.addEventListener('click', this.onClick, { signal });
+    this.root.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && this.state.selected) { event.preventDefault(); this.select(null); }
+    }, { signal });
+    this.find<HTMLInputElement>('[data-lab-explode]').addEventListener('input', event => {
+      this.setExplode(Number((event.target as HTMLInputElement).value) / 100, false);
+    }, { signal });
     this.find<HTMLSelectElement>('[data-lab-model]').addEventListener('change', event => {
       const kind = (event.target as HTMLSelectElement).value as GuitarKind;
-      if (!Object.hasOwn(GUITAR_MODELS, kind)) return;
+      if (!Object.hasOwn(GUITAR_MODELS, kind) || kind === this.state.kind) return;
       this.savedStates.set(this.state.kind, this.state);
       this.state = this.savedStates.get(kind) ?? createGuitarLabState(kind);
       this.stopAudio();
-      this.releaseScene();
-      this.renderParts();
-      this.render();
-      this.announce(`${GUITAR_MODELS[kind].name}. ${guitarAssemblyProgress(this.state).attached} assemblies attached.`);
+      this.scene?.update(this.state, false);
+      this.renderModel();
+      this.announce(`${GUITAR_MODELS[kind].name}: ${GUITAR_MODELS[kind].parts.length} components.`);
       this.syncView();
     }, { signal });
     this.find<HTMLSelectElement>('[data-lab-camera-view]').addEventListener('change', event => {
       const view = (event.target as HTMLSelectElement).value as GuitarLabView;
       if (!Object.hasOwn(GUITAR_LAB_VIEWS, view) || !this.scene) return;
       this.scene.view(view);
+      this.renderCamera();
       this.announce(`${GUITAR_LAB_VIEWS[view]} view.`);
     }, { signal });
+    const parts = this.find('[data-lab-parts]');
+    const preview = (event: Event) => this.scene?.hover(((event.target as Element).closest<HTMLElement>('[data-lab-part]')?.dataset.labPart as GuitarPartId | undefined) ?? null);
+    parts.addEventListener('pointerover', preview, { signal });
+    parts.addEventListener('focusin', preview, { signal });
+    parts.addEventListener('pointerleave', () => this.scene?.hover(null), { signal });
+    parts.addEventListener('focusout', () => this.scene?.hover(null), { signal });
     this.motion.addEventListener('change', this.onMotionChange, { signal });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { this.releaseScene(); this.stopAudio(); }
@@ -150,8 +167,7 @@ export class GuitarLab {
       this.syncView();
     }, { threshold: 0 });
     this.observer.observe(this.find('.gl-stage'));
-    this.renderParts();
-    this.render();
+    this.renderModel();
   }
 
   private find<T extends HTMLElement = HTMLElement>(selector: string): T {
@@ -170,14 +186,8 @@ export class GuitarLab {
   }
 
   private onMotionChange = (): void => {
-    const animate = this.find<HTMLInputElement>('[data-lab-animate]');
-    animate.disabled = this.motion.matches;
-    if (this.motion.matches) {
-      animate.checked = false;
-      this.mode = '2d';
-      this.releaseScene();
-    }
-    this.find('[data-lab-motion-note]').textContent = this.motion.matches ? ' (reduced motion)' : '';
+    this.scene?.setReducedMotion(this.motion.matches);
+    if (this.motion.matches) { this.mode = '2d'; this.releaseScene(); }
     this.syncView();
   };
 
@@ -186,95 +196,108 @@ export class GuitarLab {
     const part = target.closest<HTMLElement>('[data-lab-part], [data-lab-pick]');
     if (part) {
       const id = (part.dataset.labPart ?? part.dataset.labPick) as GuitarPartId;
-      this.dispatch({ type: 'select', part: id });
+      this.select(this.state.selected === id ? null : id);
       return;
     }
-    const view = target.closest<HTMLButtonElement>('[data-lab-view]');
-    if (view) {
-      this.mode = view.dataset.labView as '2d' | '3d';
+    const button = target.closest<HTMLButtonElement>('button');
+    if (!button || !this.root.contains(button)) return;
+    const data = button.dataset;
+    if (data.labView) {
+      this.mode = data.labView === '2d' ? '2d' : '3d';
       this.releaseScene();
       this.syncView();
-      return;
-    }
-    const camera = target.closest<HTMLButtonElement>('[data-lab-camera]')?.dataset.labCamera;
-    if (camera && this.scene) {
-      if (camera === 'left' || camera === 'right') this.scene.orbit(camera === 'left' ? -1 : 1);
-      if (camera === 'in' || camera === 'out') this.scene.zoom(camera === 'in' ? .83 : 1.2);
-      if (camera === 'reset') {
-        this.scene.resetView();
-        this.find<HTMLSelectElement>('[data-lab-camera-view]').value = 'three-quarter';
-      }
-      return;
-    }
-    const action = target.closest<HTMLButtonElement>('[data-lab-action]')?.dataset.labAction;
-    if (action === 'explode') this.dispatch({ type: 'explode', value: !this.state.exploded });
-    if (action === 'detach-all' || action === 'reassemble') this.dispatch({ type: action });
-    if (action === 'part') {
-      const assembly = GUITAR_MODELS[this.state.kind].parts.find(p => p.id === this.state.selected)!.assembly;
-      this.dispatch({ type: this.state.detached.includes(assembly) ? 'attach' : 'detach', assembly });
-    }
-    const audio = target.closest<HTMLButtonElement>('[data-lab-audio]')?.dataset.labAudio;
-    if (audio === 'hear') void this.hear();
-    if (audio === 'stop') this.stopAudio();
+    } else if (data.labCamera && this.scene) {
+      if (data.labCamera === 'left' || data.labCamera === 'right') this.scene.orbit(data.labCamera === 'left' ? -1 : 1);
+      if (data.labCamera === 'in' || data.labCamera === 'out') this.scene.zoom(data.labCamera === 'in' ? .83 : 1 / .83);
+      if (data.labCamera === 'reset') this.scene.resetView();
+      this.renderCamera();
+    } else if (button.hasAttribute('data-lab-turntable') && this.scene) {
+      this.scene.setTurntable(!this.scene.turntable);
+      this.renderCamera();
+    } else if (data.labExplodeTo) {
+      this.setExplode(Number(data.labExplodeTo) / 100, true);
+    } else if (button.hasAttribute('data-lab-clear')) {
+      this.select(null);
+    } else if (data.labAudio === 'hear') void this.hear();
+    else if (data.labAudio === 'stop') this.stopAudio();
   };
 
-  private dispatch(action: GuitarLabAction): void {
-    const before = this.state;
-    this.state = transitionGuitarLab(this.state, action);
-    this.render();
-    const model = GUITAR_MODELS[this.state.kind], part = model.parts.find(p => p.id === this.state.selected)!;
-    if (action.type === 'select') this.announce(`${part.name}. ${this.state.detached.includes(part.assembly) ? 'Detached' : 'Attached'}. ${part.function}`);
-    else if (action.type === 'explode') this.announce(this.state.exploded ? 'Exploded view spaces the groups apart; attachment progress has not changed.' : 'Exploded view off. Detached assemblies remain separate.');
-    else {
-      const delta = Math.abs(this.state.detached.length - before.detached.length), progress = guitarAssemblyProgress(this.state);
-      this.announce(`${action.type === 'detach' || action.type === 'detach-all' ? 'Detached' : 'Attached'} ${delta} ${delta === 1 ? 'assembly' : 'assemblies'}. `
-        + `${progress.attached} of ${progress.total} attached. ${action.type === 'detach' ? 'Dependent groups move together.' : action.type === 'attach' ? 'Required supporting groups are attached too.' : ''}`);
-    }
+  private select(id: GuitarPartId | null): void {
+    this.state = selectGuitarPart(this.state, id);
+    this.scene?.update(this.state);
+    this.renderSelection();
+    const part = guitarPart(this.state.kind, this.state.selected);
+    this.announce(part ? `${part.name} isolated. ${part.spec}.` : 'All components shown.');
+  }
+
+  /** value is 0 (assembled) to 1 (fully apart). */
+  private setExplode(value: number, announce: boolean): void {
+    this.state = setGuitarExplode(this.state, value);
+    this.scene?.update(this.state);
+    this.renderExplode();
+    this.renderDiagram();
+    this.renderCamera();
+    if (announce) this.announce(this.state.explode === 0 ? 'Assembled.'
+      : 'Taken apart in reverse build order: each group moves out along the direction it is fitted.');
   }
 
   private announce(message: string): void { this.find('[data-lab-status]').textContent = message; }
 
-  private renderParts(): void {
+  private renderModel(): void {
     const model = GUITAR_MODELS[this.state.kind];
-    this.find('[data-lab-parts]').innerHTML = model.parts.map(part =>
-      `<button type="button" data-lab-part="${part.id}" aria-pressed="false">${escape(part.name)}<span data-part-dot aria-hidden="true"></span></button>`).join('');
+    this.find<HTMLSelectElement>('[data-lab-model]').value = model.id;
     this.find('[data-lab-description]').textContent = model.description;
     this.find('[data-lab-construction]').textContent = model.construction;
+    this.find('[data-lab-part-count]').textContent = `${model.parts.length} parts`;
+    this.find('[data-lab-parts]').innerHTML = GUITAR_PART_GROUPS.map(group => {
+      const parts = model.parts.filter(part => part.group === group);
+      return parts.length ? `<div class="gl-part-group"><h4>${group}</h4>${parts.map(part =>
+        `<button type="button" data-lab-part="${part.id}" aria-pressed="false"><span data-part-dot aria-hidden="true"></span>${escape(part.name)}</button>`).join('')}</div>` : '';
+    }).join('');
+    this.find('[data-lab-specs]').innerHTML = model.specs.map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('');
+    this.renderExplode();
+    this.renderSelection();
   }
 
-  private render(): void {
-    const model = GUITAR_MODELS[this.state.kind], part = model.parts.find(p => p.id === this.state.selected)!;
-    const assembly = model.assemblies.find(a => a.id === part.assembly)!, detached = this.state.detached.includes(part.assembly);
-    const progress = guitarAssemblyProgress(this.state);
-    this.find('[data-lab-part-name]').textContent = part.name;
-    this.find('[data-lab-part-state]').textContent = part.assembly === 'body' ? 'Fixed anchor' : detached ? 'Detached' : 'Attached';
-    this.find('[data-lab-part-state]').dataset.detached = String(detached);
-    this.find('[data-lab-function]').textContent = part.function;
-    this.find('[data-lab-detail]').textContent = part.detail;
-    this.find('[data-lab-assembly]').textContent = assembly.name;
-    this.find('[data-lab-assembly-help]').textContent = part.assembly === 'body'
-      ? 'The other groups assemble around this fixed reference.'
-      : detached ? 'Attach this group with any supports it needs. This is a virtual relationship, not a repair step.'
-        : 'Detach this group and any groups it supports. Related parts move together.';
-    const action = this.find<HTMLButtonElement>('[data-lab-action="part"]');
-    action.disabled = part.assembly === 'body';
-    action.textContent = part.assembly === 'body' ? 'Body is the anchor' : detached ? 'Attach assembly' : 'Detach assembly';
-    this.find('[data-lab-progress-text]').textContent = `${progress.attached} / ${progress.total} assemblies attached`;
-    const bar = this.find<HTMLProgressElement>('[data-lab-progress]');
-    bar.max = progress.total; bar.value = progress.attached;
-    this.find<HTMLButtonElement>('[data-lab-action="detach-all"]').disabled = progress.attached === 1;
-    this.find<HTMLButtonElement>('[data-lab-action="reassemble"]').disabled = progress.attached === progress.total && !this.state.exploded;
-    this.find('[data-lab-action="explode"]').setAttribute('aria-pressed', String(this.state.exploded));
-    this.find('[data-lab-stage-label]').textContent = this.state.exploded ? 'Educational exploded view' : this.state.detached.length ? 'Virtual assembly' : 'Assembled view';
-    this.root.querySelectorAll<HTMLButtonElement>('[data-lab-part]').forEach(button => {
-      const part = model.parts.find(p => p.id === button.dataset.labPart)!;
-      button.setAttribute('aria-pressed', String(part.id === this.state.selected));
-      button.dataset.detached = String(this.state.detached.includes(part.assembly));
-      button.title = `${part.name} · ${this.state.detached.includes(part.assembly) ? 'detached' : 'attached'}`;
-    });
+  private renderExplode(): void {
+    const percent = Math.round(this.state.explode * 100), input = this.find<HTMLInputElement>('[data-lab-explode]');
+    input.value = String(percent);
+    input.setAttribute('aria-valuetext', explodeText(percent));
+    input.style.setProperty('--pct', `${percent}%`);
+    this.find('[data-lab-explode-out]').textContent = `${percent}%`;
+    this.find<HTMLButtonElement>('[data-lab-explode-to="0"]').disabled = percent === 0;
+    this.find<HTMLButtonElement>('[data-lab-explode-to="100"]').disabled = percent === 100;
+    this.renderStageLabel();
+  }
+
+  private renderStageLabel(): void {
+    const part = guitarPart(this.state.kind, this.state.selected);
+    this.find('[data-lab-stage-label]').textContent = explodeText(Math.round(this.state.explode * 100)) + (part ? ` · ${part.name} isolated` : '');
+  }
+
+  private renderSelection(): void {
+    const part = guitarPart(this.state.kind, this.state.selected);
+    this.find('[data-lab-detail-empty]').hidden = !!part;
+    this.find('[data-lab-detail-body]').hidden = !part;
+    if (part) {
+      this.find('[data-lab-part-name]').textContent = part.name;
+      this.find('[data-lab-part-spec]').textContent = part.spec;
+      this.find('[data-lab-part-info]').textContent = part.info;
+    }
+    this.root.querySelectorAll<HTMLButtonElement>('[data-lab-part]').forEach(button =>
+      button.setAttribute('aria-pressed', String(button.dataset.labPart === part?.id)));
+    this.renderStageLabel();
     this.renderDiagram();
-    this.scene?.update(this.state, this.find<HTMLInputElement>('[data-lab-animate]').checked && !this.motion.matches);
-    if (this.scene) this.find<HTMLSelectElement>('[data-lab-camera-view]').value = this.scene.cameraView;
+  }
+
+  private renderCamera(): void {
+    const scene = this.scene;
+    if (!scene) return;
+    this.find<HTMLSelectElement>('[data-lab-camera-view]').value = scene.cameraView;
+    const turntable = this.find<HTMLButtonElement>('[data-lab-turntable]');
+    turntable.disabled = this.motion.matches;
+    turntable.setAttribute('aria-pressed', String(scene.turntable));
+    turntable.textContent = this.motion.matches ? 'Turntable (reduced motion)' : 'Turntable';
   }
 
   private syncView(): void {
@@ -287,9 +310,10 @@ export class GuitarLab {
     this.find('.gl-camera').hidden = !showScene;
     this.find('[data-lab-loading]').hidden = !this.sceneLoading || !this.canRun;
     this.find('[data-lab-view-help]').textContent = this.mode === '2d'
-      ? 'Tap a part or use the named buttons below. The same assembly controls work in both views.'
-      : 'Drag to orbit; scroll or pinch to zoom. Part buttons and camera controls also work with a keyboard.';
+      ? 'Tap a part or use the component list. Disassembly works in both views.'
+      : 'Drag to orbit; scroll or pinch to zoom; click a part to isolate it. The component list and camera buttons also work with a keyboard.';
     this.scene?.setActive(this.canRun && this.inView && this.mode === '3d');
+    if (showScene) this.renderCamera();
     if (this.canRun && this.inView && this.mode === '3d' && !this.scene && !this.sceneLoading) void this.loadScene();
   }
 
@@ -304,10 +328,15 @@ export class GuitarLab {
       host.hidden = false;
       this.scene = new GuitarLab3D(host, this.state, {
         reducedMotion: this.motion.matches,
-        onPick: part => this.dispatch({ type: 'select', part }),
+        onPick: part => {
+          if (part === null) { if (this.state.selected) this.select(null); }
+          else this.select(this.state.selected === part ? null : part);
+        },
+        onHover: part => this.root.querySelectorAll<HTMLElement>('[data-lab-part]').forEach(row => {
+          if (row.dataset.labPart === part) row.dataset.hover = ''; else row.removeAttribute('data-hover');
+        }),
         onUnavailable: () => this.fallback(),
       });
-      this.find<HTMLSelectElement>('[data-lab-camera-view]').value = this.scene.cameraView;
     } catch {
       if (generation === this.sceneGeneration && !this.disposed) this.fallback();
     } finally {
@@ -319,7 +348,7 @@ export class GuitarLab {
     this.releaseScene();
     this.mode = '2d';
     this.syncView();
-    this.announce('3D is unavailable on this device. The 2D diagram, part explanations and all assembly controls still work. You can retry with 3D model.');
+    this.announce('3D is unavailable on this device. The 2D diagram, disassembly, component notes and specification still work. You can retry with 3D model.');
   }
 
   private releaseScene(): void {
@@ -329,51 +358,79 @@ export class GuitarLab {
     this.find('[data-lab-render]').replaceChildren();
   }
 
+  /** Front-view schematic that follows the same disassembly and isolation as the 3D model. */
   private renderDiagram(): void {
     const state = this.state, model = GUITAR_MODELS[state.kind], acoustic = state.kind !== 'electric', classical = state.kind === 'classical';
     const group = (part: GuitarPartId, shape: string): string => {
-      const item = model.parts.find(p => p.id === part)!;
-      const [x, y] = guitarAssemblyOffset(state, item.assembly);
-      return `<g data-lab-pick="${part}" data-selected="${state.selected === part}" data-detached="${state.detached.includes(item.assembly)}" transform="translate(${x} ${y})"><title>${escape(item.name)}</title>${shape}</g>`;
+      const item = guitarPart(state.kind, part);
+      if (!item) return '';
+      const [x, y] = guitarAssemblyOffset(state.kind, item.assembly, state.explode);
+      const selected = state.selected === part, faded = state.selected !== null && !selected;
+      return `<g data-lab-pick="${part}" data-selected="${selected}" data-faded="${faded}" transform="translate(${x.toFixed(3)} ${y.toFixed(3)})"><title>${escape(item.name)}</title>${shape}</g>`;
     };
     const rect = (x: number, y: number, w: number, h: number, fill: string, r = .02) =>
       `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"/>`;
     const circle = (x: number, y: number, r: number, fill: string) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}"/>`;
     const path = guitarOutlinePath(state.kind), nut = model.nutY, saddle = nut - model.scaleLength;
-    const body = group('body', `<path d="${path}" fill="${acoustic ? '#704d35' : model.topColor}" stroke="#b5ac88" stroke-width=".045"/>`);
-    const top = acoustic ? group('soundboard', `<path d="${path} M .61 -.1 a .61 .61 0 1 0 -1.22 0 a .61 .61 0 1 0 1.22 0" fill="${model.topColor}" fill-rule="evenodd" stroke="#ebd7aa" stroke-width=".035"/>`)
-      + group('soundhole', `<circle cx="0" cy="-.1" r=".67" fill="none" stroke="#67432e" stroke-width=".085"/>`) : '';
-    const neck = group('neck', `<path d="M -.43 1.2 L .43 1.2 L ${model.nutWidth / 2} ${nut} L ${-model.nutWidth / 2} ${nut} Z" fill="#b88759"/>`);
+    const layers: string[] = [];
+    if (acoustic) {
+      layers.push(group('back', `<path d="${path}" fill="#5a3a27" stroke="#8c6d52" stroke-width=".04"/>`));
+      layers.push(group('sides', `<path d="${path}" fill="#704d35" stroke="#b5ac88" stroke-width=".045"/>`));
+      layers.push(group('bracing', classical
+        ? [-2, -1, 0, 1, 2].map(i => `<line x1="${i * .13}" y1="-.9" x2="${i * .63}" y2="-3.4" stroke="#c29a62" stroke-width=".08" stroke-linecap="round"/>`).join('')
+        : [-1, 1].map(s => `<line x1="${s * 1.24}" y1=".52" x2="${-s * 1.6}" y2="-3.3" stroke="#c29a62" stroke-width=".11" stroke-linecap="round"/>`).join('')));
+      layers.push(group('soundboard', `<path d="${path} M .61 -.1 a .61 .61 0 1 0 -1.22 0 a .61 .61 0 1 0 1.22 0" fill="${model.topColor}" fill-rule="evenodd"/>`));
+      layers.push(group('binding', `<path d="${path}" fill="none" stroke="#efe3bd" stroke-width=".06"/>`));
+      layers.push(group('soundhole', `<circle cx="0" cy="-.1" r=".67" fill="none" stroke="#67432e" stroke-width=".085"/>`));
+      if (!classical) {
+        layers.push(group('pickguard', `<path d="M .59 .24 C 1.06 .26 1.5 -.44 1.37 -1.32 C 1.31 -1.66 .74 -1.62 .46 -1.47 C .87 -1 .96 -.27 .59 .24 Z" fill="#3a2418"/>`));
+        layers.push(group('strapPins', circle(0, -4.22, .07, '#b8c1c0')));
+      }
+    } else {
+      layers.push(group('neckPlate', rect(-.36, .3, .72, .92, '#b9c3c3', .05)));
+      layers.push(group('body', `<path d="${path}" fill="${model.topColor}" stroke="#b5ac88" stroke-width=".045"/>`));
+      layers.push(group('strapPins', circle(0, -4.2, .07, '#b8c1c0') + circle(-1.41, 2.3, .07, '#b8c1c0')));
+      layers.push(group('pickguard', `<path d="M -.5 1.1 C -1.1 1.1 -1.3 -.1 -1.05 -.8 C -.9 -1.3 -.6 -1.65 .7 -1.7 L .92 -.1 L .52 1.1 Z" fill="#e8e2cc" stroke="#1d1c1a" stroke-width=".03"/>`));
+    }
+    layers.push(group('neck', `<path d="M -.43 1.2 L .43 1.2 L ${model.nutWidth / 2} ${nut} L ${-model.nutWidth / 2} ${nut} Z" fill="#b88759"/>`));
     let headShape = state.kind === 'electric'
-      ? `<path d="M -.32 ${nut} Q -.68 ${nut + 2} -.17 ${nut + 1.9} Q .84 ${nut + 1.8} .35 ${nut + .9} L .32 ${nut} Z" fill="#b88759"/>`
-      : `<path d="M -.32 ${nut} L -.5 ${nut + 1.7} Q 0 ${nut + 1.92} .5 ${nut + 1.7} L .32 ${nut} Z" fill="#93603d"/>`;
-    if (classical) headShape += [-.3, .16].map(x => rect(x, nut + .38, .14, 1.04, '#191e1c', .07)).join('');
-    const head = group('headstock', headShape);
+      ? `<path d="M -.32 ${nut} Q -.68 ${nut + 2} -.17 ${nut + 1.9} Q .84 ${nut + 1.8} .35 ${nut + .9} L .32 ${nut} Z" fill="#c9a36f"/>`
+      : `<path d="M -.32 ${nut} L -.5 ${nut + 1.7} Q 0 ${nut + 1.92} .5 ${nut + 1.7} L .32 ${nut} Z" fill="#6b4431"/>`;
+    if (classical) headShape += [-.335, .135].map(x => rect(x, nut + .38, .2, 1.04, '#191e1c', .1)).join('');
+    layers.push(group('headstock', headShape));
     const boardEnd = guitarFretY(state.kind, model.frets) - .12;
-    const board = group('fretboard', `<path d="M -.45 ${boardEnd} L .45 ${boardEnd} L ${model.nutWidth / 2} ${nut} L ${-model.nutWidth / 2} ${nut} Z" fill="#35291f"/>`);
-    const frets = group('frets', Array.from({ length: model.frets }, (_, i) => {
+    layers.push(group('fretboard', `<path d="M -.45 ${boardEnd} L .45 ${boardEnd} L ${model.nutWidth / 2} ${nut} L ${-model.nutWidth / 2} ${nut} Z" fill="#35291f"/>`));
+    layers.push(group('frets', Array.from({ length: model.frets }, (_, i) => {
       const y = guitarFretY(state.kind, i + 1), width = model.nutWidth + (.9 - model.nutWidth) * (nut - y) / (nut - boardEnd);
       return rect(-width / 2, y, width, .025, '#c8c3af');
-    }).join(''));
-    const tuners = group('tuners', Array.from({ length: 6 }, (_, i) => {
+    }).join('')));
+    layers.push(group('tuners', Array.from({ length: 6 }, (_, i) => {
       const x = state.kind === 'electric' || i < 3 ? -.57 : .57, row = i < 3 ? i : 5 - i;
       const y = nut + .37 + (state.kind === 'electric' ? i * .24 : row * .5);
       return rect(x < 0 ? x : x - .27, y - .025, .27, .05, '#bbbcae') + circle(x, y, .08, classical ? '#eadaba' : '#c8cabe');
-    }).join(''));
-    const nutShape = group('nut', rect(-model.nutWidth / 2 - .02, nut, model.nutWidth + .04, .07, '#eee2c5'));
-    const bridge = group('bridge', rect(acoustic ? -.94 : -.68, saddle - .31, acoustic ? 1.88 : 1.36, .51, acoustic ? '#4b3224' : '#b7bdb5', .09)
-      + (classical ? rect(-.56, saddle - .28, 1.12, .12, '#966540') : acoustic ? Array.from({ length: 6 }, (_, i) => circle((i - 2.5) * .18, saddle - .2, .035, '#eee0c0')).join('') : ''));
-    const saddles = group('saddle', acoustic ? rect(-.56, saddle, 1.12, .055, '#f3e6c6')
-      : Array.from({ length: 6 }, (_, i) => rect((i - 2.5) * .18 - .07, saddle - .14, .14, .29, '#e2e0ca')).join(''));
-    const electronics = !acoustic ? group('pickups', [-.5, -1.13].map(y => rect(-.65, y, 1.3, .25, '#272f2b')
-      + Array.from({ length: 6 }, (_, i) => circle((i - 2.5) * .18, y + .125, .04, '#d4d1bf')).join('')).join(''))
-      + group('controls', circle(1.1, -1.8, .16, '#e3d6b8') + circle(1.3, -2.4, .16, '#e3d6b8') + rect(.9, -.9, .06, .3, '#e3d6b8') + circle(.72, -3.1, .1, '#161d19')) : '';
-    const strings = group('strings', Array.from({ length: 6 }, (_, i) => {
+    }).join('')));
+    layers.push(group('nut', rect(-model.nutWidth / 2 - .02, nut, model.nutWidth + .04, .07, '#eee2c5')));
+    layers.push(group('bridge', rect(acoustic ? -.94 : -.68, saddle - .31, acoustic ? 1.88 : 1.36, .51, acoustic ? '#4b3224' : '#b7bdb5', .09)
+      + (classical ? rect(-.56, saddle - .28, 1.12, .12, '#966540') : '')));
+    layers.push(group('saddle', acoustic ? rect(-.56, saddle, 1.12, .055, '#f3e6c6')
+      : Array.from({ length: 6 }, (_, i) => rect((i - 2.5) * .18 - .07, saddle - .14, .14, .29, '#e2e0ca')).join('')));
+    if (state.kind === 'steel') layers.push(group('pins', Array.from({ length: 6 }, (_, i) => circle((i - 2.5) * .18, saddle - .2, .035, '#eee0c0')).join('')));
+    if (!acoustic) {
+      for (const [id, y] of [['neckPickup', -.48], ['bridgePickup', -1.12]] as const) {
+        layers.push(group(id, rect(-.64, y - .13, 1.28, .26, '#ede6d0', .1) + Array.from({ length: 6 }, (_, i) => circle((i - 2.5) * .18, y, .04, '#8d9391')).join('')));
+      }
+      layers.push(group('controls', circle(1.13, -1.74, .16, '#e3d6b8') + circle(1.35, -2.37, .16, '#e3d6b8')));
+      layers.push(group('selector', `<line x1=".94" y1="-.98" x2="1.07" y2="-.81" stroke="#e6e2d3" stroke-width=".06" stroke-linecap="round"/>` + circle(1.08, -.8, .05, '#e6e2d3')));
+      layers.push(group('jack', circle(.75, -3.14, .16, '#c7cdca') + circle(.75, -3.14, .065, '#121212')));
+    }
+    layers.push(group('strings', Array.from({ length: 6 }, (_, i) => {
       const x = (i - 2.5) * .18, endX = (i - 2.5) * ((model.nutWidth - .1) / 5);
       return `<path d="M ${x} ${saddle - .22} L ${x} ${saddle} L ${endX} ${nut} L ${endX} ${nut + 1.3}" stroke="${classical ? '#fff0d2' : '#d9cdad'}" stroke-width="${.016 - i * .0015}" fill="none"/>`;
-    }).join(''));
-    this.find('[data-lab-diagram]').innerHTML = `<svg viewBox="${state.exploded || state.detached.length ? '-5.4 -10.2 11 15' : '-3.3 -8.3 6.6 13'}" role="img" aria-label="${escape(model.name)} part diagram. Use the named part buttons below.">
-      <g transform="scale(1 -1)">${body}${top}${neck}${head}${board}${frets}${tuners}${nutShape}${bridge}${saddles}${electronics}${strings}</g></svg>`;
+    }).join('')));
+    // The frame widens smoothly as the parts separate.
+    const e = easeInOutCubic(state.explode), box = [-3.3 - 2.1 * e, -8.3 - 1.9 * e, 6.6 + 4.4 * e, 13 + 2 * e].map(v => v.toFixed(3)).join(' ');
+    this.find('[data-lab-diagram]').innerHTML = `<svg viewBox="${box}" role="img" aria-label="${escape(model.name)} part diagram. Use the component list to choose a part.">
+      <g transform="scale(1 -1)">${layers.join('')}</g></svg>`;
   }
 
   private async hear(): Promise<void> {
@@ -404,7 +461,7 @@ export class GuitarLab {
         freq: 440 * 2 ** ((midi - 69) / 12), stringIndex: 5 - i, velocity: .7,
         startTime: start + i * .13, endTime: start + 2.2,
       }));
-      this.audioStatus(`Playing ${GUITAR_MODELS[kind].name.toLowerCase()}: E, A, D, G, B, E. This recording is representative, not a simulation of the virtual assembly.`);
+      this.audioStatus(`Playing ${GUITAR_MODELS[kind].name.toLowerCase()}: E, A, D, G, B, E. This recording is representative, not a simulation of the model.`);
       this.audioTimer = setTimeout(() => {
         if (current()) { this.stopAudio(false); this.audioStatus('Preview finished. Hear it again whenever you like.'); }
       }, 2350);

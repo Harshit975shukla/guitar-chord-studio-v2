@@ -24,6 +24,7 @@ import { checkEarTraining } from './ear-training-browser-checks.mjs';
 import { checkGuitarLab } from './guitar-lab-browser-checks.mjs';
 import { checkPracticeAddons } from './practice-addons-browser-checks.mjs';
 import { checkGrooves } from './groove-browser-checks.mjs';
+import { checkTabLane } from './tab-lane-browser-checks.mjs';
 
 const appUrl = process.argv[2] || 'http://127.0.0.1:5173/';
 const endpoint = `http://127.0.0.1:${process.argv[3] || '9223'}`;
@@ -169,6 +170,8 @@ try {
     await checkPercussion({ check, evaluate, send, until, screenshot });
   } else if (process.env.BROWSER_SUITE === 'groove') {
     await checkGrooves({ check, evaluate, send, until, screenshot });
+  } else if (process.env.BROWSER_SUITE === 'tab') {
+    await checkTabLane({ check, evaluate, send, until, show, screenshot });
   } else {
   await check('live renderer retains preset state and scoped accessible help', async () => {
     await evaluate(() => window.loadChordPreset('C', false));
@@ -237,6 +240,7 @@ try {
   await screenshot('songs-desktop');
 
   await checkSongs({ check, evaluate, send, until, show, screenshot });
+  await checkTabLane({ check, evaluate, send, until, show, screenshot });
   await checkAudioAnalysis({ check, evaluate, send, until, show, screenshot, requests });
   await checkStrumming({ check, evaluate, send, until, screenshot });
   await checkScales({ check, evaluate, send, until, show, screenshot });

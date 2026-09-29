@@ -10,6 +10,11 @@ import { chordIdentity, compileTiming, fitMelodyOctaves, PITCH_CLASSES, resolveS
 import { PerformanceGate, type PracticeTarget } from '../songs/performance';
 import { SongTransport } from '../songs/transport';
 import { chordInRegister, isFretboardRegister, REGISTER_LABELS, type FretboardRegister } from '../chords/positions';
+import {
+  cursorBeat, defaultSection, followingIndex, formatBeats, laneItems, nextTarget, normalizeSection, sectionPlayback,
+  type LaneItem, type LanePosition, type LaneSection, type NextTarget, type ScheduledSpan,
+} from '../songs/tabLane';
+import { TabLane } from '../ui/tabLane';
 
 const PC_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const NOTE_TO_PC: Record<string, number> = {
@@ -955,6 +960,15 @@ export class SongStudio {
   private automaticMelodyFit = true;
   private positionVoicings = new Map<string, (number | null)[] | null>();
   private neck3d: PaneNeck3D | null = null;
+  private lane: TabLane | null = null;
+  private laneItems: LaneItem[] = [];
+  private laneKey = '';
+  private laneTimeline: SongTiming | null = null;
+  /** Events as the transport scheduled them on the audio clock, for a smooth playhead. */
+  private schedule: ScheduledSpan[] = [];
+  /** Optional loop section (inclusive event indices); it takes precedence over Loop chart. */
+  private section: LaneSection | null = null;
+  private showNext = true;
   public onMicStartRequested?: () => Promise<boolean>;
   public onPlayRequested?: () => Promise<void>;
 
@@ -963,7 +977,11 @@ export class SongStudio {
       now: () => this.audioContext?.currentTime ?? 0,
       setTimer: (fn, ms) => window.setTimeout(fn, ms), clearTimer: id => window.clearTimeout(id),
     }, {
-      play: (entry, at, end) => this.referenceAudio ? this.playEvent(entry.event, at, end) : () => {},
+      play: (entry, at, end) => {
+        this.schedule.push({ index: entry.index, beat: entry.beat, beats: entry.event.beats, start: at, end });
+        if (this.schedule.length > 96) this.schedule.splice(0, this.schedule.length - 96);
+        return this.referenceAudio ? this.playEvent(entry.event, at, end) : () => {};
+      },
       target: entry => this.showEvent(entry.index),
       finish: () => this.completePlayback('End of chart. Press Play again to replay from the beginning.'),
       stalled: () => this.status('Playback resumed from the next event after a timing interruption.'),
@@ -992,6 +1010,7 @@ export class SongStudio {
     this.active = active;
     if (!active) { this.stopPlayback(); this.micGeneration++; }
     this.neck3d?.setActive(active);
+    this.lane?.setActive(active);
   }
 
   init(): void {
@@ -999,11 +1018,30 @@ export class SongStudio {
     if (!this.isControlsInitialized) {
       this.initControls();
       this.setupNeck3D();
+      this.setupTabLane();
       this.isControlsInitialized = true;
       this.loadSong(this.activeSongId);
     }
     this.refreshCatalog();
     this.neck3d?.setActive(this.active);
+    this.lane?.setActive(this.active);
+  }
+
+  private setupTabLane(): void {
+    const host = document.getElementById('song-tab-lane');
+    if (!host || this.lane) return;
+    this.lane = new TabLane(host, index => this.seekFromTab(index));
+    document.getElementById('song-loop-start')!.onclick = () => this.setSectionEdge('start');
+    document.getElementById('song-loop-end')!.onclick = () => this.setSectionEdge('end');
+    document.getElementById('song-loop-clear')!.onclick = () => this.clearSection();
+    const show = document.getElementById('song-show-next') as HTMLInputElement;
+    try { this.showNext = localStorage.getItem('gcs-song-show-next') !== 'off'; } catch { /* Optional preference. */ }
+    show.checked = this.showNext;
+    show.onchange = () => {
+      this.showNext = show.checked;
+      try { localStorage.setItem('gcs-song-show-next', show.checked ? 'on' : 'off'); } catch { /* Optional preference. */ }
+      this.renderSongFretboard();
+    };
   }
 
   private setupNeck3D(): void {
@@ -1030,23 +1068,24 @@ export class SongStudio {
   }
 
   /** Push the current chord voicing (or live lead note) to the optional 3D neck. */
-  private updateNeck3D(noteItem: { string: number; fret: number } | null, chordName: string | null): void {
+  private updateNeck3D(noteItem: { string: number; fret: number } | null, chordName: string | null, withNext = false): void {
     if (!this.neck3d) return;
     const tuning = this.tuning;
     const empty: (number | null)[] = [null, null, null, null, null, null];
     let reachCaption = '';
+    let frets = empty;
+    let root: string | null = null;
     if (noteItem) {
       const note = this.transposedNote(noteItem);
-      if (note) empty[note.s] = note.f;
+      if (note) { frets = [...empty]; frets[note.s] = note.f; root = NOTE_NAMES[note.midi % 12]; }
       if (note?.reach) reachCaption = ` · one-fret reach to ${note.f}`;
-      this.neck3d.update({ frets: empty, tuning, liveMidi: null, root: note ? NOTE_NAMES[note.midi % 12] : null });
     } else if (chordName) {
-      const frets = this.getChordFrets(chordName)?.map(f => f === null || f < 0 ? null : f) || empty;
+      frets = this.getChordFrets(chordName)?.map(f => f === null || f < 0 ? null : f) || empty;
       const parsed = parseChordSymbol(transposeChordName(chordName, this.capo));
-      this.neck3d.update({ frets, tuning, liveMidi: null, root: parsed ? parsed.root : null });
-    } else {
-      this.neck3d.update({ frets: empty, tuning, liveMidi: null, root: null });
+      root = parsed ? parsed.root : null;
     }
+    const upcoming = withNext ? this.nextNeckMarkers(frets).map(p => ({ stringIndex: p.s, fret: p.f, label: p.label })) : null;
+    this.neck3d.update({ frets, tuning, liveMidi: null, root, ...(upcoming?.length ? { upcoming } : {}) });
     const caption = document.getElementById('song-neck-caption');
     if (caption) caption.textContent = chordName ? `${chordName} · song voicing${this.capo ? ` · sounds ${transposeChordName(chordName, this.capo)} with capo ${this.capo}` : ''}` : noteItem ? this.position === 'all' ? 'Target note · original / auto fingering' : `Target note · ${REGISTER_LABELS[this.position]}` : this.currentEvent()?.type === 'rest' ? 'Rest · no note to play' : 'Play along';
     if (caption && noteItem && this.melodyOctaves) caption.textContent += ` · ${this.melodyOctaveLabel()}`;
@@ -1189,7 +1228,7 @@ export class SongStudio {
       if (mode.value === 'fixed' || mode.value === 'song' || mode.value === 'wait') this.setTimingMode(mode.value);
     };
     const loop = document.getElementById('song-loop') as HTMLInputElement;
-    loop.onchange = () => { this.stopPlayback(); this.loop = loop.checked; };
+    loop.onchange = () => { this.stopPlayback(); this.loop = loop.checked; this.updateActiveStepUI(); };
     const reference = document.getElementById('song-reference-audio') as HTMLInputElement;
     reference.onchange = () => {
       this.stopPlayback();
@@ -1386,7 +1425,9 @@ export class SongStudio {
   }
 
   async startPlayback(): Promise<void> {
-    const startIndex = this.playbackComplete ? 0 : this.currentEventIndex;
+    let startIndex = this.playbackComplete ? 0 : this.currentEventIndex;
+    const section = this.section;
+    if (section && (startIndex < section.start || startIndex > section.end)) startIndex = section.start;
     this.stopPlayback();
     if (!this.active || !this.timeline?.events.length) return;
     const generation = this.startGeneration;
@@ -1404,11 +1445,15 @@ export class SongStudio {
       if (generation !== this.startGeneration || !this.active || !this.isPlaying) return;
       if (!this.audioContext) throw new Error('Audio is unavailable; try again after allowing browser audio.');
       const entries = compileTiming(this.timeline, this.timingMode, this.bpm, this.speed);
-      for (const entry of entries.slice(this.loop ? 0 : this.currentEventIndex)) {
+      const plan = sectionPlayback(entries, this.section, this.currentEventIndex);
+      for (const entry of this.section ? plan.entries : entries.slice(this.loop ? 0 : this.currentEventIndex)) {
         const issue = this.positionIssue(entry.event);
         if (issue) throw new Error(`Event ${entry.index + 1}: ${issue}`);
       }
-      this.transport.start(entries, this.currentEventIndex, this.loop);
+      this.schedule = [];
+      this.transport.start(plan.entries, plan.start, this.loop || plan.loopAll);
+      const context = this.audioContext;
+      this.lane?.follow(() => cursorBeat(this.schedule, context.currentTime)?.beat ?? null);
       this.status(this.referenceAudio ? 'Reference playback. Scoring is off while reference audio is enabled; use headphones.' : 'Timed practice. Play each target after a new attack.');
     } catch (error) {
       this.stopPlayback();
@@ -1423,6 +1468,8 @@ export class SongStudio {
     this.auditionPending = false;
     this.micGeneration++;
     this.transport.stop();
+    this.schedule = [];
+    this.lane?.follow(null);
     this.sources.forEach(source => source.stop());
     this.sources.clear();
     this.auditionUntil = 0;
@@ -1448,8 +1495,8 @@ export class SongStudio {
 
   restartPlayback(): void {
     this.stopPlayback();
-    this.showEvent(0);
-    this.status('Restarted at the first event. Press Play when ready.');
+    this.showEvent(this.section?.start ?? 0);
+    this.status(this.section ? 'Back at the start of the loop section. Press Play when ready.' : 'Restarted at the first event. Press Play when ready.');
   }
 
   stepPrev(): void {
@@ -1458,10 +1505,9 @@ export class SongStudio {
 
   stepNext(): void {
     if (!this.timeline) return;
-    if (this.currentEventIndex + 1 >= this.timeline.events.length) {
-      if (this.loop) this.seek(0);
-      else this.completePlayback('End of chart. Press Play again to replay from the beginning.');
-    } else this.seek(this.currentEventIndex + 1);
+    const next = followingIndex(this.currentEventIndex, this.timeline.events.length, this.loop, this.section);
+    if (next === null) this.completePlayback('End of chart. Press Play again to replay from the beginning.');
+    else this.seek(next);
   }
 
   private seek(index: number): void {
@@ -1629,6 +1675,7 @@ export class SongStudio {
       if (counterEl) counterEl.textContent = `${this.currentEventIndex + 1} / ${this.timeline?.events.length || 0}`;
     }
 
+    this.syncLane();
     this.renderSongFretboard();
     const issue = this.positionIssue();
     const positionStatus = document.getElementById('song-position-status');
@@ -1667,6 +1714,114 @@ export class SongStudio {
 
   }
 
+  /** Tab items use the same transposition, capo, position and voicings as the fretboards. */
+  private buildLaneItems(): LaneItem[] {
+    if (!this.timeline) return [];
+    const chords = new Map<string, { label: string; positions: LanePosition[]; available: boolean }>();
+    return laneItems(this.timeline, event => {
+      if (event.type === 'rest') return { label: 'Rest', positions: [], available: true };
+      if (event.type === 'note') {
+        const note = this.transposedNote(event);
+        if (!note) return { label: 'Note', positions: [], available: false };
+        const name = NOTE_NAMES[note.midi % 12];
+        return { label: `${name}${Math.floor(note.midi / 12) - 1}`, positions: [{ s: note.s, f: note.f, label: name }], available: true };
+      }
+      const chord = transposeChordName(event.chord, this.transposeSemis);
+      let resolved = chords.get(chord);
+      if (!resolved) {
+        const frets = this.getChordFrets(chord);
+        const positions = (frets ?? []).flatMap((f, s) => f === null || f < 0 || f > 12 ? [] : [{ s, f, label: NOTE_NAMES[(this.tuning[s].midi + f) % 12] }]);
+        resolved = { label: chord, positions, available: positions.length > 0 };
+        chords.set(chord, resolved);
+      }
+      return resolved;
+    });
+  }
+
+  private syncLane(): void {
+    const key = [this.activeSongId, this.playMode, this.transposeSemis, this.melodyOctaves, this.position, this.capo, this.tuning.map(s => s.midi).join(',')].join('|');
+    if (this.laneTimeline !== this.timeline) this.section = null; // A different chart or part keeps no stale loop.
+    if (key !== this.laneKey || this.laneTimeline !== this.timeline) {
+      this.laneItems = this.buildLaneItems();
+      this.laneKey = key; this.laneTimeline = this.timeline;
+    }
+    this.section = normalizeSection(this.section, this.laneItems.length);
+    this.updateSectionUI();
+    const next = this.nextTargetNow();
+    const summary = this.laneSummary(next);
+    const summaryEl = document.getElementById('song-next-summary');
+    if (summaryEl) summaryEl.innerHTML = summary.html;
+    this.lane?.setView({ items: this.laneItems, strings: this.tuning.map(s => s.note), current: this.currentEventIndex, next, section: this.section, summary: summary.spoken });
+  }
+
+  private nextTargetNow(): NextTarget | null {
+    const current = this.laneItems[this.currentEventIndex];
+    if (!current) return null;
+    return nextTarget(this.laneItems, this.currentEventIndex, current.beat, this.loop, this.section);
+  }
+
+  private describeItem(item: LaneItem): string {
+    if (item.kind === 'rest') return 'rest';
+    if (!item.available) return `${item.label} (no fingering here)`;
+    if (item.kind === 'note') return `${item.label} · string ${item.positions[0].s + 1}, ${item.positions[0].f ? `fret ${item.positions[0].f}` : 'open'}`;
+    return item.label;
+  }
+
+  private laneSummary(next: NextTarget | null): { html: string; spoken: string } {
+    const current = this.laneItems[this.currentEventIndex];
+    if (!current) return { html: 'Choose a song with playable events to see its tab.', spoken: 'No playable events' };
+    const now = this.describeItem(current), count = this.laneItems.length;
+    const nextItem = next ? this.laneItems[next.index] : null;
+    const wraps = !!next && next.index <= this.currentEventIndex;
+    const nextText = nextItem ? `${this.describeItem(nextItem)}${nextItem.label === current.label && nextItem.kind === current.kind ? ' again' : ''}` : null;
+    const after = next ? ` after ${formatBeats(next.beatsAway)}${next.restBeats ? ` (including ${formatBeats(next.restBeats)} rest)` : ''}${wraps ? this.section ? ', back to the loop start' : ', from the top' : ''}` : '';
+    return {
+      html: `Now <b>${esc(now)}</b> · ${esc(formatBeats(current.beats))}. ${nextText ? `Next <strong>${esc(nextText)}</strong>${esc(after)}.` : 'Then the chart ends.'}`,
+      spoken: `Event ${this.currentEventIndex + 1} of ${count}: ${now}, ${formatBeats(current.beats)}. ${nextText ? `Next: ${nextText}${after}.` : 'Last event.'}`,
+    };
+  }
+
+  private seekFromTab(index: number): void {
+    if (!this.timeline?.events[index]) return;
+    this.seek(index);
+  }
+
+  private setSectionEdge(edge: 'start' | 'end'): void {
+    if (!this.laneItems.length) { this.status('Choose a song with playable events before setting a loop.'); return; }
+    const index = this.currentEventIndex, current = this.section;
+    const section = edge === 'start'
+      ? current && current.end >= index ? { start: index, end: current.end } : defaultSection(this.laneItems, index, 'start')
+      : current && current.start <= index ? { start: current.start, end: index } : defaultSection(this.laneItems, index, 'end');
+    this.applySection(section);
+  }
+
+  private clearSection(): void { this.applySection(null); }
+
+  private applySection(section: LaneSection | null): void {
+    const timed = this.isPlaying && this.timingMode !== 'wait';
+    if (timed) this.stopPlayback();
+    this.section = normalizeSection(section, this.laneItems.length);
+    this.updateActiveStepUI();
+    const s = this.section;
+    this.status(!s ? 'Loop section cleared. Loop chart still repeats the whole chart when it is on.'
+      : `Loop section: events ${s.start + 1}–${s.end + 1}. ${timed ? 'Playback stopped so the loop can take effect; press Play to practice it.' : this.isPlaying ? 'Wait for me now repeats this part.' : 'Press Play to repeat it.'}`);
+  }
+
+  private updateSectionUI(): void {
+    const s = this.section;
+    const clear = document.getElementById('song-loop-clear') as HTMLButtonElement | null;
+    if (clear) clear.disabled = !s;
+    for (const id of ['song-loop-start', 'song-loop-end']) {
+      const button = document.getElementById(id) as HTMLButtonElement | null;
+      if (button) button.disabled = !this.laneItems.length;
+    }
+    const statusEl = document.getElementById('song-loop-status');
+    if (!statusEl) return;
+    if (!s) { statusEl.textContent = ''; return; }
+    const first = this.laneItems[s.start], last = this.laneItems[s.end];
+    statusEl.textContent = `Looping events ${s.start + 1}–${s.end + 1} (${formatBeats(last.beat + last.beats - first.beat)}). Timed playback and Wait for me repeat this part until you clear it.`;
+  }
+
   private currentStepChord(): string | null {
     const event = this.currentEvent();
     return event?.type === 'chord' ? transposeChordName(event.chord, this.transposeSemis) : null;
@@ -1688,7 +1843,8 @@ export class SongStudio {
 
     const event = this.currentEvent();
     if (!event || event.type === 'rest') {
-      this.updateNeck3D(null, null);
+      this.updateNeck3D(null, null, !!event);
+      if (event) this.renderNextDots2D([null, null, null, null, null, null]);
       return;
     }
     if (event.type === 'note') {
@@ -1697,7 +1853,7 @@ export class SongStudio {
         this.updateNeck3D(null, null);
         return;
       }
-      this.updateNeck3D(event, null);
+      this.updateNeck3D(event, null, true);
       const { s: sIdx, f: fIdx } = note;
       const midi = this.tuning[sIdx].midi + fIdx;
       const dotLabel = NOTE_NAMES[((midi % 12) + 12) % 12];
@@ -1725,11 +1881,34 @@ export class SongStudio {
         dot.textContent = dotLabel;
         activeCell.appendChild(dot);
       }
+      const current: (number | null)[] = [null, null, null, null, null, null];
+      current[sIdx] = fIdx;
+      this.renderNextDots2D(current);
     } else {
       // CHORDS MODE (and stub-song chord playback): show the chord fingering shape
       const chord = this.currentStepChord();
-      if (chord) this.renderChordOnFretboard(chord);
+      if (chord) this.renderChordOnFretboard(chord, true);
       else this.updateNeck3D(null, null);
+    }
+  }
+
+  /** Where to play next, excluding positions already marked for the current event. */
+  private nextNeckMarkers(current: readonly (number | null)[]): LanePosition[] {
+    if (!this.showNext || !this.laneItems.length) return [];
+    const next = this.nextTargetNow();
+    if (!next) return [];
+    return this.laneItems[next.index].positions.filter(position => current[position.s] !== position.f);
+  }
+
+  private renderNextDots2D(current: readonly (number | null)[]): void {
+    for (const position of this.nextNeckMarkers(current)) {
+      const cell = document.getElementById(`song-fret-cell-${position.s}-${position.f}`);
+      if (!cell || cell.querySelector('.finger-dot, .next-dot')) continue;
+      const dot = document.createElement('div');
+      dot.className = 'next-dot';
+      dot.textContent = position.label;
+      dot.title = `Next: ${position.label}`;
+      cell.appendChild(dot);
     }
   }
 
@@ -1787,8 +1966,9 @@ export class SongStudio {
     });
   }
 
-  renderChordOnFretboard(chord: string): void {
-    this.updateNeck3D(null, chord);
+  /** fromTimeline marks the chart's current chord, which also previews the next event; palette previews do not. */
+  renderChordOnFretboard(chord: string, fromTimeline = false): void {
+    this.updateNeck3D(null, chord, fromTimeline);
     const frets = this.getChordFrets(chord);
     const chNameEl = document.getElementById('hud-chord-name');
     const chFretsEl = document.getElementById('hud-chord-frets');
@@ -1834,6 +2014,7 @@ export class SongStudio {
         }
       }
     }
+    if (fromTimeline) this.renderNextDots2D((frets ?? []).map(f => f === null || f < 0 ? null : f));
   }
 
   private renderLyricsScrollView(): void {
@@ -1945,8 +2126,8 @@ export class SongStudio {
     document.getElementById('eval-feedback-badge')!.textContent = 'Target matched (+10). Play each new target with a new attack.';
     if (this.timingMode === 'wait') {
       // Keep the accepted performance ID across targets; no frame-level dedupe.
-      if (this.timeline && this.currentEventIndex + 1 < this.timeline.events.length) this.showEvent(this.currentEventIndex + 1);
-      else if (this.loop) this.showEvent(0);
+      const next = this.timeline ? followingIndex(this.currentEventIndex, this.timeline.events.length, this.loop, this.section) : null;
+      if (next !== null) this.showEvent(next);
       else this.completePlayback('Completed. Start waiting again to practice from the beginning.');
       if (this.currentEvent()?.type === 'rest' && this.isPlaying) this.status('Rest: take your time, then choose Next.');
       else if (this.isPlaying) this.status('Matched. Play the new target with a new attack, or use Next.');

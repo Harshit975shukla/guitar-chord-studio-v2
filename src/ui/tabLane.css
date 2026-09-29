@@ -1,0 +1,33 @@
+.tab-lane-block { margin-top: 22px; min-width: 0; }
+.tab-lane-block [hidden] { display: none !important; }
+.tab-lane-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; }
+.tab-lane-title { min-width: 0; }
+.tab-lane-title h3 { font-size: 16px; font-weight: 500; line-height: 1.3; }
+.tab-lane-next { margin-top: 5px; color: var(--text-muted, #a9afa9); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.tab-lane-next b { color: var(--accent-gold, #eabb7f); font-weight: 600; }
+.tab-lane-next strong { color: #cfe3ea; font-weight: 600; }
+.tab-lane-loop { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.studio-redesign .tab-lane-loop .btn { min-height: 38px; padding: 8px 12px; }
+.tab-lane-loop .btn[aria-pressed="true"] { border-color: var(--accent-gold, #eabb7f); color: var(--accent-gold, #eabb7f); }
+.tab-lane { position: relative; min-width: 0; margin-top: 12px; overflow: hidden; border: 1px solid #394139; border-radius: 10px; background: #1b1e1c; }
+.tab-lane canvas { display: block; width: 100%; height: 158px; cursor: pointer; touch-action: pan-y; }
+.tab-lane canvas:focus-visible { outline: 2px solid var(--accent-gold, #eabb7f); outline-offset: -2px; }
+.tab-lane-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 18px; margin-top: 10px; color: var(--text-muted, #a9afa9); font-size: 12px; line-height: 1.6; }
+.tab-lane-foot label { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; }
+.tab-lane-foot input { width: 18px; height: 18px; accent-color: var(--accent-gold, #eabb7f); }
+.tab-lane-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.tab-lane-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.tab-lane-legend i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; }
+.tab-lane-legend .now { background: var(--accent-gold, #eabb7f); }
+.tab-lane-legend .next { border: 1.5px solid #9dbfcd; background: #1d2a2e; }
+.tab-lane-legend .later { border: 1px solid #4a5046; background: #2b302b; }
+#song-loop-status { margin-block: 8px 0; }
+#song-loop-status:empty { display: none; }
+.studio-redesign .pane-neck-flat .finger-dot.next-dot {
+  background: #1d2a2e; border: 2px dashed #9dbfcd; color: #dcebf1; box-shadow: none; animation: none;
+}
+@media (max-width: 520px) {
+  .tab-lane-loop { width: 100%; }
+  .studio-redesign .tab-lane-loop .btn { flex: 1 1 auto; padding-inline: 8px; }
+  .tab-lane canvas { height: 158px; }
+}

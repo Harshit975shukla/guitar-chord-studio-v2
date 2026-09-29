@@ -1399,6 +1399,27 @@
             </div>
             <p id="song-neck-help" class="neck-help">Drag to rotate · Click a string to play · + / − to zoom · R to reset</p>
           </div>
+
+          <!-- Scrolling tab with a fixed playhead: now, next and later events -->
+          <section class="tab-lane-block" aria-labelledby="song-tab-heading">
+            <div class="tab-lane-head">
+              <div class="tab-lane-title">
+                <h3 id="song-tab-heading">Tab · what comes next</h3>
+                <p id="song-next-summary" class="tab-lane-next">Choose a song to see its tab.</p>
+              </div>
+              <div class="tab-lane-loop" role="group" aria-label="Loop a section">
+                <button class="btn btn-secondary" id="song-loop-start" type="button">Loop from here</button>
+                <button class="btn btn-secondary" id="song-loop-end" type="button">…to here</button>
+                <button class="btn btn-secondary" id="song-loop-clear" type="button" disabled>Clear loop</button>
+              </div>
+            </div>
+            <div id="song-tab-lane" class="tab-lane"></div>
+            <p id="song-loop-status" class="song-data-status"></p>
+            <div class="tab-lane-foot">
+              <div class="tab-lane-legend" aria-hidden="true"><span><i class="now"></i>Now</span><span><i class="next"></i>Next</span><span><i class="later"></i>Later</span></div>
+              <label><input type="checkbox" id="song-show-next" checked> Show the next note on the fretboard</label>
+            </div>
+          </section>
         </div>
 
         <!-- Song Chords Palette Row -->

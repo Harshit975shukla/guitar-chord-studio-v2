@@ -35,7 +35,7 @@ jobs:
         run: npm run test:detection
 
       - name: Song timing and practice regression tests
-        run: npm run test:songs
+        run: npm run test:songs && npm run test:tab
 
       - name: Sound and local analysis regression tests
         run: npm run test:audio

@@ -60,7 +60,7 @@
 .guitar-lab .gl-view { display: flex; gap: 4px; }
 .guitar-lab .gl-view button { font-size: 13px; }
 .guitar-lab .gl-model-description { margin-top: 15px; color: var(--gl-muted); max-width: 75ch; }
-.guitar-lab .gl-workbench { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(245px, .85fr); gap: 26px; margin-top: 23px; }
+.guitar-lab .gl-workbench { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(250px, .8fr); gap: 24px; margin-top: 22px; }
 .guitar-lab .gl-workbench > * { min-width: 0; }
 .guitar-lab .gl-visual { position: relative; }
 .guitar-lab .gl-stage { height: 590px; position: relative; overflow: hidden; border: 1px solid #394139; background: #202924; border-radius: 9px; }
@@ -69,16 +69,11 @@
 .guitar-lab .gl-diagram svg { display: block; height: 100%; width: 100%; max-width: 100%; overflow: visible; }
 .guitar-lab .gl-diagram [data-lab-pick] { cursor: pointer; }
 .guitar-lab .gl-diagram [data-selected="true"] > :is(path, rect, circle) { stroke: #ffe4b3; stroke-width: .045; }
-.guitar-lab .gl-diagram [data-detached="true"] { opacity: .78; }
+.guitar-lab .gl-diagram [data-faded="true"] { opacity: .2; }
 .guitar-lab .gl-render canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .guitar-lab .gl-render canvas:active { cursor: grabbing; }
 .guitar-lab .gl-stage-label { position: absolute; left: 13px; top: 10px; pointer-events: none; color: #d4d9c9; font-size: 11px; line-height: 1.4; }
 .guitar-lab .gl-loading { position: absolute; inset: auto 12px 12px; padding: 8px 12px; background: #252b24; color: var(--gl-gold); border-radius: 5px; font-size: 13px; }
-.guitar-lab .gl-camera { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 10px; }
-.guitar-lab .gl-camera button { min-width: 44px; padding: 7px 10px; font-size: 18px; }
-.guitar-lab .gl-camera button:last-child { margin-left: auto; font-size: 12px; }
-.guitar-lab .gl-camera-view { display: inline-flex; align-items: center; gap: 8px; margin-right: 6px; color: var(--gl-muted); font-size: 12px; }
-.guitar-lab .gl-camera-view select { font-size: 13px; }
 .guitar-lab .gl-tags { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .guitar-lab .gl-tag {
   position: absolute; left: 0; top: 0; padding: 3px 9px; border: 1px solid #5d5a47; border-radius: 999px;
@@ -86,55 +81,79 @@
   box-shadow: 0 4px 14px #0007;
 }
 .guitar-lab .gl-tag[data-selected="true"] { border-color: var(--gl-gold); color: var(--gl-gold); }
+.guitar-lab .gl-tag[data-dim="true"] { opacity: .45; }
 .guitar-lab .gl-hover {
-  position: absolute; left: 0; top: 0; padding: 4px 10px; border-radius: 6px; pointer-events: none;
-  background: #f2eee6; color: #1d1f1c; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap;
-  box-shadow: 0 6px 18px #0008;
+  position: absolute; left: 0; top: 0; display: grid; gap: 1px; padding: 5px 11px; border-radius: 7px; pointer-events: none;
+  background: #f2eee6; color: #1d1f1c; line-height: 1.4; white-space: nowrap; box-shadow: 0 6px 18px #0008;
 }
+.guitar-lab .gl-hover strong { font-size: 12px; font-weight: 650; }
+.guitar-lab .gl-hover span { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: #6d5530; }
+
+.guitar-lab .gl-dock {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 7px; border: 1px solid var(--gl-border);
+  border-radius: 999px; background: #1b1e1c;
+}
+.guitar-lab .gl-dock > button { min-height: 40px; padding: 6px 16px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.guitar-lab .gl-scrub { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; color: var(--gl-muted); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+.guitar-lab .gl-scrub input { flex: 1; min-width: 60px; min-height: 28px; accent-color: var(--gl-gold); }
+.guitar-lab .gl-scrub output { min-width: 38px; color: var(--gl-text); font-size: 12px; letter-spacing: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.guitar-lab .gl-camera { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 10px; }
+.guitar-lab .gl-camera button { min-width: 44px; padding: 7px 10px; font-size: 18px; }
+.guitar-lab .gl-camera [data-lab-turntable], .guitar-lab .gl-camera [data-lab-camera="reset"] { font-size: 12px; }
+.guitar-lab .gl-camera [data-lab-turntable] { margin-left: auto; }
+.guitar-lab .gl-camera-view { display: inline-flex; align-items: center; gap: 8px; margin-right: 6px; color: var(--gl-muted); font-size: 12px; }
+.guitar-lab .gl-camera-view select { font-size: 13px; }
 .guitar-lab .gl-view-help { color: var(--gl-muted); font-size: 12px; margin-top: 10px; max-width: 65ch; }
-.guitar-lab .gl-detail { padding-block: 4px; }
-.guitar-lab .gl-part-heading { display: flex; flex-wrap: wrap; gap: 9px 14px; align-items: center; }
-.guitar-lab .gl-part-heading h3 { font-size: 25px; line-height: 1.2; font-weight: 500; letter-spacing: -.6px; overflow-wrap: anywhere; }
-.guitar-lab .gl-state { color: #b7d4be; font-size: 12px; padding: 3px 0; }
-.guitar-lab .gl-state[data-detached="true"] { color: var(--gl-gold); }
-.guitar-lab .gl-function { font-size: 16px; line-height: 1.65; margin-top: 18px; max-width: 50ch; }
-.guitar-lab .gl-part-detail { color: var(--gl-muted); margin-top: 15px; max-width: 65ch; }
-.guitar-lab .gl-assembly-detail { margin-top: 27px; padding-top: 19px; border-top: 1px solid var(--gl-border); }
-.guitar-lab .gl-assembly-detail > span { display: block; font-size: 12px; color: var(--gl-muted); }
-.guitar-lab .gl-assembly-detail > strong { display: block; margin-block: 3px 8px; font-size: 15px; font-weight: 550; }
-.guitar-lab .gl-assembly-detail p { font-size: 12px; color: var(--gl-muted); }
-.guitar-lab .gl-assembly-detail button { margin-top: 14px; }
-.guitar-lab .gl-parts { grid-column: 1 / -1; }
-.guitar-lab .gl-parts > p { font-size: 13px; margin-bottom: 10px; color: var(--gl-muted); }
-.guitar-lab [data-lab-parts] { display: flex; flex-wrap: wrap; gap: 7px; }
-.guitar-lab [data-lab-part] { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
-.guitar-lab [data-part-dot] { border: 1px solid currentColor; border-radius: 50%; width: 6px; height: 6px; flex: 0 0 6px; background: currentColor; }
-.guitar-lab [data-detached="true"] [data-part-dot] { background: transparent; }
-.guitar-lab .gl-assembly-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 28px; margin-top: 26px; padding-block: 20px; border-block: 1px solid var(--gl-border); }
-.guitar-lab .gl-progress { flex: 1 1 200px; max-width: 310px; min-width: 0; }
-.guitar-lab .gl-progress label { display: grid; gap: 7px; font-size: 13px; }
-.guitar-lab .gl-progress progress { width: 100%; height: 6px; accent-color: var(--gl-gold); border: 0; border-radius: 2px; overflow: hidden; background: #3a4237; }
-.guitar-lab .gl-progress progress::-webkit-progress-bar { background: #3a4237; }
-.guitar-lab .gl-progress progress::-webkit-progress-value { background: var(--gl-gold); }
-.guitar-lab .gl-progress progress::-moz-progress-bar { background: var(--gl-gold); }
-.guitar-lab .gl-progress > span { display: block; color: var(--gl-muted); font-size: 11px; margin-top: 7px; }
+
+.guitar-lab .gl-side { display: flex; flex-direction: column; gap: 16px; }
+.guitar-lab .gl-detail { min-height: 160px; padding: 16px 18px; border: 1px solid var(--gl-border); border-radius: 10px; background: #1b1e1c; }
+.guitar-lab .gl-detail-empty { color: var(--gl-muted); font-size: 13px; }
+.guitar-lab .gl-detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.guitar-lab .gl-detail-head h3 { font-size: 22px; font-weight: 500; line-height: 1.25; letter-spacing: -.4px; overflow-wrap: anywhere; }
+.guitar-lab .gl-detail-head button { min-height: 34px; padding: 4px 10px; font-size: 12px; }
+.guitar-lab .gl-spec { margin-top: 6px; color: var(--gl-gold); font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.guitar-lab .gl-info { margin-top: 12px; font-size: 14px; line-height: 1.7; max-width: 62ch; }
+.guitar-lab .gl-parts { display: flex; flex-direction: column; min-height: 0; }
+.guitar-lab .gl-parts-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.guitar-lab .gl-parts-head h3 { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gl-muted); }
+.guitar-lab .gl-parts-head span { color: var(--gl-muted); font-size: 11px; }
+.guitar-lab .gl-part-list { max-height: 392px; overflow-y: auto; padding-right: 4px; overscroll-behavior: contain; }
+.guitar-lab .gl-part-group h4 { margin: 12px 0 2px; color: #858c84; font-size: 10px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
+.guitar-lab .gl-part-group:first-child h4 { margin-top: 0; }
+.guitar-lab [data-lab-part] {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 5px 10px;
+  border-color: transparent; background: transparent; font-size: 13px; text-align: left;
+}
+.guitar-lab [data-lab-part]:hover:not(:disabled), .guitar-lab [data-lab-part][data-hover] { border-color: transparent; background: #272c27; }
+.guitar-lab [data-lab-part][aria-pressed="true"], .guitar-lab [data-lab-part][aria-pressed="true"]:hover { background: #33301f; color: var(--gl-gold); }
+.guitar-lab [data-part-dot] { width: 7px; height: 7px; flex: 0 0 7px; border: 1px solid #7d8479; border-radius: 50%; }
+.guitar-lab [data-lab-part][aria-pressed="true"] [data-part-dot] { border-color: var(--gl-gold); background: var(--gl-gold); }
+
+.guitar-lab .gl-specs-block { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--gl-border); }
+.guitar-lab .gl-specs-block h3 { margin-bottom: 10px; color: var(--gl-muted); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+.guitar-lab .gl-specs-block h3 span { margin-left: 8px; color: #858c84; font-weight: 400; letter-spacing: .04em; text-transform: none; }
+.guitar-lab .gl-specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 28px; margin: 0; }
+.guitar-lab .gl-specs div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #353a34; font-size: 12px; }
+.guitar-lab .gl-specs dt { color: var(--gl-muted); }
+.guitar-lab .gl-specs dd { margin: 0; text-align: right; }
 .guitar-lab .gl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .guitar-lab .gl-actions button { font-size: 12px; }
-.guitar-lab .gl-animation { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--gl-muted); min-height: 44px; }
-.guitar-lab .gl-animation input { width: 18px; height: 18px; accent-color: var(--gl-gold); }
 .guitar-lab .gl-status { margin-top: 15px; color: #c9d2bf; font-size: 12px; max-width: 85ch; min-height: 20px; }
 .guitar-lab .gl-audio { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-top: 22px; }
 .guitar-lab .gl-audio p { font-size: 12px; color: var(--gl-muted); max-width: 65ch; flex: 1 1 260px; }
 .guitar-lab .gl-caveat { color: #c9bea8; font-size: 12px; margin-top: 24px; max-width: 100ch; }
 .guitar-lab .gl-construction { font-size: 11px; color: var(--gl-muted); margin-top: 10px; }
+@media (max-width: 900px) {
+  .guitar-lab .gl-workbench { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 740px) {
   .guitar-lab .gl-content { padding: 18px; }
-  .guitar-lab .gl-workbench { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .guitar-lab .gl-stage { height: 490px; }
-  .guitar-lab .gl-parts { grid-column: auto; }
-  .guitar-lab .gl-part-heading h3 { font-size: 23px; }
-  .guitar-lab .gl-assembly-detail { margin-top: 19px; padding-top: 15px; }
-  .guitar-lab .gl-function { margin-top: 12px; }
+  /* On phones the page already scrolls; a nested scrolling list would clip mid-group. */
+  .guitar-lab .gl-part-list { max-height: none; overflow: visible; padding-right: 0; }
+  .guitar-lab .gl-dock { flex-wrap: wrap; border-radius: 14px; }
+  .guitar-lab .gl-scrub { order: -1; flex-basis: 100%; padding: 0 6px; }
+  .guitar-lab .gl-dock > button { flex: 1; }
   .guitar-lab .gl-summary { padding: 17px; gap: 10px; }
   .guitar-lab .gl-disclosure { gap: 7px; }
   .guitar-lab .gl-summary-copy > span { font-size: 12px; }
@@ -150,9 +169,9 @@
   .guitar-lab .gl-model-label, .guitar-lab .gl-view { width: 100%; }
   .guitar-lab .gl-view button { flex: 1; }
   .guitar-lab .gl-stage { height: 425px; }
-  .guitar-lab [data-lab-parts] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .guitar-lab [data-lab-part] { padding: 8px; font-size: 11px; gap: 5px; }
   .guitar-lab .gl-camera button { min-width: 39px; padding: 6px 8px; }
+  .guitar-lab .gl-camera [data-lab-turntable] { margin-left: 0; }
+  .guitar-lab .gl-detail { padding: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .guitar-lab *, .guitar-lab *::before, .guitar-lab *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
