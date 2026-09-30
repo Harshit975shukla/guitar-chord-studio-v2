@@ -1,0 +1,4 @@
+Basic Pitch: Copyright 2022 Spotify AB. https://github.com/spotify/basic-pitch-ts
+TensorFlow.js and its WebAssembly backend: Copyright Google LLC. https://github.com/tensorflow/tfjs
+Both are distributed under Apache License 2.0. A copy is included in LICENSE-basic-pitch.txt.
+Model weights are unmodified; local chord post-processing is part of Guitar Studio.

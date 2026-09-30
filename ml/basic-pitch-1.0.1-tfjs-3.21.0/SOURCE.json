@@ -1,0 +1,40 @@
+{
+  "version": "basic-pitch-1.0.1-tfjs-3.21.0",
+  "model": "@spotify/basic-pitch@1.0.1",
+  "runtime": "@tensorflow/tfjs@3.21.0",
+  "licence": "Apache-2.0",
+  "source": "https://github.com/spotify/basic-pitch-ts",
+  "assets": [
+    {
+      "file": "model.json",
+      "bytes": 174537,
+      "sha256": "1ed1aaee3409ec1dc098c8b01f430c0911f6fe9412e7af8086750f9e8f302f68"
+    },
+    {
+      "file": "group1-shard1of1.bin",
+      "bytes": 742392,
+      "sha256": "b142a95737a52e1e412d5f92e73d8bb80dfe8d04941acc0702f11f4524fb377c"
+    },
+    {
+      "file": "LICENSE-basic-pitch.txt",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "file": "tfjs-backend-wasm.wasm",
+      "bytes": 275675,
+      "sha256": "3fdde0b7f76782146ed7a5212bca394d1e59e1bfb8768531c72480d6f10aee1f"
+    },
+    {
+      "file": "tfjs-backend-wasm-simd.wasm",
+      "bytes": 377757,
+      "sha256": "918e97b89039305394e9987088249bacee5ef09111ae9f9384c06bec564e2d7b"
+    },
+    {
+      "file": "tfjs-backend-wasm-threaded-simd.wasm",
+      "bytes": 386833,
+      "sha256": "7ca7dc269cc43b600cc231c252d16383aae22c4383f4363ce30c413673d8a911"
+    }
+  ],
+  "note": "On-device optional inference. Model/runtime files are served from this site, not fetched from an external inference API."
+}
