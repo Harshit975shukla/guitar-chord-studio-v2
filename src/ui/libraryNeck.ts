@@ -1,5 +1,5 @@
 import { NOTE_NAMES, type ChordDefinition, type StringTuning, type StrumStyle } from '../types';
-import { CHORD_QUALITY_DISPLAY } from '../chords/definitions';
+import { CHORD_QUALITY_DISPLAY, buildChordDefinition } from '../chords/definitions';
 import { PaneNeck3D } from './paneNeck3d';
 
 /** Library selection stays independent of the microphone's suggested voicing. */
@@ -8,6 +8,7 @@ export class LibraryNeck {
   private frets: (number | null)[] = [null, null, null, null, null, null];
   private chord: ChordDefinition | null = null;
   private label = 'Choose a chord below';
+  private custom = false;
   private abort = new AbortController();
 
   constructor(
@@ -81,6 +82,7 @@ export class LibraryNeck {
 
   select(chord: ChordDefinition): void {
     this.chord = chord;
+    this.custom = false;
     const select = this.container.querySelector<HTMLSelectElement>('#library-neck-voicing')!;
     select.replaceChildren();
     chord.voicings.forEach((voicing, i) => {
@@ -92,6 +94,7 @@ export class LibraryNeck {
   }
 
   private chooseVoicing(): void {
+    this.custom = false;
     const select = this.container.querySelector<HTMLSelectElement>('#library-neck-voicing')!;
     const voicing = select.disabled ? null : this.chord?.voicings[Number(select.value)];
     this.frets = voicing ? voicing.frets.map(f => f === null || f < 0 ? null : f) : [null, null, null, null, null, null];
@@ -109,6 +112,7 @@ export class LibraryNeck {
   }
 
   private markCustom(): void {
+    this.custom = true;
     this.label = 'Custom voicing';
     this.container.querySelector<HTMLSelectElement>('#library-neck-voicing')!.selectedIndex = -1;
   }
@@ -126,6 +130,14 @@ export class LibraryNeck {
 
   setTuning(tuning: StringTuning[]): void {
     this.tuning = tuning;
+    const select = this.container.querySelector<HTMLSelectElement>('#library-neck-voicing')!;
+    if (this.chord && !this.custom) {
+      const name = this.chord.voicings[Number(select.value)]?.name;
+      this.select(buildChordDefinition(this.chord.symbol.root, this.chord.symbol.quality, tuning));
+      const next = Array.from(select.options).find(option => option.text === name);
+      if (next) { select.value = next.value; this.chooseVoicing(); }
+      return;
+    }
     this.render();
   }
 

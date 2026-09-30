@@ -25,6 +25,8 @@ npm run test:theory
 npm run test:percussion
 npm run test:groove
 npm run test:guitar
+npm run test:library
+npm run test:enhanced
 npm run preview
 ```
 
@@ -33,6 +35,7 @@ Microphone access requires HTTPS or localhost and browser permission. MIDI permi
 ## The live studio
 
 - **Start listening** starts microphone capture and room calibration. Stay quiet briefly, then play. Choose **Chords**, **Notes**, or **Auto** to set the listening target.
+- **Enhanced detection** is an optional, experimental second check in Live studio. It is off on each new page visit; Standard detection remains the default and fallback. Matching answers appear once; different current answers appear as **Could be Am or Am7**, without engine jargon or a claimed certainty score.
 - Try a chord without granting microphone access. Each section's 2D and 3D views share its voicing and the selected guitar sound source. Library and song selections stay independent of live detection.
 - **3D**: drag to orbit, click a string/fret to select and pluck it, or click a selected position again to mute it. Use the camera buttons or `+`, `−`, and `R` while the canvas is focused to zoom/reset.
 - **2D**: scroll horizontally through the neck. Each fret and string mute control is a native keyboard-accessible button.
@@ -48,6 +51,34 @@ Microphone access requires HTTPS or localhost and browser permission. MIDI permi
 
 Results distinguish **fresh**, **held** and **none**. A held note/chord retains its original evidence timestamp and last confidence, and is labeled **Last confirmed / held**. It can remain visible, but does not score practice or drills, emit MIDI, update session statistics, or paint a current live pitch/tuning verdict. Repeated genuinely supported frames and repeated strums still count as fresh; this is not chord-event deduplication. The existing five-second silence clearing behavior remains.
 
+**Seventh-note research, not enabled in the shipped default:** the retained candidate checks current note evidence alongside the strum average, using `src/detection/chordNoteEvidence.ts` for a bounded, per-engine 320 ms pitch/onset history. It investigates fading extra roots/sevenths, independent upstroke/downstroke plucks and unresolved neighboring fundamentals. It requires the explicit `experimentalNoteEvidence: true` engine configuration; only its dedicated research regressions opt in. The application, fast preview and Enhanced mode's Standard branch retain the deployed `74340ba` behavior, including the same timing, sensitivity and single-note estimator. The production release does not silently promote this candidate.
+
+### Optional enhanced checking
+
+Standard and Enhanced share the existing microphone and audio clock. The second path uses [Spotify Basic Pitch](https://github.com/spotify/basic-pitch-ts) 1.0.1 and TensorFlow.js/WASM 3.21.0 in an isolated browser worker, not a paid API. Its model predicts notes; conservative exact pitch-set matching supplies chord names. Matching requires current, time-aligned evidence, not two old labels left on screen. Repeated strums remain distinct. A separate **Matching recent audio** message describes historical overlap, never a new-strum confirmation. Quiet input, clipping, suspect room calibration and stale results cannot create agreement.
+
+Model weights are unchanged. Incomplete/power outputs can use onset-backed note events to recover a missing third; this does not replace an already complete chord or invent a seventh from a power chord. Notes/tuner, MIDI, practice grading and statistics remain on the original fresh-evidence path; this option is a Live studio display second opinion only. Agreement is **not 100% certainty**. Playable library coverage is broader than detector coverage: fixing C6/Cm6 playback does not add those qualities to the live detector's vocabulary, and related pitch sets can still be confused.
+
+The model needs about two seconds of audio context and processes only the latest window, without a queue. Results older than 1.5 seconds are suppressed. Slow devices, missing AudioWorklet/WASM support and model failures fall back to Standard with an explicit status and Retry control. Turning the option off, leaving Live studio, stopping listening or hiding the page releases its extra capture/worker resources. Stop also cancels a pending microphone permission request and releases a stream if permission arrives late.
+
+`npm run dev` and `npm run build` stage pinned model, WASM, source hashes and Apache-2.0 notices under `public/ml/basic-pitch-1.0.1-tfjs-3.21.0/` from the installed packages. The generated folder is ignored by Git and copied into the build. The model/runtime are same-origin and downloaded only after opt-in and microphone start; no CDN inference or audio upload is used. The generated assets total about 2 MB, in addition to the lazy worker bundle.
+
+### Consent-based local training takes
+
+Open **Help improve detection · record a local take** in Live studio. The first recording targets are Am, Am7, C, Cmaj7, A and Amaj7. Choose the intended chord and guitar type, then separately consent to recording and local training review. Adult or appropriate parent/guardian consent is required. Microphone permission alone does not start or authorize a training take.
+
+A take records up to 12 seconds of browser-provided mono input **before the app's filters and sensitivity gain**. Browser/device processing may still occur. Keep quiet for the first two seconds, then play a few slow strums without speech or personal information. App guitar references are stopped/blocked during capture. Stop finishes a sufficiently long take; Delete, permission withdrawal, leaving Live studio or changing tuning/settings discards unfinished capture. A microphone started solely for a take is released afterward; an already-running microphone is borrowed, not stopped. Preview requires listening to be off to prevent the recording becoming its own detection input.
+
+**Export WAV + metadata (.zip)** is one deliberate download containing `microphone.wav` and `metadata.json`: actual sample rate/duration, audio SHA256, selected chord/instrument, effective sounding open-string MIDI tuning (including capo), capo, engine/app versions, detection target/trigger/sensitivity/gate/seventh settings, consent version, basic quality warnings and timestamped predictions. No device/user identifiers are collected. Labels are always **unverified**; neither the selected target nor detector agreement is ground truth.
+
+The page retains only one in-memory take. Reload/Delete removes the page's copy, not previously exported files. An automatic website-update reload is deferred while a take is recording or retained; a notice asks you to export/delete and reload manually. There is **no automatic upload, background daily recording, automatic model training or backend collection**. A teacher should verify actual notes/chords first, obtain appropriate rights for the intended training use, and keep independent player/session/device evaluation data out of training.
+
+`npm run test:enhanced` covers timing/identity agreement, bounded capture, held/stale evidence, consent, WAV/ZIP export, pinned asset integrity and comparison with the frozen Standard baseline. `node scripts/listening-tools-browser.mjs <app-url> <cdp-port>` runs integrated browser checks against dev or a subpath production preview. Optionally set `ML_C_FIXTURE` to an existing licensed isolated C recording; otherwise it assembles a C fixture from the bundled guitar recordings. These are integration/safety checks, not a measured real-room accuracy improvement.
+
+### Dated restore point
+
+Before this release, source `74340ba567ef82171f7caef7480b049726fcbeda` and the exact Pages build `683225883e002b9085975c248a40de63881fd529` were preserved as tags `restore-2026-09-30` and `restore-pages-2026-09-30`. The [30 September 2026 backup release](https://github.com/Harshit975shukla/guitar-chord-studio-v2/releases/tag/restore-2026-09-30) contains source and website ZIPs plus a SHA256 manifest. For an exact website rollback, verify the website ZIP against that manifest and publish its contents to `gh-pages` in a new commit; do not force-rewrite shared history. The backup does not contain or restore users' browser-local recordings/settings.
+
 ### Single notes and tuner
 
 Notes use a recent-window normalized-periodicity estimate, corroborated by an observed fundamental and harmonic spectral support. Two consecutive supported estimates are required before a new note is confirmed. Uncertain input stays unconfirmed or holds the original evidence timestamp; the previous loudest-peak fallback that could fabricate a confident note has been removed. Frequency and cents remain continuous, while fretboard highlights, Sargam lookup and MIDI note numbers use the nearest integer pitch.
@@ -60,7 +91,7 @@ The Live Studio **Microphone & room check** shows the actual input device, raw m
 
 On startup and **Recheck room noise**, calibration first discards one FFT window plus settling frames, then collects the existing 45 reference frames (about two seconds overall at the normal processing rate). This prevents an already-muted strum still in the analyser from becoming the room profile. Mute strings and remain quiet. Guitar/percussion previews are blocked during the check; current guitar references and backing percussion are stopped. Song Wait mode can remain armed without playing a reference.
 
-Changing microphone sensitivity rescales the existing noise spectrum and RMS reference by the known gain change, then briefly ignores attack decisions while one analysis window settles. **Listening resumes automatically**; the previous mandatory-recheck block has been removed. If sensitivity changes during calibration, that measurement restarts automatically. A new input/analyser cannot reuse another input's profile.
+In Standard mode, changing microphone sensitivity rescales the existing noise spectrum and RMS reference by the known gain change, then briefly ignores attack decisions while one analysis window settles. **Listening resumes automatically**; the previous mandatory-recheck block has been removed. If sensitivity changes during calibration, that measurement restarts automatically. A new input/analyser cannot reuse another input's profile. With Enhanced enabled, configuration changes restart both room checks so their evidence stays aligned.
 
 Calibration uses temporal medians and a bounded peak estimate so a brief loud event does not dominate the entire room reference. Sustained talking or playing through most of the measurement can still spoil it; quiet calibration remains important. Suspect input produces an advisory recheck warning, not a permanent detection lock.
 
@@ -75,6 +106,27 @@ Current chord targets cover **major, minor, 7, maj7, m7, sus2, sus4, power, dimi
 `scripts/input-health-smoke.mjs` covers calibration settling, automatic gain recovery, robust profiles and input advice alongside the capture/freshness tests. `scripts/harmonic-detection-smoke.mjs` covers quiet chords, harmonic/body-resonance rejection and quality-specific evidence. The browser checks exercise raw input, level/headroom feedback, automatic sensitivity recovery, quiet-reference guards, microphone cleanup, preference migration and narrow layouts using generated microphone streams.
 
 ### Recorded-input comparison and external references
+
+For focused A/C triad-versus-seventh checks, run `node scripts/detector-benchmark.mjs http://127.0.0.1:5173/ 9223 focused-results.json --focus --baseline=74340ba` with the local Vite server and isolated Chromium endpoint running. This adds a +10 dB high shelf, a 250–4500 Hz speaker-bandwidth simulation, and +10-cent detuning to the existing clean, quiet, noise and gain-change cases. These are controlled transformations of recorded notes, not measurements of a physical phone or room. The snapshot loader freezes the baseline's helper modules as well as its engine, so working-tree changes cannot contaminate both sides of a comparison.
+
+The September 29 follow-up reproduced C being labelled Cmaj7 under bright/speaker-filtered input and Am7 in some quieter/noisier cases. A blanket harmonic veto was rejected because it also removed genuine Fmaj7 notes. The retained, explicitly gated research candidate instead checks independent note onsets, current-versus-averaged evidence, unresolved neighboring fundamentals and recent root support. `scripts/seventh-chords-smoke.mjs` opts into that candidate and covers the Am/Am7 ambiguity, distinct Amaj7/Cmaj7 identities, all-key seventh identities, inversions, overlapping real notes, both strum directions, stale evidence and lifecycle cleanup. The historical candidate results below are not the shipped Standard configuration.
+
+Add `--notes --quick --focus` to the browser benchmark for single-note checks including the same speaker-bandwidth simulation. Use `--full --cases=Fmaj7/,Dmaj7/` to repeat only those chord controls. These checks cannot certify physical phone playback: speaker frequency response, clipping, room reflections, microphone processing and accompanying instruments can change the result. Play one isolated chord/note, use moderate volume and calibrate while the phone is silent. A song mixed with vocals, bass and drums is not equivalent to an isolated guitar performance.
+
+The onset-aware checks were compared with the deployed detector at `74340ba`, using identical inputs and an isolated snapshot of all baseline detector dependencies:
+
+| Controlled recorded-note suite | Deployed exact first answers | Onset-aware exact first answers |
+| --- | ---: | ---: |
+| A/C triads and sevenths, including brightness and speaker-bandwidth stress | 204/210 | 208/210 |
+| Ten chord qualities, 44.1 kHz | 634/765 | 636/765 |
+| Additional roots, strokes and calibration stress, 48 kHz | 775/945 | 779/945 |
+| Genuine Fmaj7/Dmaj7 controls within the main suite | 24/24 | 24/24 |
+
+No previously correct first answer regressed in the main or focused suite. One additional-root case regressed (quiet classical F#m7 → A); five others improved. Across the two broad suites, wrong first answers fell from 273 to 267; no-answer counts stayed at 28 and negative-input false positives stayed at 0/72. Median correct latency stayed at 290 ms and 288 ms respectively. These are assembled recorded-note fixtures, not an overall real-room accuracy percentage.
+
+Human-recording checks were also repeated locally: first-answer counts were unchanged on the original 25 Freesound clips (18/25), 40 additional clips (28/40), and five separately sourced seventh-chord clips (2/5, including processed/effects recordings). On the last group, one later Cmaj7 answer became Em; it is not a universal improvement. Exact fresh outputs against GuitarSet lead-sheet labels changed from 46.6% to 46.8% on 30 takes and from 44.3% to 44.6% on 30 additional takes. Performed voicings can differ from the lead sheet, so these figures are not interchangeable with isolated-chord correctness. Speaker-filtered versions of the original 25 clips retained 16/25 exact first answers. The audio/provenance and raw paired results stay in the git-ignored local recording corpus, not in the application bundle.
+
+Remaining limitations include a detuned C fixture still reading Am7, an unconfirmed detuned Cm7 fixture, weak/partially muted roots, heavily processed instruments and mixed recordings. Recognition on a particular guitar/phone/microphone still needs a labeled recording from that setup. The checks reduce reproduced errors; they do not establish perfect recognition or a competitor ranking.
 
 `scripts/detector-benchmark.mjs` compares against deployed commit `ae8a29f05a9821fa268b0c9eebe07b3a30f4b205`. It uses the browser's real offline audio graph (65 Hz high-pass, 2200 Hz low-pass, gain, 8192-point analyser) and default strum capture. Inputs are strums assembled from the authorized Musicca note recordings plus controlled noise—not human strum recordings or competitor measurements.
 
@@ -128,6 +180,12 @@ Relevant primary sources:
 ## Shared fretboards
 
 **Live studio**, **Chord library**, **Play along**, **Scales** and **Theory lessons** use the same original Three.js neck, lighting, markers, stage and camera controls. In the library, **Show** selects a shape, **Strum** selects and plays it, and the voicing selector offers shapes within frets 0–12. Clicking frets edits a local custom voicing; **Inspect** still opens the chord in Live studio. Play Along mirrors palette previews, current playback chords and lead notes onto both views. Picks use the existing audio-unlock path.
+
+The library covers **12 roots × 19 chord qualities (228 entries)**, including sixths, minor sixths and ninths. Offered shapes are checked against the chord's complete pitch-class set and the sounding tuning/capo. Missing legacy shapes are generated using bounded hand-position search with open strings and partial barres; invalid old templates are not shown as if they were that chord. Valid familiar C/Am/G shapes remain first. C6 and Cm6 now have complete playable shapes, so their existing recorded-guitar samples can actually sound. A muted string (`×`) is intentionally silent, not a missing recording.
+
+Root and quality filters cover the full catalogue. Changing tuning/capo regenerates a selected named chord; custom fretting remains a custom shape. Flat-note tuning presets use the correct pitch classes (including true half-step-down tuning). Cached definitions are copied before use so manual fretting cannot corrupt another card or preset. This fixes library playback and does not expand the detector's supported chord vocabulary.
+
+`npm run test:library` checks every standard-tuning entry and every offered voicing, all 16 tuning presets with capo 0/2/5, expected chord tones, fret limits, sample availability in all three banks, cache isolation and enharmonic roots. `BROWSER_SUITE=library` adds actual audio scheduling for all 228 cards, non-silent C6/Cm6 rendering, filters and capo regeneration.
 
 Tuning/capo changes update each view's note labels and playback tuning. Shapes retain their fret positions relative to the capo; they are not promises of the named chord under every alternate tuning. Each section saves its view preference separately, defaults to 3D unless reduced motion is requested, and retains a keyboard-accessible 2D fallback.
 
@@ -424,3 +482,92 @@ Before publishing, build and run the existing detection smoke tests, then check:
 4. Switching views, navigating away, reduced-motion preference and unavailable WebGL preserve a usable interface.
 
 Browser validation can verify UI wiring with synthetic inputs; it does not establish real-room detection accuracy. That requires recordings or microphone sessions with representative guitars and noise conditions.
+
+## Experimental ML evaluation (local only)
+
+The retained local research workspace `experiments/chord-ml` is separate from the production entry point and is **not imported by the main application**. Its developer pages and lockfile stay local; the application now uses the independently typed `src/detection/enhanced` integration described above. Both use [Spotify Basic Pitch TS](https://github.com/spotify/basic-pitch-ts) 1.0.1 (Apache-2.0) with TensorFlow.js/WASM 3.21.0. The graph and weights total 916,929 bytes, excluding the runtime. The production build stages its own pinned same-origin assets and required licence/notices, rather than serving the experimental pages.
+
+Basic Pitch predicts notes, not chord names. Recorded-file mode uses the upstream note-event decoder with fixed thresholds, then conservatively matches exact pitch-class sets to the ten supported chord qualities. It reports first, dominant and observed chord labels separately. The model expects mono 22,050 Hz audio in 43,844-sample windows (about 1.99 seconds). Explicit float32 framing works around a TFJS 3.x WASM padding issue; tests compare its buffers exactly against the upstream CPU framing.
+
+These developer-only commands require the retained local `experiments/chord-ml` workspace, which is not included in this production release. After installing the normal app dependencies, run them from that workspace's repository root:
+
+```powershell
+npm ci --prefix experiments\chord-ml --ignore-scripts
+npm test --prefix experiments\chord-ml
+npm run dev --prefix experiments\chord-ml
+```
+
+The experiment listens only on `http://127.0.0.1:5180/`. Choose **Start live guitar**, allow microphone access, wait for the model and audio context to be ready, then strum slowly or pluck a note. It shows tentative chord/note suggestions, input level, clipping advice, model processing time and the age of the audio described by the prediction. It is not a validated tuner or practice grader.
+
+The live input uses an AudioWorklet, a bounded rolling PCM window and native resampling to the model's 22,050 Hz input. It runs one raw model window at a time, no more often than every 0.5 seconds, and checks recent interior prediction frames rather than the dominant label over the whole window. There is no backlog: if inference is busy, later input replaces older buffered audio. Predictions older than 1.5 seconds are discarded; quiet input clears the display and invalidates in-flight results. Initial buffering takes about two seconds and subsequent latency depends on the device. Microphone processing requests echo cancellation, noise suppression and automatic gain control off; browser/device support varies.
+
+**Stop microphone** releases this page's tracks, worklet, model worker, audio context and watchdog. A cancelled permission request cannot start capture later. Device disconnection, mute, capture/model failure, audio suspension, hiding the page and page exit also stop listening. The worklet's speaker output is always zero: there is no microphone monitoring or feedback path. Audio is held only in rolling memory, never saved or uploaded. Recording-file controls and live listening are mutually exclusive.
+
+Alternatively, select a recording or an available local example, confirm permission and choose **Analyse recording**. Selecting another file resets permission, and **Cancel**, permission withdrawal or **Clear** prevent stale results. Nothing is saved to the app catalog.
+
+Restart the experiment server after editing code; reload/watch is disabled to avoid invalidating an in-flight inference. With an isolated Chromium debugging endpoint on port 9223, the developer runner can also compare against a frozen DSP baseline:
+
+```powershell
+node experiments\chord-ml\run.mjs --ids=26379,315706,705411,30171,439554,334622,704699
+```
+
+The default runner uses the existing git-ignored, permission-backed `.real-recordings` corpus. Alternatively, supply `--manifest=path-to-manifest.json --ids=id1,id2 --output=result.json`. Each manifest entry requires `id`, `file` (relative to the manifest), `expected`, `licence` and `page`; `title` and `user` are optional. Recordings must be inside this repository. The runner rejects remote evaluation servers, records audio/model/source hashes and monitors page and worker network traffic. Inputs are capped at 16 MiB and the first 12 seconds; cropping is reported, never hidden.
+
+The first feasibility run used seven labeled public clips, not a blind validation set. The expected chord appeared somewhere in every ML transcription, but only two first labels and five dominant labels matched. For example, Am began as A5 before the third arrived; Gmaj7 appeared but G dominated the decay. The deployed DSP gave five correct first labels on this small selection. **These are not equivalent live metrics:** ML has future audio context, and duration-based dominant labels are not first-strum confirmations. There is no evidence here to promote this model over the live detector.
+
+On the evaluation computer, plain browser CPU inference took about 30–43 seconds for the first two clips. WASM processed the seven 3.8–12-second clips in about 1.3–3.7 seconds each. These are offline computation times, **not microphone response latency** or phone performance guarantees. The experimental unit suite covers note decoding, framing, ring-buffer bounds, no-backlog scheduling, stale-result rejection, silent worklet output and model-client cleanup. Browser controls also verify silence rejection, cancellation before decoding completes, concurrent-call rejection, stable per-inference tensor counts and no external/upload requests. The application build remains unchanged by installing/running the experiment.
+
+`node experiments\chord-ml\live.browser.test.mjs 9225` checks the actual worklet/resampling/WASM path using a generated microphone stream containing an authorized C-chord recording and an E4 recording. It covers permission denial, cancelling a pending permission prompt, quiet-input clearing, narrow layouts, Stop, disconnection, mute, visibility and pagehide cleanup. `browser.test.mjs` in the same folder checks that recorded-file analysis still works. These tests require the local server, the existing recording corpus and an isolated Chromium debugging endpoint; they are not physical-room accuracy measurements.
+
+The optional production integration is not a claim that these accuracy limitations are resolved. Fresh teacher-verified microphone recordings (including Am/Am7, C/Cmaj7 and A/Amaj7), target phone/laptop/browser measurements and explicit accuracy/latency acceptance criteria are still needed before making it the default or claiming a recognition improvement. Code, model-weight and recording rights must cover the intended academy use. No paid AI API or inference server is needed.
+
+### Local hybrid live detector
+
+With the experiment server running, open `http://127.0.0.1:5180/hybrid.html`. This separate live-only page combines a frozen snapshot of the **deployed DSP detector at `74340ba`** (including its dependency files) with the ML worker. It does not use the uncommitted DSP candidate, replace the main application or change the ML-only page.
+
+Choose **Chords**, **Single notes**, or **Auto**, then press **Start hybrid listening**. Stay quiet through the fast detector's room check, then play slowly. Both paths share one microphone and AudioContext clock; DSP retains its 65–2200 Hz filters, gain 4, 8192-point analyser and strum-capture settings, while ML receives its separately resampled input. Neither branch monitors audio through the speakers.
+
+The page shows the fast estimate, ML estimate and a separate combined state:
+
+The primary readout shows a matching name once. Different recent readings show both attributed names, such as **DSP: Am / ML: Am7**, without choosing a winner. If their timing is not aligned, the state remains **Checking**, with held evidence explicitly labelled; expired ML readings are suppressed. Individual detector details remain expandable instead of repeating matching names on the main display. These are presentation changes, not looser confirmation or scoring rules.
+
+- **Both detectors agree:** exact chord root/quality or single-note MIDI/octave match, supported by a recent fresh DSP confirmation and an ML evidence interval within the same current performance.
+- **Checking:** the ML interval overlaps a strum boundary, precedes DSP confirmation, or the fast label is only held from older evidence.
+- **Disagree / ML uncertain:** the outputs differ or ML has no complete single chord/note result. No winner is silently selected.
+- **DSP only:** ML is loading, unavailable, too slow or lacks a current second opinion. A model loading/runtime/capture failure leaves DSP running, explicitly labelled.
+
+New attacks (including repeated identical chords), fresh identity changes and silence invalidate older comparisons. Clipping and a bad room reference suppress agreement. Held labels do not create new confirmations; note agreement requires the same octave. Model evidence times are reported on the audio clock, not matched to whichever labels happen to be on screen when a delayed result arrives. **Agreement is not 100% certainty**, and this page does not grade practice, emit MIDI or claim a measured accuracy improvement.
+
+Stop, device interruption, hiding/leaving the page and failure of the fast path release owned microphone resources. The ML worker has no request backlog; a disabled/failed ML branch cannot restart itself from a late resampling callback. The model-only/file pages retain their previous behavior.
+
+`npm test --prefix experiments\chord-ml` includes deterministic alignment and lifecycle tests. With an isolated Chromium endpoint on port 9225, `node experiments\chord-ml\hybrid.browser.test.mjs 9225` checks real DSP/ML agreement on a C recording and E4, one shared microphone, controlled disagreement, model loading/runtime failure fallback, mobile layout and cleanup. These are wiring and safety checks, not proof that the hybrid is more accurate on physical guitars or rooms.
+
+### Chord recovery and recent-audio verification
+
+The local chord path now uses Basic Pitch's official onset-and-frame note-event post-processing as a conservative fallback when strict frame thresholding leaves a chord incomplete. It uses onset threshold 0.5, frame threshold 0.25 and minimum event length 5 frames, and requires event coverage over at least 8 of the 12 recent interior frames. An already supported complete chord is not replaced. A power-chord guess may only become a same-root major/minor triad when the note events supply its missing third; no seventh is guessed from a power chord. Single-pitch results remain unchanged, and **Single notes** mode bypasses this chord refinement entirely. The model weights and main application's DSP code are not retuned.
+
+For chord targets, a separate continuous instance of the same frozen DSP code verifies current audio frames. It shares the analyser and room check; it is not another independent vote, and does not replace the capture preview. Fresh verification history is bounded to three seconds and aligned to ML's recent evidence interval using estimated FFT-centre times.
+
+The original **Both detectors agree** state still requires a fresh capture from the current performance. A new blue **Recent audio agreement** state instead requires matching fresh continuous-DSP observations throughout the overlapping ML interval, matching current verification and capture labels, valid input and a recent ML result. It explicitly describes past audio and has `currentPerformanceConfirmed: false`; it cannot grade a new strum. Silence, clipping, conflicting/newer chord evidence, model failure and stale input suppress it. This avoids presenting an old held capture as fresh simply to make the display agree.
+
+The implementation follows these published approaches, without importing proprietary detector code:
+
+- [Basic Pitch / NMP paper](https://arxiv.org/html/2203.09893): separate onset, note and pitch posteriorgrams, then note-event post-processing rather than a single per-frame cutoff.
+- [NNLS Chroma / Chordino](https://isophonics.net/nnls-chroma): frame-wise note/chroma evidence and temporal chord decoding; the authors explicitly describe Chordino as non-state-of-the-art.
+- [madmom chord recognition documentation](https://madmom.readthedocs.io/en/v0.16.1/modules/features/chords.html): learned chord features plus sequence decoding. Its documented major/minor-only recogniser was not substituted for our seventh-chord vocabulary.
+
+**Paired local replay, not a real-room accuracy claim:** 70 existing public clips were sampled on a fixed 0.5-second streaming-window grid, limited to their first six seconds. Both versions used identical unrounded model activations and pinned DSP inputs. The original 25 clips were used during development; 40 additional clips and five seventh-chord clips were checked separately. Clip labels are uploader-provided, not adjudicated per-frame truth.
+
+| ML chord-window result, 629 active-input windows | Before | Updated |
+| --- | ---: | ---: |
+| Exact chord label | 361 | 393 |
+| Wrong chord label | 62 | 54 |
+| No complete chord label | 206 | 182 |
+| Clips with the correct first chord label | 52/70 | 53/70 |
+| Clips with the expected chord at least once | 59/70 | 61/70 |
+
+No previously correct window regressed on this corpus; existing complete-chord outputs and single-pitch outputs were unchanged. This does not resolve every triad/seventh ambiguity, and recordings with effects, incomplete voicings or weak roots remain difficult.
+
+In the scheduling replay, strict current-performance agreement changed from 46 to 47 returns (43 and 44 matched the clip label). The separate recent-audio state was available on 185 more returns, of which 170 matched the clip label. **Do not pool these as new-strum confirmations or infer certainty from agreement.** Replay uses recorded model compute times and latest-only scheduling, but excludes new post-processing/resampling overhead; device latency still needs live measurement.
+
+`stream-probe-run.mjs` in the experiment folder captures the local corpus once; `compare-chords.mjs` replays the frozen local baseline in `.real-recordings/hybrid-chords-before` against the candidate. Exact activations and reports are saved in the git-ignored `.real-recordings/results` directory, not bundled with the application. `chord-remediation.browser.test.mjs` verifies actual G5 → G and A5 → Am recovery through the WASM worker while confirming that Single notes mode retains its previous output. The approved release ports this conservative chord refinement into optional Enhanced checking, not the default detector. Representative microphone testing remains necessary for accuracy claims.

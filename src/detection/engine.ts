@@ -19,6 +19,7 @@ import {
 import { calibrationWarning, median } from './inputHealth';
 import { harmonicChroma } from './harmonicChroma';
 import { estimateNotePitch, NOTE_PITCH_MIN, NOTE_PITCH_MAX } from './notePitch';
+import { ChordNoteEvidence } from './chordNoteEvidence';
 
 // ============================================================================
 // Detection Configuration
@@ -35,6 +36,7 @@ export interface DetectionConfig {
   triggerMode: 'guitartuna' | 'continuous';
   targetMode: DetectionTargetMode;
   oversubtraction: number;
+  experimentalNoteEvidence?: boolean;
 }
 
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
@@ -191,6 +193,7 @@ export class DetectionEngine {
   private frameSignalPresent = false;
   private pendingNoteMidi: number | null = null;
   private pendingNoteFrames = 0;
+  private chordNoteEvidence = new ChordNoteEvidence();
 
   constructor(config: Partial<DetectionConfig> = {}) {
     this.config = { ...DEFAULT_DETECTION_CONFIG, ...config };
@@ -211,6 +214,7 @@ export class DetectionEngine {
         if (this.noiseProfile.rms !== undefined) this.noiseProfile.rms *= ratio;
       }
       this.prevFrameBandEnergy *= ratio;
+      this.chordNoteEvidence.reset();
       this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
       this.clearStrumAttempt();
       this.gainSettleFrames = Math.ceil(this.analyser.fftSize / (this.analyser.context?.sampleRate || 44100) / .032) + 2;
@@ -218,6 +222,7 @@ export class DetectionEngine {
     }
     if ((config.triggerMode && config.triggerMode !== this.config.triggerMode) ||
         (config.targetMode && config.targetMode !== this.config.targetMode)) {
+      this.chordNoteEvidence.reset();
       this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
       this.clearStrumAttempt();
     }
@@ -237,6 +242,7 @@ export class DetectionEngine {
   // ============================================================================
 
   clearNoiseCalibration(): void {
+    this.chordNoteEvidence.reset();
     this.noiseProfile = null;
     this.isCalibrating = false;
     this.calibrationFrames = 0;
@@ -255,6 +261,7 @@ export class DetectionEngine {
 
   startNoiseCalibration(): void {
     if (!this.analyser) return;
+    this.chordNoteEvidence.reset();
     this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
     this.clearStrumAttempt();
     this.isCalibrating = true;
@@ -675,7 +682,8 @@ export class DetectionEngine {
 
   processChord(
     smoothedChroma: Float32Array,
-    peaks: DetectedPeak[]
+    peaks: DetectedPeak[],
+    currentChroma: Float32Array = smoothedChroma
   ): DetectionResult {
     // 1. Chroma Sparsity / Contrast Check
     // Diffuse noise distributes energy flatly across all 12 semitones (low std dev).
@@ -748,6 +756,20 @@ export class DetectionEngine {
       });
     }
 
+    // An attack average can retain a short body resonance as a weak extra root.
+    // Do not let that stale root turn a complete triad into a relative seventh.
+    for (let i = this.config.experimentalNoteEvidence ? matches.length - 1 : -1; i >= 0; i--) {
+      const match = matches[i];
+      if (!SEVENTH_QUALITIES.has(match.quality)) continue;
+      const root = NOTE_NAMES.indexOf(match.root as NoteName);
+      const otherTones = match.tones.filter(tone => tone !== 0);
+      const otherEnergy = otherTones.reduce((sum, tone) => sum + smoothedChroma[(root + tone) % 12], 0) / otherTones.length;
+      if (smoothedChroma[root] < otherEnergy * this.config.seventhStrictness && currentChroma[root] < .20
+        && !this.chordNoteEvidence.hasPitch(root) && !this.chordNoteEvidence.hasRecentOctaves(root)) {
+        matches.splice(i, 1);
+      }
+    }
+
     // Incumbent hysteresis bonus (+0.05)
     matches.forEach(m => {
       if (this.lastLockedChord === m.short) {
@@ -766,7 +788,12 @@ export class DetectionEngine {
     const seventhRatio = this.seventhRatio(smoothedChroma, rootIdx, best.quality);
 
     if (best.quality.includes("7") || best.quality.includes("7th")) {
-      if (triadMatch && seventhRatio < this.config.seventhStrictness) {
+      const seventh = (rootIdx + (best.quality === "Major 7th" ? 11 : 10)) % 12;
+      const currentSeventh = currentChroma[seventh];
+      const harmonicOnly = this.chordNoteEvidence.isHarmonicOnly(seventh,
+        [rootIdx, (rootIdx + (isMinor ? 3 : 4)) % 12, (rootIdx + 7) % 12]);
+      if (triadMatch && (seventhRatio < this.config.seventhStrictness
+        || (this.config.experimentalNoteEvidence && seventhRatio < 1 && ((currentSeventh < .10 && !this.chordNoteEvidence.hasPitch(seventh)) || harmonicOnly)))) {
         best = triadMatch;
       }
     }
@@ -1160,6 +1187,7 @@ export class DetectionEngine {
     const peaks = this.extractPeaks(cleanAmps, sampleRate, targetMode === 'chords' ? this.config.maxFreq : upperFrequency,
       targetMode === 'chords' ? this.config.minFreq : NOTE_PITCH_MIN);
     peaks.sort((a, b) => b.amp - a.amp);
+    if (this.config.experimentalNoteEvidence) this.chordNoteEvidence.observe(peaks, now, binWidth);
 
     const numGuitarBins = maxGuitarBin - minGuitarBin + 1;
     const meanBandAmp = totalGuitarBandEnergy / numGuitarBins;
@@ -1348,7 +1376,7 @@ export class DetectionEngine {
           for (let i = 0; i < 12; i++) this.smoothedChroma[i] = avgChroma[i];
 
           const incumbent = this.lastLockedChord;
-          const chordRes = this.processChord(avgChroma, peaks);
+          const chordRes = this.processChord(avgChroma, peaks, rawChroma);
           const reading = chordRes.mode === 'chord' && chordRes.chord ? chordRes : null;
           if (reading && !this.needsStrumPatience(reading.chord!, avgChroma, incumbent)) return this.lockStrumChord(reading);
           // A waiting reading is replaced by the same root (C#5 → C#m, Em7 → Em), by a fuller reading
@@ -1390,7 +1418,7 @@ export class DetectionEngine {
     }
 
     // Continuous Mode for Chords
-    const continuousRes = this.processChord(this.smoothedChroma, peaks);
+    const continuousRes = this.processChord(this.smoothedChroma, peaks, rawChroma);
     if (continuousRes.mode === 'chord' && continuousRes.chord) {
       this.lockedChordResult = continuousRes;
       this.lastLockedChord = continuousRes.chord.symbol;
@@ -1443,6 +1471,7 @@ export class DetectionEngine {
   }
 
   reset(): void {
+    this.chordNoteEvidence.reset();
     this.pendingNoteMidi = null; this.pendingNoteFrames = 0;
     this.frameSignalPresent = false;
     this.smoothedChroma.fill(0);

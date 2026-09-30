@@ -3,7 +3,7 @@ import { loadGuitarBank, guitarSamplePlayback, type GuitarSampleBank } from '../
 import { STANDARD_TUNING, type DetectionTargetMode } from '../src/types';
 
 const ATTACK = 2.24, END = 3.104, STEP = .032;
-interface Case { id: string; midi: number | null; level: number; noise: number; cents: number; chord?: boolean; mode: DetectionTargetMode }
+interface Case { id: string; midi: number | null; level: number; noise: number; cents: number; chord?: boolean; speaker?: boolean; mode: DetectionTargetMode }
 interface Estimate { midi: number; centsError: number; at: number; confidence: number }
 interface Outcome {
   firstMidi: number | null; correctFirst: boolean; usableCorrectFrames: number; freshFrames: number;
@@ -23,19 +23,20 @@ function assess(found: Estimate[], expected: number | null, firstMode: string | 
     wrongChordFrames,
   };
 }
-function cases(full: boolean, holdout: boolean): Case[] {
+function cases(full: boolean, holdout: boolean, focus: boolean): Case[] {
   const notes = full ? [
     holdout ? 37 : 36,
     ...Array.from({ length: 20 }, (_, i) => 38 + i * 2 + (holdout ? 1 : 0)),
     ...(holdout ? [80,83,87] : [81,84,88]),
   ] : holdout ? [37,39,46,51,56,60,65,70,77,83,87] : [36,38,40,45,50,55,59,64,69,76,81,84,88];
-  const conditions = [
+  const conditions: Array<Pick<Case, 'id' | 'level' | 'noise' | 'cents' | 'speaker'>> = [
     { id: 'clean', level: .04, noise: .0001, cents: 0 },
     { id: 'quiet', level: .003, noise: .00005, cents: 0 },
     { id: 'noise', level: .025, noise: .006, cents: 0 },
     { id: 'sharp', level: .04, noise: .0001, cents: 20 },
     { id: 'flat', level: .04, noise: .0001, cents: -20 },
   ];
+  if (focus) conditions.push({ id: 'speaker-filter', level: .04, noise: .0001, cents: 0, speaker: true });
   const result = notes.flatMap(midi => conditions.map(c => ({ ...c, id: `${midi}/${c.id}`, midi, mode: 'notes' as const })));
   if (full) for (const midi of notes) result.push({ id: `${midi}/auto`, midi, mode: 'auto', level: .04, noise: .0001, cents: 0 });
   for (const noise of [0,.002,.01]) result.push({ id: `negative/noise-${noise}`, midi: null, mode: 'notes', level: 0, noise, cents: 0 });
@@ -73,7 +74,13 @@ async function evaluateCase(item: Case, bank: GuitarSampleBank, decoder: Offline
   high.type = 'highpass'; high.frequency.value = 65; high.Q.value = .707;
   low.type = 'lowpass'; low.frequency.value = 2200; low.Q.value = .707; gain.gain.value = 4;
   analyser.fftSize = 8192; analyser.smoothingTimeConstant = .1;
-  input.connect(high); high.connect(low); low.connect(gain); gain.connect(analyser); analyser.connect(ctx.destination);
+  if (item.speaker) {
+    const speakerHigh = ctx.createBiquadFilter(), speakerLow = ctx.createBiquadFilter();
+    speakerHigh.type = 'highpass'; speakerHigh.frequency.value = 250; speakerHigh.Q.value = .707;
+    speakerLow.type = 'lowpass'; speakerLow.frequency.value = 4500; speakerLow.Q.value = .707;
+    input.connect(speakerHigh); speakerHigh.connect(speakerLow); speakerLow.connect(high);
+  } else input.connect(high);
+  high.connect(low); low.connect(gain); gain.connect(analyser); analyser.connect(ctx.destination);
   const engines = [new Baseline({ fftSize: 8192, targetMode: item.mode }), new DetectionEngine({ fftSize: 8192, targetMode: item.mode })];
   engines.forEach(engine => { engine.setAnalyser(analyser); engine.startNoiseCalibration(); });
   const found: Estimate[][] = [[], []], spectrum = new Float32Array(4096), oldNow = Date.now;
@@ -121,11 +128,11 @@ function summarize(rows: Row[], version: 'baseline' | 'current') {
     negativeCases: negative.length, falsePositiveCases: negative.filter(r => r[version].freshFrames > 0 || r[version].wrongChordFrames > 0).length,
   };
 }
-export async function runNoteBenchmark(baselineJs: string, quick = true, _negative = false, holdout = false) {
+export async function runNoteBenchmark(baselineJs: string, quick = true, _negative = false, holdout = false, focus = false) {
   const url = URL.createObjectURL(new Blob([baselineJs], { type: 'text/javascript' }));
   const { DetectionEngine: Baseline } = await import(/* @vite-ignore */ url); URL.revokeObjectURL(url);
   const rate = holdout ? 48000 : 44100, decoder = new OfflineAudioContext(2, 1, rate);
-  const rows: Row[] = [], inputs = cases(!quick, holdout);
+  const rows: Row[] = [], inputs = cases(!quick, holdout, focus);
   const banks: GuitarSampleBank[] = ['steel','classical','electric'];
   for (const bank of banks) {
     await loadGuitarBank(decoder, bank);
@@ -137,7 +144,7 @@ export async function runNoteBenchmark(baselineJs: string, quick = true, _negati
   return {
     method: 'Individual guitar recordings through native microphone filters/analyser. Recorded-note references are equal-tempered labels plus optional playback-rate detuning; original recording tuning is retained. Not human/device testing.',
     sampleRate: rate, baseline: summarize(rows, 'baseline'), current: summarize(rows, 'current'),
-    conditions: Object.fromEntries(['clean','quiet','noise','sharp','flat','auto'].map(condition => {
+    conditions: Object.fromEntries(['clean','quiet','noise','sharp','flat','auto', ...(focus ? ['speaker-filter'] : [])].map(condition => {
       const selected = rows.filter(r => r.id.endsWith(`/${condition}`));
       return [condition, { baseline: summarize(selected, 'baseline'), current: summarize(selected, 'current') }];
     })), rows,

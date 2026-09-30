@@ -266,21 +266,22 @@ try {
   });
   check('a marginal 7th waits for attack overtones to fade; a clear 7th confirms on the fast path', () => {
     // Controlled chroma isolates the confirmation rule from the spectral front end.
+    const C7 = [...C, 233.08];
     const dominant = seventh => { const chroma = new Float32Array(12); chroma[0] = 1; chroma[4] = .8; chroma[7] = .8; chroma[10] = seventh; return chroma; };
     const marginal = fixture();
     let seventh = .6;
     assert.ok(seventh / ((1 + .8 + .8) / 3) < PATIENT_SEVENTH_RATIO);
     marginal.engine.buildChromaCQT = () => dominant(seventh);
-    for (const ms of [0, 32, 64, 96]) assert.equal(marginal.frame(ms).freshness, 'none');
+    for (const ms of [0, 32, 64, 96]) assert.equal(marginal.frame(ms, C7).freshness, 'none');
     seventh = .1;
     let first;
-    for (const ms of [128, 160, 192]) { first = marginal.frame(ms); if (first.freshness === 'fresh') break; }
+    for (const ms of [128, 160, 192]) { first = marginal.frame(ms, C7); if (first.freshness === 'fresh') break; }
     freshChord(first, 'C');
     assert.equal(first.chord.symbol, 'C');
     const clear = fixture();
     clear.engine.buildChromaCQT = () => dominant(.9);
-    for (const ms of [0, 32, 64]) assert.equal(clear.frame(ms).freshness, 'none');
-    const fast = clear.frame(96);
+    for (const ms of [0, 32, 64]) assert.equal(clear.frame(ms, C7).freshness, 'none');
+    const fast = clear.frame(96, C7);
     freshChord(fast, 'C');
     assert.equal(fast.chord.symbol, 'C7');
   });

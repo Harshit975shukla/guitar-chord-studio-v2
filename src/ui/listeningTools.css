@@ -1,0 +1,18 @@
+.enhanced-control { grid-column: 1 / -1; margin-top: 18px; border-top: 1px solid var(--border-subtle); padding-top: 16px; }
+.enhanced-control label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; font-size: 13px; }
+.enhanced-control small { color: var(--text-muted); font-weight: 400; }
+.enhanced-control p { margin: 8px 0; font-size: 12px; line-height: 1.55; color: var(--text-muted); }
+.enhanced-control #enhanced-status { color: var(--text-main); }
+.enhanced-control input, .take-consent input { accent-color: var(--accent-gold); width: 18px; height: 18px; flex-shrink: 0; }
+.training-take { grid-column: 1 / -1; }
+.training-take p { font-size: 13px; line-height: 1.6; margin: 12px 0; max-width: 75ch; }
+.training-take .take-fields { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: center; margin: 18px 0; }
+.training-take select { width: 100%; max-width: 100%; min-width: 0; min-height: 44px; }
+.take-consent { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0; font-size: 13px; line-height: 1.5; cursor: pointer; }
+.take-consent input { margin-top: 3px; }
+.training-take #take-status { padding: 12px 0; border-top: 1px solid var(--border-light); }
+.training-take[data-recording=true] #take-status { color: var(--accent-rose); font-weight: 650; }
+.training-take audio { display: block; width: min(100%, 440px); max-width: 100%; min-width: 0; margin: 12px 0; }
+.training-take .take-caveat { color: var(--text-muted); font-size: 12px; }
+#display-chord-name[data-enhanced-state=different] { font-size: clamp(25px, 3.5vw, 42px); color: var(--accent-gold); }
+@media(max-width:600px) { .training-take .take-fields { grid-template-columns: minmax(0, 1fr); } }

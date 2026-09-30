@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -54,6 +56,12 @@ jobs:
 
       - name: Guitar sample mapping and integrity tests
         run: npm run test:guitar
+
+      - name: Complete chord-library voicing and audio coverage
+        run: npm run test:library
+
+      - name: Enhanced detection and consented take export
+        run: npm run test:enhanced
 
       - name: Practice add-on regression tests
         run: npm run test:ear && npm run test:lab && npm run test:jam

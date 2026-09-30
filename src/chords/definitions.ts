@@ -15,40 +15,14 @@ import {
   parseChordSymbol,
   NOTE_NAMES,
 } from '../types';
+import { CHORD_FORMULAS } from './formulas';
+import { chordInRegister, chordInFretRange } from './positions';
+import { scaleRootPc } from '../scales/theory';
+export { CHORD_FORMULAS } from './formulas';
 
 // ============================================================================
 // Chord Interval Formulas (semitones from root)
 // ============================================================================
-
-export const CHORD_FORMULAS: Record<ChordQuality, number[]> = {
-  'Major': [0, 4, 7],
-  'Minor': [0, 3, 7],
-  '7': [0, 4, 7, 10],
-  'maj7': [0, 4, 7, 11],
-  'm7': [0, 3, 7, 10],
-  'sus2': [0, 2, 7],
-  'sus4': [0, 5, 7],
-  '5': [0, 7], // power chord
-  'dim': [0, 3, 6],
-  'aug': [0, 4, 8],
-  '6': [0, 4, 7, 9],
-  'm6': [0, 3, 7, 9],
-  '9': [0, 4, 7, 10, 14],
-  'm9': [0, 3, 7, 10, 14],
-  'maj9': [0, 4, 7, 11, 14],
-  '11': [0, 4, 7, 10, 14, 17],
-  'm11': [0, 3, 7, 10, 14, 17],
-  '13': [0, 4, 7, 10, 14, 21],
-  'add9': [0, 4, 7, 14],
-  'add11': [0, 4, 7, 17],
-  '7sus4': [0, 5, 7, 10],
-  '7#9': [0, 4, 7, 10, 15],
-  '7b9': [0, 4, 7, 10, 13],
-  '7#5': [0, 4, 8, 10],
-  '7b5': [0, 4, 6, 10],
-  'm7b5': [0, 3, 6, 10],
-  'dim7': [0, 3, 6, 9],
-};
 
 // Chord quality display names
 export const CHORD_QUALITY_DISPLAY: Record<ChordQuality, string> = {
@@ -347,13 +321,26 @@ const SLASH_CHORDS: Record<string, { frets: (number | null)[]; root: NoteName; q
 // Chord Database Builder
 // ============================================================================
 
+const voicingCache = new Map<string, ChordVoicing[]>();
+const copyVoicing = (voicing: ChordVoicing): ChordVoicing => ({
+  ...voicing, frets: [...voicing.frets],
+  ...(voicing.barre ? { barre: { ...voicing.barre } } : {}),
+});
+export const LIBRARY_CHORD_QUALITIES: ChordQuality[] = [
+  'Major', 'Minor', '7', 'maj7', 'm7', 'sus2', 'sus4', '5', 'dim', 'aug',
+  '6', 'm6', 'add9', '9', 'm9', 'maj9', '7sus4', 'm7b5', 'dim7',
+];
+
 export function buildChordDefinition(
   root: NoteName, 
   quality: ChordQuality,
   tuning: StringTuning[] = STANDARD_TUNING
 ): ChordDefinition {
-  const intervals = CHORD_FORMULAS[quality] || [0, 4, 7];
-  const notes = intervals.map(i => transposeNote(root, i));
+  if (!Object.hasOwn(CHORD_FORMULAS, quality)) throw new Error(`Unsupported chord quality: ${quality}`);
+  if (tuning.length !== 6 || tuning.some(string => !Number.isInteger(string.midi))) throw new Error('A chord needs six valid tuning pitches.');
+  const canonicalRoot = NOTE_NAMES[scaleRootPc(root)];
+  const intervals = CHORD_FORMULAS[quality];
+  const notes = intervals.map(i => transposeNote(canonicalRoot, i));
   const formula = intervals.map(i => {
     if (i === 0) return '1';
     if (i === 1) return 'b2';
@@ -372,9 +359,15 @@ export function buildChordDefinition(
     if (i === 21) return '13';
     return i.toString();
   }).join(' - ');
+  const cacheKey = `${canonicalRoot}:${quality}:${tuning.map(string => string.midi).join(',')}`;
+  const cached = voicingCache.get(cacheKey);
+  if (cached) return {
+    symbol: { root, quality }, intervals: [...intervals], notes,
+    voicings: cached.map(copyVoicing), formula, aliases: [`${root}${CHORD_QUALITY_DISPLAY[quality]}`],
+  };
   
   // Get open chord if available
-  const openKey = `${root}${CHORD_QUALITY_DISPLAY[quality]}`;
+  const openKey = `${canonicalRoot}${CHORD_QUALITY_DISPLAY[quality]}`;
   const openChord = OPEN_CHORDS[openKey];
   
   // Generate voicings
@@ -393,10 +386,10 @@ export function buildChordDefinition(
   const cagedTemplates = CAGED_TEMPLATES[quality] || [];
   for (const tmpl of cagedTemplates) {
     // Find barre fret to match root on rootString
-    const rootStringMidi = tuning[tmpl.rootString].midi;
-    const rootNoteIndex = NOTE_NAMES.indexOf(root);
-    // Lowest fret on the root string whose pitch class matches the chord root (0-11)
-    let barreFret = (((rootNoteIndex - (rootStringMidi % 12)) % 12) + 12) % 12;
+    const rootStringMidi = tuning[tmpl.rootString].midi + (tmpl.shape[tmpl.rootString] ?? 0);
+    const rootNoteIndex = NOTE_NAMES.indexOf(canonicalRoot);
+    // Templates already include their root-string fret (e.g. the C shape's fret 3).
+    const barreFret = (rootNoteIndex - rootStringMidi % 12 + 12) % 12;
     
     // For open shapes, barreFret should be 0
     if (!tmpl.barre && barreFret === 0) {
@@ -418,7 +411,11 @@ export function buildChordDefinition(
     voicings.push({
       name: tmpl.name,
       frets,
-      barre: tmpl.barre ? { fret: barreFret, fromString: 0, toString: 5 } : undefined,
+      barre: tmpl.barre ? {
+        fret: Math.min(...frets.filter((fret): fret is number => fret !== null)),
+        fromString: frets.findIndex(fret => fret !== null),
+        toString: 5 - [...frets].reverse().findIndex(fret => fret !== null),
+      } : undefined,
       difficulty: tmpl.difficulty,
     });
   }
@@ -468,11 +465,41 @@ export function buildChordDefinition(
     });
   }
   
+  const wanted = new Set(intervals.map(interval => (scaleRootPc(root) + interval) % 12));
+  const complete = (voicing: ChordVoicing) => {
+    if (voicing.frets.length !== 6 || voicing.frets.some(fret => fret !== null && (!Number.isInteger(fret) || fret < 0 || fret > 12))) return false;
+    const played = new Set(voicing.frets.flatMap((fret, s) => fret === null ? [] : [(tuning[s].midi + fret) % 12]));
+    return played.size === wanted.size && [...wanted].every(pc => played.has(pc));
+  };
+  const valid = voicings.filter(complete);
+  if (!valid.length) {
+    for (const register of ['open', 'middle', 'upper'] as const) {
+      const frets = chordInRegister({ root: canonicalRoot, quality, bass: canonicalRoot }, tuning, register)
+        ?? chordInRegister({ root: canonicalRoot, quality }, tuning, register);
+      if (frets) valid.push({
+        name: `${register[0].toUpperCase()}${register.slice(1)} position`,
+        frets, difficulty: register === 'open' ? 'intermediate' : 'advanced',
+      });
+    }
+  }
+  if (!valid.length) {
+    for (let min = 1; min <= 8; min++) {
+      const frets = chordInFretRange({ root: canonicalRoot, quality, bass: canonicalRoot }, tuning, min, min + 4, true)
+        ?? chordInFretRange({ root: canonicalRoot, quality }, tuning, min, min + 4, true);
+      if (frets) {
+        valid.push({ name: `Position ${min}–${min + 4}`, frets, difficulty: 'advanced' });
+        break;
+      }
+    }
+  }
+  const unique = valid.filter((voicing, index) => valid.findIndex(candidate => candidate.frets.every((fret, s) => fret === voicing.frets[s])) === index);
+  if (voicingCache.size >= 512) voicingCache.delete(voicingCache.keys().next().value!);
+  voicingCache.set(cacheKey, unique.map(copyVoicing));
   return {
     symbol: { root, quality },
-    intervals,
+    intervals: [...intervals],
     notes,
-    voicings,
+    voicings: unique.map(copyVoicing),
     formula,
     aliases: [`${root}${CHORD_QUALITY_DISPLAY[quality]}`],
   };
@@ -480,12 +507,7 @@ export function buildChordDefinition(
 
 export function getAllChordDefinitions(tuning: StringTuning[] = STANDARD_TUNING): ChordDefinition[] {
   const roots: NoteName[] = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  const qualities: ChordQuality[] = [
-    'Major', 'Minor', '7', 'maj7', 'm7', 
-    'sus2', 'sus4', '5', 'dim', 'aug',
-    '6', 'm6', 'add9', '9', 'm9', 'maj9',
-    '7sus4', 'm7b5', 'dim7'
-  ];
+  const qualities = LIBRARY_CHORD_QUALITIES;
   
   const definitions: ChordDefinition[] = [];
   for (const root of roots) {
@@ -575,6 +597,7 @@ export function transposeChordToTuning(
   
   // Find best matching voicing (prefer open, then fewest frets)
   let bestVoicing = def.voicings[0];
+  if (!bestVoicing) throw new Error(`No complete voicing is available for ${chordSymbol} in the source tuning.`);
   for (const v of def.voicings) {
     if (v.name === 'Open') { bestVoicing = v; break; }
   }

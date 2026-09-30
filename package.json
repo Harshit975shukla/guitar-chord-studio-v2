@@ -4,11 +4,11 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build && node scripts/stamp-sw.mjs",
+    "dev": "node scripts/prepare-enhanced-assets.mjs && vite",
+    "build": "node scripts/prepare-enhanced-assets.mjs && tsc && vite build && node scripts/stamp-sw.mjs",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
-    "test:detection": "tsx scripts/detection-smoke.mjs && tsx scripts/detection-reliability.mjs && tsx scripts/input-health-smoke.mjs && tsx scripts/harmonic-detection-smoke.mjs && tsx scripts/note-pitch-smoke.mjs",
+    "test:detection": "tsx scripts/detection-smoke.mjs && tsx scripts/detection-reliability.mjs && tsx scripts/input-health-smoke.mjs && tsx scripts/harmonic-detection-smoke.mjs && tsx scripts/seventh-chords-smoke.mjs && tsx scripts/note-pitch-smoke.mjs",
     "test:songs": "tsx scripts/song-reliability.mjs",
     "test:tab": "tsx scripts/tab-lane-smoke.mjs",
     "test:audio": "tsx scripts/audio-analysis-smoke.mjs",
@@ -18,6 +18,8 @@
     "test:percussion": "tsx scripts/percussion-smoke.mjs",
     "test:groove": "tsx scripts/groove-smoke.mjs",
     "test:guitar": "tsx scripts/guitar-samples-smoke.mjs",
+    "test:library": "tsx scripts/chord-library-smoke.mjs",
+    "test:enhanced": "node scripts/prepare-enhanced-assets.mjs && tsx scripts/enhanced-smoke.mjs && tsx scripts/training-takes-smoke.mjs && node scripts/ml-assets-smoke.mjs",
     "test:ear": "tsx scripts/ear-training-smoke.mjs",
     "test:lab": "tsx scripts/guitar-lab-smoke.mjs",
     "test:jam": "tsx scripts/jam-loop-smoke.mjs",
@@ -30,6 +32,9 @@
     "vite": "^8.3.0"
   },
   "dependencies": {
+    "@spotify/basic-pitch": "1.0.1",
+    "@tensorflow/tfjs": "3.21.0",
+    "@tensorflow/tfjs-backend-wasm": "3.21.0",
     "three": "^0.186.0"
   }
 }

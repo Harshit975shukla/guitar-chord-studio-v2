@@ -18,6 +18,7 @@ import { checkCirclePractice } from './circle-practice-browser-checks.mjs';
 import { checkLessons } from './lessons-browser-checks.mjs';
 import { checkPercussion } from './percussion-browser-checks.mjs';
 import { checkGuitarSamples } from './guitar-samples-browser-checks.mjs';
+import { checkChordLibrary } from './chord-library-browser-checks.mjs';
 import { checkInputHealth } from './input-health-browser-checks.mjs';
 import { checkNotes } from './note-browser-checks.mjs';
 import { checkEarTraining } from './ear-training-browser-checks.mjs';
@@ -53,7 +54,7 @@ ws.onmessage = event => {
 function send(method, params = {}) {
   return new Promise((resolve, reject) => {
     const requestId = ++id;
-    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(`CDP timed out: ${method}`)); }, method === 'Runtime.evaluate' ? 60000 : 15000);
+    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(`CDP timed out: ${method} ${params.expression?.slice(0, 250) ?? ''}`)); }, method === 'Runtime.evaluate' ? 60000 : 15000);
     pending.set(requestId, { resolve, reject, timer });
     ws.send(JSON.stringify({ id: requestId, method, params }));
   });
@@ -95,9 +96,12 @@ async function show(tab, host) {
 }
 async function screenshot(name) {
   await evaluate(async () => {
-    await document.fonts.ready;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    await Promise.allSettled(document.getAnimations().filter(a => a.effect.getComputedTiming().iterations !== Infinity).map(a => a.finished));
+    const animations = document.getAnimations().filter(a => a.playState === 'running' && a.playbackRate !== 0 && Number.isFinite(a.effect.getComputedTiming().endTime));
+    await Promise.race([
+      Promise.allSettled(animations.map(a => a.finished)),
+      new Promise(resolve => setTimeout(resolve, 1500)),
+    ]);
   });
   if (!process.env.SCREENSHOT_DIR) return;
   const { data } = await send('Page.captureScreenshot', { format: 'png' });
@@ -109,6 +113,9 @@ try {
   await send('Network.enable');
   await send('Storage.clearDataForOrigin', { origin: new URL(appUrl).origin, storageTypes: 'service_workers,cache_storage' });
   await send('Network.setBypassServiceWorker', { bypass: true });
+  // UI regressions must not hang on external font/CDN availability; verify the
+  // same supported system-font fallback that offline users see.
+  await send('Network.setBlockedURLs', { urls: ['*://fonts.googleapis.com/*', '*://fonts.gstatic.com/*'] });
   await send('Page.enable');
   // This UI suite does not test PWA updates; a newly built worker must not reload a scenario.
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `if (location.origin === ${JSON.stringify(new URL(appUrl).origin)}) {
@@ -166,6 +173,8 @@ try {
     await checkInputHealth({ check, evaluate, send, until, screenshot });
   } else if (process.env.BROWSER_SUITE === 'guitar') {
     await checkGuitarSamples({ check, evaluate, send, until, show, screenshot });
+  } else if (process.env.BROWSER_SUITE === 'library') {
+    await checkChordLibrary({ check, evaluate, send, until, show, screenshot });
   } else if (process.env.BROWSER_SUITE === 'percussion') {
     await checkPercussion({ check, evaluate, send, until, screenshot });
   } else if (process.env.BROWSER_SUITE === 'groove') {
@@ -393,7 +402,7 @@ try {
       await until(`document.querySelector('#${host} canvas').width > 0`);
       await evaluate(async () => {
         await document.fonts.ready;
-        await Promise.allSettled(document.getAnimations().filter(a => a.effect.getComputedTiming().iterations !== Infinity).map(a => a.finished));
+        await Promise.allSettled(document.getAnimations().filter(a => a.playState === 'running' && Number.isFinite(a.effect.getComputedTiming().endTime)).map(a => a.finished));
       });
       const camera = await evaluate(`(() => {
         const scene = testScenes['${host}'].scene;

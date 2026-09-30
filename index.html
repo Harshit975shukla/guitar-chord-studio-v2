@@ -2345,6 +2345,12 @@ Sargam: (Pluck notes or click 'Start Live Tab Writing' to transcribe)
             if (newWorker) {
               newWorker.addEventListener('statechange', () => {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  const take = window.getListeningToolsState?.();
+                  if (take?.recording || take?.retainedTake) {
+                    // Do not discard a consented in-memory take for an automatic update.
+                    window.dispatchEvent(new Event('guitar-update-pending'));
+                    return;
+                  }
                   // A new version has been installed; activate and refresh
                   console.log('New version available, refreshing...');
                   window.location.reload();

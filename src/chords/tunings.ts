@@ -3,6 +3,7 @@
  */
 
 import { TuningPreset, StringTuning, STANDARD_TUNING, NOTE_NAMES, NoteName } from '../types';
+import { scaleRootPc } from '../scales/theory';
 
 // ============================================================================
 // Capo State (local since it's not exported from types)
@@ -22,8 +23,8 @@ function createTuning(id: string, name: string, notes: NoteName[], description?:
     // Find MIDI note for this string (standard tuning reference)
     const standardMidi = STANDARD_TUNING[i].midi;
     const standardNote = STANDARD_TUNING[i].note;
-    const noteIndex = NOTE_NAMES.indexOf(note);
-    const standardNoteIndex = NOTE_NAMES.indexOf(standardNote);
+    const noteIndex = scaleRootPc(note);
+    const standardNoteIndex = scaleRootPc(standardNote);
     
     // Calculate octave to keep in reasonable range
     let midi = standardMidi + (noteIndex - standardNoteIndex);

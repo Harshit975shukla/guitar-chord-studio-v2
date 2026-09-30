@@ -11,21 +11,27 @@ interface Scenario {
   id: string; expected: string | null; frets: (number | null)[] | null;
   level: number; noise: number; gainChange?: boolean; single?: number; inversion?: boolean;
   seed?: number; up?: boolean; spacing?: number; calibrationTransient?: boolean; burst?: 'clap' | 'thump';
+  speaker?: boolean; bright?: boolean; cents?: number;
 }
 interface Outcome { first: string | null; correct: boolean; anyCorrect: boolean; wrong: boolean; latency: number | null; predictions: string[]; processingP95Ms: number }
 interface Row { bank: GuitarSampleBank; scenario: string; expected: string | null; baseline: Outcome; current: Outcome; inversion: boolean; evidence?: { chroma: number[]; peaks: { freq: number; midi: number; amp: number }[] } }
 
-function scenarios(quick: boolean, holdout: boolean): Scenario[] {
+function scenarios(quick: boolean, holdout: boolean, focus: boolean): Scenario[] {
   const result: Scenario[] = [];
-  const qualities: ChordQuality[] = quick ? ['Major','Minor'] : ['Major','Minor','7','maj7','m7','sus2','sus4','5','dim','aug'];
-  const conditions: Array<{ id: string; level: number; noise: number; gainChange?: boolean; calibrationTransient?: boolean }> = [
+  const qualities: ChordQuality[] = focus ? ['Major','Minor','7','maj7','m7'] : quick ? ['Major','Minor'] : ['Major','Minor','7','maj7','m7','sus2','sus4','5','dim','aug'];
+  const conditions: Array<Pick<Scenario, 'id' | 'level' | 'noise' | 'gainChange' | 'calibrationTransient' | 'speaker' | 'bright' | 'cents'>> = [
     { id: 'clean', level: .04, noise: .0001 },
     { id: 'quiet', level: .003, noise: .00005 },
     { id: 'room-noise', level: .04, noise: .006 },
     { id: 'gain-change', level: .04, noise: .002, gainChange: true },
   ];
+  if (focus) conditions.push(
+    { id: 'bright', level: .04, noise: .0001, bright: true },
+    { id: 'speaker-filter', level: .04, noise: .0001, speaker: true },
+    { id: 'detuned-10c', level: .04, noise: .0001, cents: 10 },
+  );
   if (holdout) conditions.push({ id: 'calibration-spike', level: .04, noise: .0002, calibrationTransient: true });
-  const roots: NoteName[] = holdout ? ['C#','D#','F#','G#','A#','B'] : ['C','D','E','F','G','A'];
+  const roots: NoteName[] = focus ? ['A','C'] : holdout ? ['C#','D#','F#','G#','A#','B'] : ['C','D','E','F','G','A'];
   for (const root of roots) for (const quality of qualities) {
     const frets = (['open','middle','upper'] as const).map(register =>
       chordInRegister({ root, quality, bass: root }, STANDARD_TUNING, register)).find(Boolean);
@@ -71,7 +77,7 @@ function waveform(scenario: Scenario, bank: GuitarSampleBank, decoder: BaseAudio
     const offset = Math.round((STRUM_AT + index * (scenario.spacing ?? .024)) * RATE);
     const buffer = recording.buffer;
     for (let i = offset; i < length; i++) {
-      const position = Math.floor((i - offset) * recording.rate + recording.offset * RATE);
+      const position = Math.floor((i - offset) * recording.rate * 2 ** ((scenario.cents ?? 0) / 1200) + recording.offset * RATE);
       if (position >= buffer.length) break;
       let value = 0;
       for (let channel = 0; channel < buffer.numberOfChannels; channel++) value += buffer.getChannelData(channel)[position] / buffer.numberOfChannels;
@@ -119,7 +125,20 @@ async function runScenario(scenario: Scenario, bank: GuitarSampleBank, decoder: 
   gain.gain.value = 4;
   if (scenario.gainChange) gain.gain.setValueAtTime(6, 2.048);
   analyser.fftSize = SIZE; analyser.smoothingTimeConstant = .10;
-  source.connect(high); high.connect(low); low.connect(gain); gain.connect(analyser); analyser.connect(ctx.destination);
+  let input: AudioNode = source;
+  if (scenario.speaker) {
+    // A reproducible bandwidth stress test, not a model of any particular phone or room.
+    const speakerHigh = ctx.createBiquadFilter(), speakerLow = ctx.createBiquadFilter();
+    speakerHigh.type = 'highpass'; speakerHigh.frequency.value = 250; speakerHigh.Q.value = .707;
+    speakerLow.type = 'lowpass'; speakerLow.frequency.value = 4500; speakerLow.Q.value = .707;
+    input.connect(speakerHigh); speakerHigh.connect(speakerLow); input = speakerLow;
+  }
+  if (scenario.bright) {
+    const shelf = ctx.createBiquadFilter();
+    shelf.type = 'highshelf'; shelf.frequency.value = 700; shelf.gain.value = 10;
+    input.connect(shelf); input = shelf;
+  }
+  input.connect(high); high.connect(low); low.connect(gain); gain.connect(analyser); analyser.connect(ctx.destination);
   const baseline = new Baseline({ fftSize: SIZE, triggerMode: 'guitartuna', targetMode: 'chords' });
   const current = new DetectionEngine({ fftSize: SIZE, triggerMode: 'guitartuna', targetMode: 'chords' });
   baseline.setAnalyser(analyser); current.setAnalyser(analyser);
@@ -180,15 +199,17 @@ function summarize(rows: Row[], version: 'baseline' | 'current') {
   };
 }
 
-export async function runDetectorBenchmark(baselineJs: string, quick = true, onlyNegative = false, holdout = false) {
+export async function runDetectorBenchmark(baselineJs: string, quick = true, onlyNegative = false, holdout = false, focus = false, selectedCases: string[] = []) {
   RATE = holdout ? 48000 : 44100;
   const url = URL.createObjectURL(new Blob([baselineJs], { type: 'text/javascript' }));
   const { DetectionEngine: Baseline } = await import(/* @vite-ignore */ url);
   URL.revokeObjectURL(url);
   const decoder = new OfflineAudioContext(2, 1, RATE);
   const rows: Row[] = [];
-  const banks: GuitarSampleBank[] = quick ? ['steel'] : ['steel','classical','electric'];
-  const cases = scenarios(quick, holdout).filter(scenario => !onlyNegative || scenario.expected === null);
+  const banks: GuitarSampleBank[] = quick && !focus ? ['steel'] : ['steel','classical','electric'];
+  const cases = scenarios(quick, holdout, focus).filter(scenario => (!onlyNegative || scenario.expected === null)
+    && (!selectedCases.length || selectedCases.some(prefix => scenario.id.startsWith(prefix))));
+  if (!cases.length) throw new Error('No benchmark cases match the requested selection.');
   for (const bank of banks) {
     await loadGuitarBank(decoder, bank);
     for (const scenario of cases) {
@@ -196,12 +217,15 @@ export async function runDetectorBenchmark(baselineJs: string, quick = true, onl
       window.benchmarkProgress = `${rows.length}/${cases.length * banks.length}: ${bank}/${scenario.id}`;
     }
   }
-  const conditions = ['clean','quiet','room-noise','gain-change', ...(holdout ? ['calibration-spike'] : [])];
+  const conditions = ['clean','quiet','room-noise','gain-change', ...(holdout ? ['calibration-spike'] : []),
+    ...(focus ? ['bright','speaker-filter','detuned-10c'] : [])];
   return {
     method: 'Native OfflineAudioContext microphone filters and analyser; default capture mode. Strums assembled from authorized single-note recordings, not human performances. No competitor accuracy measurement.',
     samples: GUITAR_SAMPLES.length,
     sampleRate: RATE,
     holdout,
+    focus,
+    selectedCases,
     baseline: summarize(rows, 'baseline'), current: summarize(rows, 'current'),
     conditions: Object.fromEntries(conditions.map(condition => {
       const selected = rows.filter(row => row.scenario.endsWith(`/${condition}`));
