@@ -1,0 +1,113 @@
+Recorded tabla strokes
+
+These files are the publicly offered high-quality MP3 previews, not the original WAV downloads.
+Playback aligns the recorded onset and adjusts gain. No synthetic Tin or fabricated velocity layers are used.
+Na, Ghe, Ke, Tun, Tas, Te and Re: mmiron, tabla bols, CC0-1.0.
+Tin: "tin stroke" by ajaysm, CC-BY-4.0. Licence text: CC-BY-4.0.txt.
+CC0 legal text: VCSL-CC0.txt. Credit does not imply endorsement by either creator.
+
+freesound/tabla-ghe-130406.mp3
+ghe.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130406/
+CC0-1.0
+
+freesound/tabla-ghe-130405.mp3
+ghe_2.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130405/
+CC0-1.0
+
+freesound/tabla-ghe-130404.mp3
+ghe_3.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130404/
+CC0-1.0
+
+freesound/tabla-ghe-130411.mp3
+ghe_4.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130411/
+CC0-1.0
+
+freesound/tabla-ke-130413.mp3
+ke.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130413/
+CC0-1.0
+
+freesound/tabla-ke-130424.mp3
+ke_2.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130424/
+CC0-1.0
+
+freesound/tabla-ke-130423.mp3
+ke_3.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130423/
+CC0-1.0
+
+freesound/tabla-na-130421.mp3
+na.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130421/
+CC0-1.0
+
+freesound/tabla-na-130422.mp3
+na-open.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130422/
+CC0-1.0
+
+freesound/tabla-na-130428.mp3
+na_sharp.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130428/
+CC0-1.0
+
+freesound/tabla-tin-171911.mp3
+tin stroke by ajaysm
+https://freesound.org/people/ajaysm/sounds/171911/
+CC-BY-4.0
+
+freesound/tabla-tun-130416.mp3
+tun.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130416/
+CC0-1.0
+
+freesound/tabla-tun-130419.mp3
+tun_2.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130419/
+CC0-1.0
+
+freesound/tabla-tun-130420.mp3
+tun_3.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130420/
+CC0-1.0
+
+freesound/tabla-tas-130426.mp3
+tas.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130426/
+CC0-1.0
+
+freesound/tabla-tas-130425.mp3
+tas_2.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130425/
+CC0-1.0
+
+freesound/tabla-tas-130430.mp3
+tas_3.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130430/
+CC0-1.0
+
+freesound/tabla-te-130429.mp3
+te.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130429/
+CC0-1.0
+
+freesound/tabla-te-130418.mp3
+te_2.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130418/
+CC0-1.0
+
+freesound/tabla-te-130415.mp3
+te_middlefinger.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130415/
+CC0-1.0
+
+freesound/tabla-re-130427.mp3
+re.wav by mmiron
+https://freesound.org/people/mmiron/sounds/130427/
+CC0-1.0
+

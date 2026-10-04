@@ -1,0 +1,49 @@
+Owner-supplied original acoustic guitar and hand animations
+
+Source: apk_extracted-20261002T162048Z-1-001.zip, supplied by the project
+owner as their Android application. Converted locally for review at the
+owner's request. No redistribution licence is inferred from the archive.
+Publishing these assets remains subject to the owner's deployment approval.
+
+Content: Acoustic_Mesh, AcousticTexture, AcousticRozet, CharNewMesh,
+SolKolHighDiffuseMap, SolKolHighBumpMap_NRM1, and the 118 original playing
+AnimationClips. App code, native binaries, UI, audio, and other guitars
+are not included.
+
+Conversion preserves the original geometry, UVs, skin bindings and cubic
+animation tangents. Unity coordinates are reflected for glTF; the scene
+is uniformly scaled and reoriented to the player. Arms are cropped to
+32 mm behind each wrist and faded; their remaining influences attach to
+the wrist. The original pick and six string meshes remain separate.
+
+The 96 chord poses and 22 strumming/picking clips retain their source names.
+Chord shapes were checked against the supplied ChordDB and posed geometry;
+the simple open Em7 pose was also identified from that geometry. Measured
+string crossings retime the two played strokes to the existing audio clock.
+No source audio or Android application code is executed by the web app.
+
+hand-poses.json is a locally generated adaptation, not an extracted source
+animation. It covers the web app's offered shapes on the original skeleton
+without replacing or rescaling the mesh. The GLB SHA-256 binds it to this rig.
+Revision 4 checks designated fingertips, approach direction, every sounding
+string's vibrating span, and the complete skin against the solid guitar.
+It checks front/back sidedness, all vertices, triangle centroids and edge
+midpoints, including the thumb, unused fingers and fading wrist. It uses
+an authored wrist basis without changing the contact or joint limits.
+The whole fretting thumb stays behind the neck even beyond its side edges,
+not merely where its skin projects over the guitar. Its distal pad supports
+the rear neck within 0.12 stage units at each settled pose. Transitions may
+release contact but retain the rear-side constraint on every update.
+Native knuckle roll and thumb opposition are included rather than reduced
+to spread and flexion alone. Each pose stores a wrist transform followed
+by five values per digit: spread, two flexions, distal flexion and roll.
+The bank includes 3,798 offered shapes, 34 additional original preview
+shapes and a resting hand. Run npm run prepare:apk-hands to regenerate it;
+the full geometric coverage checks must pass before the catalogue is
+written. Bounded transition corrections are checked before display, with
+a clear previous/partial pose retained if the proposed step is obstructed.
+Source chord previews use the corresponding corrected shape; the original
+strumming/picking motions and the raw GLB curves remain unchanged.
+
+The existing WebXR reference hands and their separate MIT licence are
+unchanged. This asset does not inherit that licence.

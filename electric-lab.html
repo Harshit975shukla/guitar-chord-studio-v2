@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#171918">
+    <meta name="description" content="An experimental electric-guitar Lab using recovered APK geometry, with custom finishes, model inspection and a recorded-string demonstration.">
+    <link rel="icon" href="data:,">
+    <title>Electric Lab · Guitar Chord Studio</title>
+    <script type="module" crossorigin src="./assets/electricLab-HdaJAZtE.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/preload-helper-DekQ9yoN.js">
+    <link rel="stylesheet" crossorigin href="./assets/electricLab-C0dCNGNs.css">
+  </head>
+  <body class="electric-lab-page">
+    <!-- THESIS: Inspect the recovered instrument itself, then hear and see a chord; this is not a replacement for the main Lab.
+    OWN-WORLD: Incumbent charcoal, warm gold, system type and quiet borders; the model leads.
+    STORY: Orbit the real geometry, explore its anatomy, choose a shape and play its strings.
+    FIRST VIEWPORT: A large instrument stage beside inspection notes and a compact playable-string bench.
+    FORM: Scoped workbench extension. Original geometry is fixed; teaching overlays and unverified material appearance are identified. -->
+    <a class="el-skip" href="#electric-workbench">Skip to the electric Lab</a>
+    <header class="el-header">
+      <a href="./">← Back to studio</a>
+      <span>Guitar Chord Studio</span>
+    </header>
+    <main data-electric-lab>
+      <div class="el-intro">
+        <h1>Electric Lab</h1>
+        <p>Experimental recovered-model preview. Explore the original electric guitar’s geometry, then try a chord.</p>
+      </div>
+      <p class="el-caveat" id="electric-finish-help"><strong>Original geometry. Custom Lab colours.</strong>
+        Try painted finishes with wood and metal details, or choose Recovered neutral for the saved source tint.
+        Original runtime finish not yet verified.</p>
+
+      <div class="el-workbench" id="electric-workbench">
+        <section class="el-visual" aria-label="Recovered electric guitar viewer">
+          <div class="el-stage" data-el-stage aria-busy="true">
+            <div class="el-render" data-el-render></div>
+            <div class="el-fallback" data-el-fallback>
+              <img src="./models/apk/electric-lab/geometry-reference.png" width="1024" height="400"
+                alt="Flat geometry reference of the recovered double-cutaway electric guitar, with two pickups, vibrato bridge and six-in-line headstock.">
+              <p>Static geometry reference. The part notes remain available below.</p>
+            </div>
+            <span class="el-stage-label" data-el-stage-label>Clean_Mesh · recovered APK geometry</span>
+            <div class="el-load-panel" data-el-load-panel>
+              <p data-el-model-status role="status" aria-live="polite">Loading the recovered guitar…</p>
+              <button type="button" data-el-retry hidden>Retry 3D</button>
+            </div>
+          </div>
+          <div class="el-camera" role="group" aria-label="Model camera">
+            <label>View
+              <select data-el-view disabled>
+                <option value="three-quarter">Three-quarter</option>
+                <option value="front">Front</option>
+                <option value="back">Back</option>
+                <option value="side">Side</option>
+              </select>
+            </label>
+            <button type="button" data-el-camera="left" aria-label="Rotate guitar left" disabled>↶</button>
+            <button type="button" data-el-camera="right" aria-label="Rotate guitar right" disabled>↷</button>
+            <button type="button" data-el-camera="in" aria-label="Zoom guitar in" disabled>+</button>
+            <button type="button" data-el-camera="out" aria-label="Zoom guitar out" disabled>−</button>
+            <button type="button" data-el-camera="reset" disabled>Reset view</button>
+          </div>
+          <div class="el-display">
+            <label>Finish
+              <select data-el-finish aria-describedby="electric-finish-help" disabled>
+                <option value="cherry">Cherry red</option>
+                <option value="blue">Midnight blue</option>
+                <option value="cream">Vintage cream</option>
+                <option value="neutral">Recovered neutral</option>
+              </select>
+            </label>
+            <label><input type="checkbox" data-el-wireframe disabled> Wireframe</label>
+            <label><input type="checkbox" data-el-guides checked disabled> Teaching strings</label>
+          </div>
+          <p class="el-help" id="electric-camera-help">Drag to orbit; pinch or scroll to zoom. With the model focused, use arrow keys,
+            + / −, or Home to reset. Click the guitar to inspect an area; click a teaching string to play it.</p>
+          <p class="el-help">Gold strings and fret markers are a teaching overlay. Vibration is slowed for visibility, not a physical sound simulation.</p>
+          <p class="el-view-status" data-el-view-status role="status">Whole guitar · three-quarter view.</p>
+        </section>
+
+        <div class="el-side">
+          <section class="el-inspector" aria-labelledby="electric-inspect-title">
+            <h2 id="electric-inspect-title">Explore the model</h2>
+            <div class="el-parts" role="group" aria-label="Inspection areas">
+              <button type="button" data-el-part="body" aria-pressed="false">Body</button>
+              <button type="button" data-el-part="neck" aria-pressed="false">Fretboard</button>
+              <button type="button" data-el-part="headstock" aria-pressed="false">Headstock</button>
+              <button type="button" data-el-part="pickups" aria-pressed="false">Pickups</button>
+              <button type="button" data-el-part="bridge" aria-pressed="false">Bridge &amp; vibrato</button>
+              <button type="button" data-el-part="controls" aria-pressed="false">Controls</button>
+            </div>
+            <div class="el-detail" aria-live="polite" aria-atomic="true">
+              <h3 data-el-part-title>Recovered geometry</h3>
+              <p data-el-part-info>Choose an area to bring it closer and learn what it does. The original mesh stays intact;
+                these are inspection guides, not independently removable parts.</p>
+            </div>
+            <button type="button" class="el-text-button" data-el-whole>Show whole guitar</button>
+          </section>
+
+          <section class="el-play" aria-labelledby="electric-play-title">
+            <h2 id="electric-play-title">Try the strings</h2>
+            <div class="el-play-options">
+              <label>Shape
+                <select data-el-chord>
+                  <option value="open">Open strings</option>
+                  <option value="Em">E minor</option>
+                  <option value="Am">A minor</option>
+                  <option value="D">D major</option>
+                  <option value="G">G major</option>
+                </select>
+              </label>
+              <label>Pattern
+                <select data-el-pattern>
+                  <option value="down">Down strum</option>
+                  <option value="arpeggio">Arpeggio</option>
+                </select>
+              </label>
+            </div>
+            <div class="el-play-actions">
+              <button type="button" class="el-primary" data-el-play>Play open strings</button>
+              <button type="button" data-el-stop disabled>Stop sound</button>
+            </div>
+            <div class="el-strings" role="group" aria-label="Play individual strings, low to high">
+              <button type="button" data-el-string="5" aria-keyshortcuts="6"><span>6</span><strong>E2</strong><small>Open</small></button>
+              <button type="button" data-el-string="4" aria-keyshortcuts="5"><span>5</span><strong>A2</strong><small>Open</small></button>
+              <button type="button" data-el-string="3" aria-keyshortcuts="4"><span>4</span><strong>D3</strong><small>Open</small></button>
+              <button type="button" data-el-string="2" aria-keyshortcuts="3"><span>3</span><strong>G3</strong><small>Open</small></button>
+              <button type="button" data-el-string="1" aria-keyshortcuts="2"><span>2</span><strong>B3</strong><small>Open</small></button>
+              <button type="button" data-el-string="0" aria-keyshortcuts="1"><span>1</span><strong>E4</strong><small>Open</small></button>
+            </div>
+            <p class="el-help">Low → high. Keys 6 → 1 also play the strings. A muted string is marked ×.
+              Standard tuning stays fixed in this standalone Lab.</p>
+            <label class="el-volume">Volume
+              <input type="range" min="0" max="100" step="5" value="60" data-el-volume>
+              <output data-el-volume-value>60%</output>
+            </label>
+            <p class="el-audio-status" data-el-audio-status role="status" aria-live="polite">Sound starts only when you play. Recordings load on the first note.</p>
+            <p class="el-help">Uses the studio’s existing recorded electric-guitar bank. These recordings are not recovered APK audio
+              and do not predict this model’s tone. No microphone is used.</p>
+          </section>
+        </div>
+      </div>
+
+      <details class="el-provenance">
+        <summary>What was recovered, and what this preview leaves out</summary>
+        <dl>
+          <div><dt>Original mesh</dt><dd>Clean_Mesh</dd></div>
+          <div><dt>Geometry</dt><dd>9,325 vertices · 6,452 triangles</dd></div>
+          <div><dt>Original material slots</dt><dd>StratDiffuseMap · PolyLogo</dd></div>
+          <div><dt>Retained</dt><dd>Positions, normals, primary UVs, triangle order after handedness conversion, and embedded logo</dd></div>
+        </dl>
+        <p>The GLB is an unchanged copy of the recovered conversion. Custom finishes assign materials to the existing triangles
+          without changing vertices, UVs, triangle order or the embedded logo. Wood, paint and metal styling is a Lab interpretation,
+          not recovered original materials. No replacement guitar or repainted acoustic atlas is used.</p>
+        <p>The source shader’s empty base-texture slot has a valid white default; it is not evidence of a missing atlas.
+          The original Cube_Sunol cubemap exists in the source, but its complete reflection and Unity’s particle shader are not reproduced here.
+          Studio lighting, custom finishes and the GLB’s material approximation cannot verify the original runtime finish.</p>
+        <p>Seven additional UV layouts, original runtime material bindings, and animated APK hands are not included in this preview.
+          The main Chord Player and Guitar Lab are unchanged.</p>
+        <a href="./models/apk/electric-lab/SOURCE.txt">Read model provenance and limitations</a>
+      </details>
+      <noscript><p class="el-caveat">JavaScript is required for 3D inspection and recorded playback. The image above is only a static geometry reference.
+        You can still read the recovery details and provenance.</p></noscript>
+    </main>
+  </body>
+</html>

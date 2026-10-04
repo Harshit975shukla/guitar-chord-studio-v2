@@ -1,0 +1,135 @@
+{
+  "status": "source-default-complete-original-runtime-finish-unresolved",
+  "correction": "A null _MainTex is valid here. The shader explicitly falls back to white. It is not by itself evidence of a missing texture or broken external reference.",
+  "serializedDefaultRenderable": true,
+  "declaredMissingExternalAssets": [],
+  "sourceShader": {
+    "file": "sharedassets1.assets",
+    "pathId": "50",
+    "name": "Legacy Shaders/Reflective/Diffuse",
+    "fallback": "Legacy Shaders/Reflective/VertexLit",
+    "textureProperties": [
+      {
+        "m_Name": "_MainTex",
+        "m_Description": "Base (RGB) RefStrength (A)",
+        "m_Attributes": [],
+        "m_Type": 4,
+        "m_Flags": 0,
+        "m_DefValue[0]": 0,
+        "m_DefValue[1]": 0,
+        "m_DefValue[2]": 0,
+        "m_DefValue[3]": 0,
+        "m_DefTexture": {
+          "m_DefaultName": "white",
+          "m_TexDim": 2
+        }
+      },
+      {
+        "m_Name": "_Cube",
+        "m_Description": "Reflection Cubemap",
+        "m_Attributes": [],
+        "m_Type": 4,
+        "m_Flags": 0,
+        "m_DefValue[0]": 0,
+        "m_DefValue[1]": 0,
+        "m_DefValue[2]": 0,
+        "m_DefValue[3]": 0,
+        "m_DefTexture": {
+          "m_DefaultName": "_Skybox",
+          "m_TexDim": 4
+        }
+      }
+    ],
+    "nonModifiableTextures": []
+  },
+  "sourceMaterial": {
+    "file": "sharedassets1.assets",
+    "pathId": "13",
+    "name": "StratDiffuseMap",
+    "savedColor": {
+      "r": 0.7547169923782349,
+      "g": 0.7547169923782349,
+      "b": 0.7547169923782349,
+      "a": 1
+    },
+    "savedReflectionColor": {
+      "r": 0.9338235259056091,
+      "g": 0.9338235259056091,
+      "b": 0.9338235259056091,
+      "a": 0.501960813999176
+    },
+    "baseTexture": {
+      "reference": {
+        "m_FileID": 0,
+        "m_PathID": 0
+      },
+      "declaredDefault": "white"
+    },
+    "reflectionTexture": {
+      "file": "sharedassets1.assets",
+      "pathId": "81",
+      "type": "Cubemap",
+      "name": "Cube_Sunol",
+      "width": 64,
+      "height": 64,
+      "depth": null,
+      "format": 5,
+      "imageCount": 6,
+      "dataSha256": "e46992ce85bf5b0187f5f00c6ac2a52c37a7f53e99e063df9c33b4abdc56189b"
+    }
+  },
+  "renderers": [
+    {
+      "file": "level1",
+      "pathId": "3698",
+      "gameObject": {
+        "name": "ElectricGuitar",
+        "pathId": "1089",
+        "active": true
+      },
+      "materials": [
+        {
+          "fileId": 3,
+          "pathId": "13",
+          "targetFile": "sharedassets1.assets",
+          "targetType": "Material",
+          "targetName": "StratDiffuseMap"
+        },
+        {
+          "fileId": 3,
+          "pathId": "11",
+          "targetFile": "sharedassets1.assets",
+          "targetType": "Material",
+          "targetName": "PolyLogo"
+        }
+      ]
+    }
+  ],
+  "vertexColorCounts": [
+    {
+      "mesh": "Clean_Mesh",
+      "colors": 0,
+      "uvLayouts": 8
+    },
+    {
+      "mesh": "Clean_Mesh_Ref",
+      "colors": 0,
+      "uvLayouts": 8
+    }
+  ],
+  "inventory": {
+    "sceneTexture2D": 34,
+    "sceneCubemaps": 2,
+    "restoredTexture2D": 6,
+    "restoredBundleCount": 7,
+    "externalBundleReferences": 0
+  },
+  "remainingLimitation": {
+    "property": "sharedassets1.assets:13 StratDiffuseMap._MainTex (original runtime base RGB and reflection-strength alpha)",
+    "knownMissingFilenameOrGuid": null,
+    "explanation": "The declared white texture, uniform neutral tint and outdoor reflection cube are enough for the serialized default material. They do not define the per-part painted/wood/hardware appearance visible in the supplied EG_1 through EG_4 images. No alternate albedo slot, per-part material assignment, vertex colors or external bundle locator supplies that appearance.",
+    "confidenceBoundary": "This does not prove that a bitmap file was omitted from the archive: the APK could supply or construct different data at runtime. The original runtime binding/pixels or source material setup is unresolved. The neutral default must not be silently substituted for a verified APK finish.",
+    "neededToFinish": "A verified original runtime electric material/texture export or the actual original binding/source data for this property. No filename, paint color or acoustic-atlas mapping should be guessed."
+  },
+  "integration": "None. No original-appearance substitute has been installed in the Lab."
+}

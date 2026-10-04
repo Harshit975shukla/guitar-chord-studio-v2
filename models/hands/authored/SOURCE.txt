@@ -1,0 +1,14 @@
+Local hand-model review assets
+
+Source: the project owner's supplied Android application archive,
+apk_extracted-20261002T162048Z-1-001.zip.
+
+Only the hand geometry, skin colour texture and normal texture were adapted.
+The original hand rig's 45 binding hashes were verified before conversion.
+The hands are retargeted to the existing 25-joint playing rig and cropped to
+short wrists. The original guitar, app code, audio and packaged animations
+were not imported.
+
+These assets are separate from the MIT-licensed WebXR reference hands in
+the parent directory. No redistribution licence is inferred from the APK.
+This hand-model update is local for review, not part of the backup release.

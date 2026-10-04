@@ -1,0 +1,748 @@
+{
+  "status": "blocked-unverified-original-runtime-finish",
+  "integration": "None. The application, Chord Player, public assets and production build are unchanged by this recovery.",
+  "source": {
+    "archive": "81451eed-1168-4696-b98b-941e473a2da1-apk_extracted-20261002T162048Z-1-001.zip",
+    "sceneEntry": "apk_extracted/base/assets/bin/Data/data.unity3d",
+    "sceneSha256": "ed1e1668bccc50ed519d42080548fbe1ad7eaac06c8ffd465b2566e08758cdfc",
+    "meshBundle": "4d9dfcb8de0141bd8c6f41c360847cb1.bundle",
+    "meshBundleSha256": "c50fba1bedf6eeed3bd722ff7afb586248abb52ca849bf114533f2cb416ec1d0",
+    "parser": "UnityPy 1.25.2"
+  },
+  "geometry": {
+    "name": "Clean_Mesh",
+    "file": "CAB-007d816f33ea8e45ca709f4d097a472a",
+    "pathId": "-7462617945735736255",
+    "vertices": 9325,
+    "triangles": [
+      6446,
+      6
+    ],
+    "reflectionVariant": {
+      "name": "Clean_Mesh_Ref",
+      "pathId": "-3487521516583598250",
+      "geometryAndUvsIdentical": true
+    },
+    "glb": "electric-geometry.glb",
+    "sha256": "fbe38e1709a9752ffd93ecb072623005e08eb267340772581768642f7a18083a",
+    "bytes": 390464
+  },
+  "materials": [
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "13",
+      "tree": {
+        "m_Name": "StratDiffuseMap",
+        "m_Shader": {
+          "m_FileID": 0,
+          "m_PathID": 50
+        },
+        "m_ValidKeywords": [],
+        "m_InvalidKeywords": [],
+        "m_LightmapFlags": 4,
+        "m_EnableInstancingVariants": false,
+        "m_DoubleSidedGI": false,
+        "m_CustomRenderQueue": -1,
+        "stringTagMap": [],
+        "disabledShaderPasses": [],
+        "m_SavedProperties": {
+          "m_TexEnvs": [
+            [
+              "_Cube",
+              {
+                "m_Texture": {
+                  "m_FileID": 0,
+                  "m_PathID": 81
+                },
+                "m_Scale": {
+                  "x": 1,
+                  "y": 1
+                },
+                "m_Offset": {
+                  "x": 0,
+                  "y": 0
+                }
+              }
+            ],
+            [
+              "_MainTex",
+              {
+                "m_Texture": {
+                  "m_FileID": 0,
+                  "m_PathID": 0
+                },
+                "m_Scale": {
+                  "x": 1,
+                  "y": 1
+                },
+                "m_Offset": {
+                  "x": 0,
+                  "y": 0
+                }
+              }
+            ]
+          ],
+          "m_Ints": [],
+          "m_Floats": [],
+          "m_Colors": [
+            [
+              "_Color",
+              {
+                "r": 0.7547169923782349,
+                "g": 0.7547169923782349,
+                "b": 0.7547169923782349,
+                "a": 1
+              }
+            ],
+            [
+              "_ReflectColor",
+              {
+                "r": 0.9338235259056091,
+                "g": 0.9338235259056091,
+                "b": 0.9338235259056091,
+                "a": 0.501960813999176
+              }
+            ]
+          ]
+        },
+        "m_BuildTextureStacks": []
+      }
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "11",
+      "tree": {
+        "m_Name": "PolyLogo",
+        "m_Shader": {
+          "m_FileID": 0,
+          "m_PathID": 57
+        },
+        "m_ValidKeywords": [],
+        "m_InvalidKeywords": [],
+        "m_LightmapFlags": 4,
+        "m_EnableInstancingVariants": false,
+        "m_DoubleSidedGI": false,
+        "m_CustomRenderQueue": -1,
+        "stringTagMap": [],
+        "disabledShaderPasses": [],
+        "m_SavedProperties": {
+          "m_TexEnvs": [
+            [
+              "_MainTex",
+              {
+                "m_Texture": {
+                  "m_FileID": 0,
+                  "m_PathID": 24
+                },
+                "m_Scale": {
+                  "x": 1,
+                  "y": 1
+                },
+                "m_Offset": {
+                  "x": 0,
+                  "y": 0
+                }
+              }
+            ]
+          ],
+          "m_Ints": [],
+          "m_Floats": [
+            [
+              "_BumpScale",
+              1
+            ],
+            [
+              "_Cutoff",
+              0.5
+            ],
+            [
+              "_DetailNormalMapScale",
+              1
+            ],
+            [
+              "_DstBlend",
+              0
+            ],
+            [
+              "_GlossMapScale",
+              1
+            ],
+            [
+              "_Glossiness",
+              0
+            ],
+            [
+              "_GlossyReflections",
+              1
+            ],
+            [
+              "_Metallic",
+              0
+            ],
+            [
+              "_Mode",
+              0
+            ],
+            [
+              "_OcclusionStrength",
+              1
+            ],
+            [
+              "_Parallax",
+              0.019999999552965164
+            ],
+            [
+              "_SmoothnessTextureChannel",
+              0
+            ],
+            [
+              "_SpecularHighlights",
+              1
+            ],
+            [
+              "_SrcBlend",
+              1
+            ],
+            [
+              "_UVSec",
+              0
+            ],
+            [
+              "_ZWrite",
+              1
+            ]
+          ],
+          "m_Colors": [
+            [
+              "_Color",
+              {
+                "r": 0.5882353186607361,
+                "g": 0.5882353186607361,
+                "b": 0.5882353186607361,
+                "a": 1
+              }
+            ],
+            [
+              "_EmisColor",
+              {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0
+              }
+            ],
+            [
+              "_EmissionColor",
+              {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0
+              }
+            ]
+          ]
+        },
+        "m_BuildTextureStacks": []
+      }
+    }
+  ],
+  "electricSceneBindings": [
+    {
+      "type": "Transform",
+      "file": "level1",
+      "id": 2469,
+      "tree": {
+        "m_GameObject": {
+          "m_FileID": 0,
+          "m_PathID": 1089
+        },
+        "m_LocalRotation": {
+          "x": 0,
+          "y": 0,
+          "z": -1.4901161193847656e-8,
+          "w": 1
+        },
+        "m_LocalPosition": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "m_LocalScale": {
+          "x": 1,
+          "y": 1,
+          "z": 1
+        },
+        "m_Children": [],
+        "m_Father": {
+          "m_FileID": 0,
+          "m_PathID": 2639
+        },
+        "name": "ElectricGuitar"
+      }
+    },
+    {
+      "type": "MeshRenderer",
+      "file": "level1",
+      "id": 3698,
+      "tree": {
+        "m_GameObject": {
+          "m_FileID": 0,
+          "m_PathID": 1089
+        },
+        "m_Enabled": true,
+        "m_CastShadows": 0,
+        "m_ReceiveShadows": 0,
+        "m_DynamicOccludee": 1,
+        "m_StaticShadowCaster": 0,
+        "m_MotionVectors": 1,
+        "m_LightProbeUsage": 1,
+        "m_ReflectionProbeUsage": 1,
+        "m_RayTracingMode": 2,
+        "m_RayTraceProcedural": 0,
+        "m_RayTracingAccelStructBuildFlagsOverride": 0,
+        "m_RayTracingAccelStructBuildFlags": 1,
+        "m_SmallMeshCulling": 1,
+        "m_ForceMeshLod": -1,
+        "m_MeshLodSelectionBias": 0,
+        "m_RenderingLayerMask": 1,
+        "m_RendererPriority": 0,
+        "m_LightmapIndex": 65535,
+        "m_LightmapIndexDynamic": 65535,
+        "m_LightmapTilingOffset": {
+          "x": 1,
+          "y": 1,
+          "z": 0,
+          "w": 0
+        },
+        "m_LightmapTilingOffsetDynamic": {
+          "x": 1,
+          "y": 1,
+          "z": 0,
+          "w": 0
+        },
+        "m_Materials": [
+          {
+            "m_FileID": 3,
+            "m_PathID": 13
+          },
+          {
+            "m_FileID": 3,
+            "m_PathID": 11
+          }
+        ],
+        "m_StaticBatchInfo": {
+          "firstSubMesh": 0,
+          "subMeshCount": 0
+        },
+        "m_StaticBatchRoot": {
+          "m_FileID": 0,
+          "m_PathID": 0
+        },
+        "m_ProbeAnchor": {
+          "m_FileID": 0,
+          "m_PathID": 0
+        },
+        "m_LightProbeVolumeOverride": {
+          "m_FileID": 0,
+          "m_PathID": 0
+        },
+        "m_SortingLayerID": 0,
+        "m_SortingLayer": 0,
+        "m_SortingOrder": 0,
+        "m_MaskInteraction": 0,
+        "m_AdditionalVertexStreams": {
+          "m_FileID": 0,
+          "m_PathID": 0
+        },
+        "m_EnlightenVertexStream": {
+          "m_FileID": 0,
+          "m_PathID": 0
+        }
+      }
+    },
+    {
+      "type": "MeshFilter",
+      "file": "level1",
+      "id": 4671,
+      "tree": {
+        "m_GameObject": {
+          "m_FileID": 0,
+          "m_PathID": 1089
+        },
+        "m_Mesh": {
+          "m_FileID": 0,
+          "m_PathID": 0
+        }
+      }
+    }
+  ],
+  "textureBundle": {
+    "source": "5efc5f3e3a604387af8df4560944c372.pg3d",
+    "bytes": 3808327,
+    "metadata_header_offset": 3932128,
+    "sha256": "a589d997eb975798cafcc292b5055c48d4e74cb40aa706ccde6dd59479d1b4ad",
+    "counts": {
+      "Texture2D": 6,
+      "AssetBundle": 1
+    },
+    "objects": [
+      {
+        "kind": "Texture2D",
+        "name": "SolKolHighDiffuseMap",
+        "path_id": -8561296133184694000,
+        "file": "CAB-b6ec7271e16d6169fe23b363bfe34b24",
+        "width": 1024,
+        "height": 1024,
+        "format": 4
+      },
+      {
+        "kind": "Texture2D",
+        "name": "AcousticTexture",
+        "path_id": -7676671815443427000,
+        "file": "CAB-b6ec7271e16d6169fe23b363bfe34b24",
+        "width": 1024,
+        "height": 1024,
+        "format": 47
+      },
+      {
+        "kind": "Texture2D",
+        "name": "SolKolHighBumpMap_NRM1",
+        "path_id": -7514182940709356000,
+        "file": "CAB-b6ec7271e16d6169fe23b363bfe34b24",
+        "width": 1024,
+        "height": 1024,
+        "format": 3
+      },
+      {
+        "kind": "Texture2D",
+        "name": "EclassicTexture",
+        "path_id": -3178401794907012000,
+        "file": "CAB-b6ec7271e16d6169fe23b363bfe34b24",
+        "width": 512,
+        "height": 512,
+        "format": 4
+      },
+      {
+        "kind": "Texture2D",
+        "name": "AcousticRozet",
+        "path_id": -2910575183730855400,
+        "file": "CAB-b6ec7271e16d6169fe23b363bfe34b24",
+        "width": 256,
+        "height": 256,
+        "format": 47
+      },
+      {
+        "kind": "Texture2D",
+        "name": "ClassicGuitarTexture",
+        "path_id": 1113230962470624300,
+        "file": "CAB-b6ec7271e16d6169fe23b363bfe34b24",
+        "width": 1024,
+        "height": 1024,
+        "format": 4
+      }
+    ]
+  },
+  "sceneTextures": [
+    {
+      "file": "sharedassets0.assets",
+      "pathId": "4",
+      "name": "NotoSans-Regular Atlas 2",
+      "width": 512,
+      "height": 512,
+      "format": 1
+    },
+    {
+      "file": "sharedassets0.assets",
+      "pathId": "5",
+      "name": "NotoSans-Regular Atlas 1",
+      "width": 512,
+      "height": 512,
+      "format": 1
+    },
+    {
+      "file": "sharedassets0.assets",
+      "pathId": "6",
+      "name": "Font Texture",
+      "width": 0,
+      "height": 0,
+      "format": 4
+    },
+    {
+      "file": "sharedassets0.assets",
+      "pathId": "7",
+      "name": "NotoSans-Regular Atlas",
+      "width": 512,
+      "height": 512,
+      "format": 1
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "19",
+      "name": "whiteSquareAlpha80",
+      "width": 16,
+      "height": 16,
+      "format": 47
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "20",
+      "name": "PenaKucukBos",
+      "width": 66,
+      "height": 66,
+      "format": 4
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "21",
+      "name": "yellowSquare",
+      "width": 16,
+      "height": 16,
+      "format": 34
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "22",
+      "name": "atlas0",
+      "width": 512,
+      "height": 512,
+      "format": 4
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "23",
+      "name": "atlas0",
+      "width": 1024,
+      "height": 1024,
+      "format": 4
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "24",
+      "name": "PolyLogo",
+      "width": 512,
+      "height": 128,
+      "format": 47,
+      "pngSha256": "b657942b6cea16ec9bfacc49edc19ecd456e7ba7dd357152b5e8dfe559b159ac",
+      "rgbaSha256": "a6f9fb2994bb8038535014a9191d29db8c00251895d1dbfc4fccff3bdeb8bd35"
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "25",
+      "name": "fzlogo",
+      "width": 142,
+      "height": 69,
+      "format": 4
+    },
+    {
+      "file": "sharedassets1.assets",
+      "pathId": "26",
+      "name": "BenimDiplo Atlas",
+      "width": 128,
+      "height": 128,
+      "format": 1
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "13",
+      "name": "Triads@2x",
+      "width": 1280,
+      "height": 720,
+      "format": 47
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "14",
+      "name": "atlas0",
+      "width": 1024,
+      "height": 2048,
+      "format": 4
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "15",
+      "name": "atlas0",
+      "width": 1024,
+      "height": 1024,
+      "format": 4
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "16",
+      "name": "atlas0",
+      "width": 256,
+      "height": 256,
+      "format": 4
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "17",
+      "name": "atlas0",
+      "width": 512,
+      "height": 512,
+      "format": 4
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "18",
+      "name": "EG_3",
+      "width": 370,
+      "height": 135,
+      "format": 3,
+      "pngSha256": "3aa56bfb1390fd8b500c3203010dfa05c39be9a67f3fcb0caf4eb4397e4c010b",
+      "rgbaSha256": "f7b4007bde55e6a65a7e0a07645211c87f5f3f9dc02beb876d2876bb59b136c3"
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "19",
+      "name": "EG_2",
+      "width": 370,
+      "height": 135,
+      "format": 4,
+      "pngSha256": "82babad46e7f27801c34f9b390f0c05b173a99eb15a5eca343086a41952d9687",
+      "rgbaSha256": "00d1c0296dcf21bfd386c70e394035570dca5d3d563a5b366460d9d07756f3ea"
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "20",
+      "name": "Sevenths",
+      "width": 640,
+      "height": 360,
+      "format": 47
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "21",
+      "name": "atlas0",
+      "width": 512,
+      "height": 1024,
+      "format": 4
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "22",
+      "name": "atlas0",
+      "width": 2048,
+      "height": 2048,
+      "format": 4
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "23",
+      "name": "ECG_1",
+      "width": 370,
+      "height": 135,
+      "format": 3
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "24",
+      "name": "Sevenths@2x",
+      "width": 1280,
+      "height": 720,
+      "format": 47
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "25",
+      "name": "Triads",
+      "width": 640,
+      "height": 360,
+      "format": 47
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "26",
+      "name": "CG_1",
+      "width": 370,
+      "height": 135,
+      "format": 3
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "27",
+      "name": "EG_1",
+      "width": 370,
+      "height": 135,
+      "format": 4,
+      "pngSha256": "b8ed96fa0839342ee43b7a074353905767cca3fdd5d93770ec693667c3db8f37",
+      "rgbaSha256": "e64e5f0f3c16b002cbf97bdb95472a3e21ea697b7f17a032d081d2ac059cd23a"
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "28",
+      "name": "AG_1",
+      "width": 370,
+      "height": 135,
+      "format": 3
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "29",
+      "name": "EG_4",
+      "width": 370,
+      "height": 135,
+      "format": 3,
+      "pngSha256": "17d294e6c456119ab49afff3ec6e200a70c35fe9641615fed0e33a5f01adc55f",
+      "rgbaSha256": "f242d98dc4c2c9d887f3d59306f6f7da7fca4c3389fa86d93a6e02d86c35109d"
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "30",
+      "name": "g3dst",
+      "width": 1024,
+      "height": 512,
+      "format": 47,
+      "pngSha256": "949b950416ce368e5198a5f20bc927b4cde1935bb7eb2c05d919fd45aa6d7f09",
+      "rgbaSha256": "f5107d1ce70ef4e5fea91bf00807499abc9507f1e649cda2714214d783d143ae"
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "31",
+      "name": "EmojiOne",
+      "width": 512,
+      "height": 512,
+      "format": 47
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "32",
+      "name": "Font Texture",
+      "width": 0,
+      "height": 0,
+      "format": 4
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "33",
+      "name": "LiberationSans SDF Atlas",
+      "width": 0,
+      "height": 0,
+      "format": 1
+    },
+    {
+      "file": "resources.assets",
+      "pathId": "34",
+      "name": "LiberationSans SDF Atlas",
+      "width": 1024,
+      "height": 1024,
+      "format": 1
+    }
+  ],
+  "unresolvedAppearance": {
+    "property": "StratDiffuseMap._MainTex",
+    "serializedReference": {
+      "m_FileID": 0,
+      "m_PathID": 0
+    },
+    "declaredShaderDefault": "white",
+    "declaredMissingExternalAsset": null,
+    "reason": "The empty slot is a valid white fallback, not a broken reference. The uniform source material and supplied environment cube do not provide the original detailed finish shown in the APK images; the runtime texture/material binding remains unverified.",
+    "excludedAlternatives": [
+      "EclassicTexture belongs to the separate electro-classical mesh, not Clean_Mesh.",
+      "EG_1 through EG_4 are 370x135 instrument-selection thumbnails, not UV atlases.",
+      "g3dst is an application-promotion image; the eight atlas0 textures contain UI sprites.",
+      "Original bitmap asset data could not be recovered by standard image-signature checks in the existing metadata/native files."
+    ],
+    "resolution": "Provide the verified original runtime electric material/texture binding or export. No missing filename or GUID is known; do not invent one, repaint the acoustic or substitute thumbnail-derived colors."
+  }
+}

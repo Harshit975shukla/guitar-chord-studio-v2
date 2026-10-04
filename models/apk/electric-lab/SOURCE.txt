@@ -1,0 +1,88 @@
+Experimental Electric Lab — owner-authorized model preview
+========================================================
+
+Scope
+  This separate electric-lab.html page uses the supplied recovered APK model.
+  It does not replace the Chord Player, native acoustic guitar, or main Lab.
+  Geometry is verified; the original runtime finish is NOT yet verified.
+  The owner supplied this APK as their own app and authorized converted models.
+  No broader redistribution licence is inferred. The owner approved this
+  page's deployment to their backup and live sites on 4 October 2026.
+
+Unchanged recovered conversion
+  electric-geometry.glb: 390,464 bytes.
+  SHA-256 fbe38e1709a9752ffd93ecb072623005e08eb267340772581768642f7a18083a
+  Mesh Clean_Mesh, path ID -7462617945735736255.
+  File CAB-007d816f33ea8e45ca709f4d097a472a.
+  Original bundle 4d9dfcb8de0141bd8c6f41c360847cb1.bundle.
+  Bundle SHA-256 c50fba1bedf6eeed3bd722ff7afb586248abb52ca849bf114533f2cb416ec1d0
+  9,325 unique source vertices; 6,446 body/hardware + 6 logo triangles.
+  Conversion reflects Unity X, reverses triangle winding, and inverts UV V.
+  Positions, normals, primary UVs, both submeshes, material parameters, and
+  original embedded 512x128 PolyLogo bitmap are retained without remeshing.
+  Seven other original UV layouts are not included in this recovered GLB.
+  The source Clean_Mesh_Ref geometry and primary UVs are identical.
+
+Source archive
+  Owner-supplied apk_extracted-20261002T162048Z-1-001.zip.
+  Scene apk_extracted/base/assets/bin/Data/data.unity3d.
+  Scene SHA-256 ed1e1668bccc50ed519d42080548fbe1ad7eaac06c8ffd465b2566e08758cdfc
+  Recovery used UnityPy 1.25.2; no APK executable code is run by this page.
+
+Material confidence boundary
+  StratDiffuseMap: sharedassets1.assets:13.
+  Shader: Legacy Shaders/Reflective/Diffuse, sharedassets1.assets:50.
+  Saved _Color RGB = 0.7547169923782349, alpha 1.
+  Saved _ReflectColor RGB = 0.9338235259056091, alpha 0.501960813999176.
+  _MainTex is null with an explicitly valid WHITE shader default. That is
+  not proof of a missing bitmap, atlas, external dependency, or filename.
+  _Cube resolves to the readable original six-face 64x64 Cube_Sunol (:81).
+  The full cube is in the source archive, not in this GLB. This page does not
+  claim to reproduce it or use the first cube face as a UV map.
+  PolyLogo (:11) retains its original image (:24); the original
+  Mobile/Particles/VertexLit Blended shader is not reproduced.
+  Recovered neutral uses the GLB's unchanged neutral tint/standard-material
+  approximation and original logo under the Lab's studio lights.
+  This is NOT a faithful reproduction of the APK's original runtime finish.
+  No per-part color atlas, original runtime texture binding, or exact
+  reflection/particle-shader behavior has been visually verified.
+  No generic guitar, repainted acoustic atlas, or thumbnail-derived paint is
+  substituted. No missing asset name is claimed.
+
+Presentation and demonstration
+  Runtime grouping rotates/recenters the model; source buffers stay intact.
+  Cherry red, Midnight blue and Vintage cream are custom Lab finishes.
+  Runtime material groups separate paint, maple-coloured neck/headstock,
+  rosewood-coloured fretboard, nickel-coloured hardware, dark pickups/knobs
+  and light inlays. Connectivity and local geometry define the masks;
+  source vertices, normals, UVs, index order and the logo are not edited.
+  These colours are an interpretation, not recovered APK textures or proof
+  of actual wood species/hardware materials. Recovered neutral restores the
+  saved source material. An owned generated room environment provides studio
+  reflections; it is not Cube_Sunol. Finish choice survives model retries.
+  Optional wireframe uses the existing triangle topology.
+  Named inspection areas and a marker navigate one intact source mesh;
+  they are not recovered separable component groups.
+  Separate gold teaching strings and fret dots follow standard-tuning chord
+  shapes. Their visibly slowed vibration is illustrative, not physical
+  simulation or recovered APK motion. Animated APK hands are not included.
+  Playback uses the existing locally hosted Musicca electric-guitar bank
+  through the application's shared recording engine. It is not APK audio
+  or a prediction of the recovered model's tone. The existing audio
+  provenance remains under public/audio/musicca-guitar/.
+  No microphone, app settings, main-player state, or service worker is used.
+
+Evidence
+  provenance/recovery-manifest.json and material-assessment.json are exact
+  historical copies of the prior recovery evidence. Their "unshipped"/"None"
+  integration fields describe that earlier investigation, not this new page.
+  geometry-reference.png is an unchanged flat source-geometry diagnostic,
+  used only as an explicitly static fallback when 3D is loading/unavailable.
+  SHA-256 257ead9494ff903d2f84e877b4bafb5f1d5e8acbac203003c1ab525ba305f7d3
+  The separate original recovery directory is kept intact.
+
+Validation
+  node --import tsx scripts/electric-lab-smoke.mjs
+  node scripts/electric-lab-browser.mjs <electric-lab-url> <private-cdp-port>
+  The browser runner uses an already-running isolated Chromium and local
+  server. Set SCREENSHOT_DIR to an existing project artifact directory.

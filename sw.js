@@ -1,15 +1,16 @@
 // Service Worker for Guitar Chord Studio v2
 // Provides offline support, subpath compatibility, and instant updates
 
-// CfPPNxtr is replaced at build time with the bundle hash (scripts/stamp-sw.mjs)
-const CACHE_NAME = 'guitar-studio-CfPPNxtr';
-
 const getBasePath = () => {
   const path = self.location.pathname;
   return path.substring(0, path.lastIndexOf('/') + 1);
 };
 
 const BASE = getBasePath();
+// Pages apps share an origin, not a cache namespace. Never evict another app's data.
+const CACHE_PREFIX = `guitar-studio:${BASE}:`;
+// BItGgaPL is replaced at build time with the bundle hash (scripts/stamp-sw.mjs)
+const CACHE_NAME = `${CACHE_PREFIX}BItGgaPL`;
 const STATIC_ASSETS = [
   BASE,
   BASE + 'index.html',
@@ -38,7 +39,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name !== CACHE_NAME)
+          .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
           .map((name) => {
             console.log('Clearing old cache:', name);
             return caches.delete(name);
@@ -51,10 +52,12 @@ self.addEventListener('activate', (event) => {
 // Fetch handler
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  if (!event.request.url.startsWith(self.location.origin)) return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(BASE)) return;
 
   // For HTML navigation requests: Network First, falling back to cache
   if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    const fallback = BASE + (url.pathname === BASE + 'electric-lab.html' ? 'electric-lab.html' : 'index.html');
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
@@ -65,8 +68,8 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          return caches.match(event.request)
-            .then((cached) => cached || caches.match(BASE + 'index.html'));
+          return caches.open(CACHE_NAME).then(async (cache) =>
+            (await cache.match(event.request)) || (await cache.match(fallback)) || Response.error());
         })
     );
     return;
@@ -74,14 +77,15 @@ self.addEventListener('fetch', (event) => {
 
   // For JS, CSS, media: Cache First, update in background (Stale-While-Revalidate)
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const cachedResponse = await cache.match(event.request);
       const fetchPromise = fetch(event.request).then((networkResponse) => {
         if (networkResponse.ok) {
           const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          cache.put(event.request, clone);
         }
         return networkResponse;
-      }).catch(() => null);
+      }).catch(() => Response.error());
 
       return cachedResponse || fetchPromise;
     })
